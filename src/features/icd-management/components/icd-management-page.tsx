@@ -26,13 +26,15 @@ export function IcdManagementPage() {
     const [filterStatus, setFilterStatus] = useState('all')
 
     // ICD Form State
+    const NO_PARENT_ICD_VALUE = '__none__'
+
     const [formData, setFormData] = useState<Partial<ICD>>({
         code: '',
         nameEn: '',
         nameAr: '',
         description: '',
         category: '',
-        parentIcd: '',
+        parentIcd: undefined,
         relatedIcds: [],
         status: 'active',
         notes: ''
@@ -136,7 +138,7 @@ export function IcdManagementPage() {
             nameAr: '',
             description: '',
             category: '',
-            parentIcd: '',
+            parentIcd: undefined,
             relatedIcds: [],
             status: 'active',
             notes: ''
@@ -421,14 +423,20 @@ export function IcdManagementPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="parentIcd">Parent ICD</Label>
                                     <Select
-                                        value={formData.parentIcd}
-                                        onValueChange={(value) => setFormData({ ...formData, parentIcd: value })}
+                                        value={formData.parentIcd || NO_PARENT_ICD_VALUE}
+                                        onValueChange={(value) =>
+                                            setFormData({
+                                                ...formData,
+                                                parentIcd:
+                                                    value === NO_PARENT_ICD_VALUE ? undefined : value
+                                            })
+                                        }
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select parent ICD" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">None</SelectItem>
+                                            <SelectItem value={NO_PARENT_ICD_VALUE}>None</SelectItem>
                                             {icds.filter(i => i.id !== formData.id).map(icd => (
                                                 <SelectItem key={icd.id} value={icd.id}>
                                                     {icd.code} - {icd.nameEn}

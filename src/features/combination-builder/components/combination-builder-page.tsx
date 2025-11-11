@@ -35,6 +35,8 @@ export function CombinationBuilderPage() {
         priority: 1
     })
 
+    const ANY_OPTION_VALUE = 'any'
+
     const [selectedFactors, setSelectedFactors] = useState<{
         provider?: string
         procedure?: string
@@ -43,6 +45,23 @@ export function CombinationBuilderPage() {
         gender?: string
         ageRange?: string
     }>({})
+
+    const updateSelectedFactor = <K extends keyof typeof selectedFactors>(
+        factor: K,
+        value: string
+    ) => {
+        setSelectedFactors(prev => {
+            const next = { ...prev }
+
+            if (value === ANY_OPTION_VALUE) {
+                delete next[factor]
+            } else {
+                next[factor] = value
+            }
+
+            return next
+        })
+    }
 
     // Sample data
     useEffect(() => {
@@ -462,14 +481,14 @@ export function CombinationBuilderPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="provider">Provider</Label>
                                     <Select
-                                        value={selectedFactors.provider || ''}
-                                        onValueChange={(value) => setSelectedFactors({ ...selectedFactors, provider: value })}
+                                        value={selectedFactors.provider ?? ANY_OPTION_VALUE}
+                                        onValueChange={(value) => updateSelectedFactor('provider', value)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select provider" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">Any</SelectItem>
+                                            <SelectItem value={ANY_OPTION_VALUE}>Any</SelectItem>
                                             {providers.map(p => (
                                                 <SelectItem key={p} value={p}>{p}</SelectItem>
                                             ))}
@@ -480,14 +499,14 @@ export function CombinationBuilderPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="procedure">Procedure</Label>
                                     <Select
-                                        value={selectedFactors.procedure || ''}
-                                        onValueChange={(value) => setSelectedFactors({ ...selectedFactors, procedure: value })}
+                                        value={selectedFactors.procedure ?? ANY_OPTION_VALUE}
+                                        onValueChange={(value) => updateSelectedFactor('procedure', value)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select procedure" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">Any</SelectItem>
+                                            <SelectItem value={ANY_OPTION_VALUE}>Any</SelectItem>
                                             {procedures.map(p => (
                                                 <SelectItem key={p.code} value={p.code}>
                                                     {p.code} - {p.name}
@@ -500,14 +519,14 @@ export function CombinationBuilderPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="insuranceDegree">Insurance Degree</Label>
                                     <Select
-                                        value={selectedFactors.insuranceDegree || ''}
-                                        onValueChange={(value) => setSelectedFactors({ ...selectedFactors, insuranceDegree: value })}
+                                        value={selectedFactors.insuranceDegree ?? ANY_OPTION_VALUE}
+                                        onValueChange={(value) => updateSelectedFactor('insuranceDegree', value)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select degree" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">Any</SelectItem>
+                                            <SelectItem value={ANY_OPTION_VALUE}>Any</SelectItem>
                                             {insuranceDegrees.map(d => (
                                                 <SelectItem key={d} value={d}>{d}</SelectItem>
                                             ))}
@@ -518,14 +537,14 @@ export function CombinationBuilderPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="icd">ICD Code</Label>
                                     <Select
-                                        value={selectedFactors.icd || ''}
-                                        onValueChange={(value) => setSelectedFactors({ ...selectedFactors, icd: value })}
+                                        value={selectedFactors.icd ?? ANY_OPTION_VALUE}
+                                        onValueChange={(value) => updateSelectedFactor('icd', value)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select ICD" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">Any</SelectItem>
+                                            <SelectItem value={ANY_OPTION_VALUE}>Any</SelectItem>
                                             {icds.map(icd => (
                                                 <SelectItem key={icd} value={icd}>{icd}</SelectItem>
                                             ))}
@@ -536,14 +555,14 @@ export function CombinationBuilderPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="gender">Gender</Label>
                                     <Select
-                                        value={selectedFactors.gender || ''}
-                                        onValueChange={(value) => setSelectedFactors({ ...selectedFactors, gender: value })}
+                                        value={selectedFactors.gender ?? ANY_OPTION_VALUE}
+                                        onValueChange={(value) => updateSelectedFactor('gender', value)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select gender" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">Any</SelectItem>
+                                            <SelectItem value={ANY_OPTION_VALUE}>Any</SelectItem>
                                             <SelectItem value="male">Male</SelectItem>
                                             <SelectItem value="female">Female</SelectItem>
                                         </SelectContent>
@@ -553,14 +572,14 @@ export function CombinationBuilderPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="ageRange">Age Range</Label>
                                     <Select
-                                        value={selectedFactors.ageRange || ''}
-                                        onValueChange={(value) => setSelectedFactors({ ...selectedFactors, ageRange: value })}
+                                        value={selectedFactors.ageRange ?? ANY_OPTION_VALUE}
+                                        onValueChange={(value) => updateSelectedFactor('ageRange', value)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select age range" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">Any</SelectItem>
+                                            <SelectItem value={ANY_OPTION_VALUE}>Any</SelectItem>
                                             <SelectItem value="0-18">0-18 years</SelectItem>
                                             <SelectItem value="19-35">19-35 years</SelectItem>
                                             <SelectItem value="36-60">36-60 years</SelectItem>
