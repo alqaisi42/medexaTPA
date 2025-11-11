@@ -14,7 +14,7 @@ import { ICD, ICDRelation } from '@/types'
 import { generateId } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 
-export function ICDManagementPage() {
+export function IcdManagementPage() {
     const language = useAppStore(state => state.language)
     const [icds, setIcds] = useState<ICD[]>([])
     const [filteredIcds, setFilteredIcds] = useState<ICD[]>([])
