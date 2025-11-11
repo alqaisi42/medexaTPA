@@ -1,7 +1,8 @@
 'use client'
 
-import React from 'react'
-import { ChevronRight, ChevronDown, X, Menu, Home, LogOut, User } from 'lucide-react'
+import { useEffect, useMemo, type ReactNode } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { ChevronRight, ChevronDown, X, Menu, LogOut, User } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import { cn } from '@/lib/utils'
@@ -9,22 +10,38 @@ import { Button } from '@/components/ui/button'
 import { NavigationItem, TabItem } from '@/types'
 
 interface MainLayoutProps {
-    children?: React.ReactNode
+    children?: ReactNode
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-    const {
-        sidebarExpanded,
-        toggleSidebar,
-        navigationItems,
-        expandNavigationItem,
-        tabs,
-        activeTabId,
-        addTab,
-        removeTab,
-        setActiveTab,
-        language
-    } = useAppStore()
+    const router = useRouter()
+    const pathname = usePathname()
+    const sidebarExpanded = useAppStore((state) => state.sidebarExpanded)
+    const toggleSidebar = useAppStore((state) => state.toggleSidebar)
+    const navigationItems = useAppStore((state) => state.navigationItems)
+    const expandNavigationItem = useAppStore((state) => state.expandNavigationItem)
+    const tabs = useAppStore((state) => state.tabs)
+    const activeTabId = useAppStore((state) => state.activeTabId)
+    const addTab = useAppStore((state) => state.addTab)
+    const removeTab = useAppStore((state) => state.removeTab)
+    const setActiveTab = useAppStore((state) => state.setActiveTab)
+    const language = useAppStore((state) => state.language)
+
+    const flattenedNavigation = useMemo(() => {
+        const result: NavigationItem[] = []
+
+        const traverse = (items: NavigationItem[]) => {
+            items.forEach((item) => {
+                result.push(item)
+                if (item.children) {
+                    traverse(item.children)
+                }
+            })
+        }
+
+        traverse(navigationItems)
+        return result
+    }, [navigationItems])
 
     // Navigate to a page and open it in a tab
     const handleNavigate = (item: NavigationItem) => {
@@ -34,24 +51,52 @@ export function MainLayout({ children }: MainLayoutProps) {
                 title: item.label,
                 component: item.path,
                 icon: item.icon,
-                closable: true,
+                closable: item.id !== 'dashboard'
             }
             addTab(tab)
+            setActiveTab(tab.id)
+            router.push(item.path)
         }
     }
+
+    useEffect(() => {
+        if (!pathname) {
+            return
+        }
+
+        const matchedItem = flattenedNavigation.find((item) => item.path === pathname)
+        if (matchedItem) {
+            addTab({
+                id: matchedItem.id,
+                title: matchedItem.label,
+                component: matchedItem.path!,
+                icon: matchedItem.icon,
+                closable: matchedItem.id !== 'dashboard'
+            })
+            setActiveTab(matchedItem.id)
+        }
+    }, [pathname, flattenedNavigation, addTab, setActiveTab])
+
+    useEffect(() => {
+        const activeTab = tabs.find((tab) => tab.id === activeTabId)
+        if (activeTab?.component && activeTab.component !== pathname) {
+            router.push(activeTab.component)
+        }
+    }, [activeTabId, tabs, pathname, router])
 
     // Render navigation tree recursively
     const renderNavigationItem = (item: NavigationItem, level: number = 0) => {
         const hasChildren = item.children && item.children.length > 0
         const isExpanded = item.expanded
         const IconComponent = item.icon ? (Icons as any)[item.icon] : null
+        const isActive = activeTabId === item.id
 
         return (
             <div key={item.id} className="select-none">
                 <div
                     className={cn(
                         "flex items-center py-1.5 px-2 cursor-pointer hover:bg-tpa-secondary transition-colors",
-                        activeTabId === item.id && "bg-tpa-accent text-white",
+                        isActive && "bg-tpa-accent text-white",
                         level === 0 && "font-semibold"
                     )}
                     style={{ paddingLeft: `${level * 16 + 8}px` }}
@@ -177,7 +222,10 @@ export function MainLayout({ children }: MainLayoutProps) {
                                                     ? "bg-white border-b-2 border-tpa-primary"
                                                     : "hover:bg-gray-100"
                                             )}
-                                            onClick={() => setActiveTab(tab.id)}
+                                            onClick={() => {
+                                                setActiveTab(tab.id)
+                                                router.push(tab.component)
+                                            }}
                                         >
                                             {TabIcon && <TabIcon className="w-4 h-4 mr-2" />}
                                             <span className="text-sm truncate flex-1">{tab.title}</span>
