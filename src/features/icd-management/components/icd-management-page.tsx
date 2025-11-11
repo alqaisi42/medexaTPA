@@ -26,14 +26,15 @@ export function IcdManagementPage() {
     const [filterStatus, setFilterStatus] = useState('all')
 
     // ICD Form State
-    const NO_PARENT_ICD_VALUE = '__none__'
+    const NO_CATEGORY_SELECTED_VALUE = '__no_category__'
+    const NO_PARENT_ICD_VALUE = '__no_parent__'
 
     const [formData, setFormData] = useState<Partial<ICD>>({
         code: '',
         nameEn: '',
         nameAr: '',
         description: '',
-        category: '',
+        category: undefined,
         parentIcd: undefined,
         relatedIcds: [],
         status: 'active',
@@ -137,7 +138,7 @@ export function IcdManagementPage() {
             nameEn: '',
             nameAr: '',
             description: '',
-            category: '',
+            category: undefined,
             parentIcd: undefined,
             relatedIcds: [],
             status: 'active',
@@ -149,7 +150,10 @@ export function IcdManagementPage() {
     const handleEdit = (icd: ICD) => {
         setIsEditMode(true)
         setSelectedIcd(icd)
-        setFormData(icd)
+        setFormData({
+            ...icd,
+            parentIcd: icd.parentIcd || undefined
+        })
         setIsDialogOpen(true)
     }
 
@@ -160,20 +164,25 @@ export function IcdManagementPage() {
     }
 
     const handleSave = () => {
-        if (!formData.code || !formData.nameEn) {
+        if (!formData.code || !formData.nameEn || !formData.category) {
             alert('Please fill in required fields')
             return
+        }
+
+        const normalizedFormData: Partial<ICD> = {
+            ...formData,
+            parentIcd: formData.parentIcd || undefined
         }
 
         if (isEditMode && selectedIcd) {
             setIcds(prev => prev.map(i =>
                 i.id === selectedIcd.id
-                    ? { ...i, ...formData, updatedAt: new Date() } as ICD
+                    ? { ...i, ...normalizedFormData, updatedAt: new Date() } as ICD
                     : i
             ))
         } else {
             const newIcd: ICD = {
-                ...formData as ICD,
+                ...normalizedFormData as ICD,
                 id: generateId(),
                 createdAt: new Date(),
                 updatedAt: new Date()
@@ -348,13 +357,28 @@ export function IcdManagementPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="category">Category *</Label>
                                     <Select
-                                        value={formData.category}
-                                        onValueChange={(value) => setFormData({ ...formData, category: value })}
+                                        value={
+                                            formData.category && formData.category.length > 0
+                                                ? formData.category
+                                                : NO_CATEGORY_SELECTED_VALUE
+                                        }
+                                        onValueChange={(value) =>
+                                            setFormData({
+                                                ...formData,
+                                                category:
+                                                    value === NO_CATEGORY_SELECTED_VALUE
+                                                        ? undefined
+                                                        : value
+                                            })
+                                        }
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select category" />
                                         </SelectTrigger>
                                         <SelectContent>
+                                            <SelectItem value={NO_CATEGORY_SELECTED_VALUE}>
+                                                Select category
+                                            </SelectItem>
                                             {categories.map(cat => (
                                                 <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                             ))}
@@ -423,7 +447,11 @@ export function IcdManagementPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="parentIcd">Parent ICD</Label>
                                     <Select
-                                        value={formData.parentIcd || NO_PARENT_ICD_VALUE}
+                                        value={
+                                            formData.parentIcd && formData.parentIcd.length > 0
+                                                ? formData.parentIcd
+                                                : NO_PARENT_ICD_VALUE
+                                        }
                                         onValueChange={(value) =>
                                             setFormData({
                                                 ...formData,
@@ -437,11 +465,13 @@ export function IcdManagementPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value={NO_PARENT_ICD_VALUE}>None</SelectItem>
-                                            {icds.filter(i => i.id !== formData.id).map(icd => (
-                                                <SelectItem key={icd.id} value={icd.id}>
-                                                    {icd.code} - {icd.nameEn}
-                                                </SelectItem>
-                                            ))}
+                                            {icds
+                                                .filter(i => i.id && i.id !== formData.id)
+                                                .map(icd => (
+                                                    <SelectItem key={icd.id} value={icd.id}>
+                                                        {icd.code} - {icd.nameEn}
+                                                    </SelectItem>
+                                                ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
