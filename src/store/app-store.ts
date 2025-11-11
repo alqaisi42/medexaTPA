@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { TabItem, NavigationItem } from '@/types'
+import { NavigationItem, TabItem } from '@/types'
 
 interface AppState {
     // Navigation state
@@ -11,7 +11,7 @@ interface AppState {
 
     // Tab management
     tabs: TabItem[]
-    activeTabId: string | null
+    activeTabId: string
     addTab: (tab: TabItem) => void
     removeTab: (tabId: string) => void
     setActiveTab: (tabId: string) => void
@@ -32,12 +32,26 @@ interface AppState {
     clearSelectedItems: () => void
 }
 
+const HOME_TAB: TabItem = {
+    id: 'dashboard',
+    title: 'Dashboard',
+    component: '/',
+    icon: 'Home',
+    closable: false,
+}
+
 export const useAppStore = create<AppState>((set) => ({
     // Navigation state
     sidebarExpanded: true,
     toggleSidebar: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
 
     navigationItems: [
+        {
+            id: 'dashboard',
+            label: 'Dashboard',
+            icon: 'Home',
+            path: '/',
+        },
         {
             id: 'main-menu',
             label: 'Main Menu',
@@ -47,13 +61,13 @@ export const useAppStore = create<AppState>((set) => ({
                     id: 'favorites',
                     label: 'Favourites',
                     icon: 'Star',
-                    children: []
+                    children: [],
                 },
                 {
                     id: 'setup',
                     label: 'Setup',
                     icon: 'Settings',
-                    children: []
+                    children: [],
                 },
                 {
                     id: 'basic-definitions',
@@ -65,79 +79,79 @@ export const useAppStore = create<AppState>((set) => ({
                             id: 'procedures-price-lists',
                             label: 'Procedures Price Lists',
                             icon: 'DollarSign',
-                            path: '/procedures-price-lists'
+                            path: '/procedures-price-lists',
                         },
                         {
                             id: 'international-classifications',
                             label: 'International Classifications',
                             icon: 'Globe',
-                            path: '/icd-management'
+                            path: '/icd-management',
                         },
                         {
                             id: 'procedures-info',
                             label: 'Procedures Info',
                             icon: 'Activity',
-                            path: '/procedures-management'
+                            path: '/procedures-management',
                         },
                         {
                             id: 'lookup-management',
                             label: 'Lookup Management',
                             icon: 'List',
-                            path: '/lookup-management'
+                            path: '/lookup-management',
                         },
                         {
                             id: 'combination-builder',
                             label: 'Combination Builder',
                             icon: 'Grid3X3',
-                            path: '/combination-builder'
-                        }
-                    ]
+                            path: '/combination-builder',
+                        },
+                    ],
                 },
                 {
                     id: 'medical-providers',
                     label: 'Medical Providers Info.',
                     icon: 'Building2',
-                    children: []
+                    children: [],
                 },
                 {
                     id: 'subscribers',
                     label: 'Subscribers Info.',
                     icon: 'Users',
-                    children: []
+                    children: [],
                 },
                 {
                     id: 'pre-approval',
                     label: 'Pre Approval',
                     icon: 'CheckCircle',
-                    children: []
+                    children: [],
                 },
                 {
                     id: 'claims',
                     label: 'Claims Info.',
                     icon: 'FileText',
-                    children: []
+                    children: [],
                 },
                 {
                     id: 'contracts',
                     label: 'Contracts Info.',
                     icon: 'FileSignature',
-                    children: []
+                    children: [],
                 },
                 {
                     id: 'integration',
                     label: 'Integration',
                     icon: 'Link',
-                    children: []
-                }
-            ]
-        }
+                    children: [],
+                },
+            ],
+        },
     ],
 
     setNavigationItems: (items) => set({ navigationItems: items }),
 
     expandNavigationItem: (itemId) => set((state) => {
-        const toggleExpanded = (items: NavigationItem[]): NavigationItem[] => {
-            return items.map(item => {
+        const toggleExpanded = (items: NavigationItem[]): NavigationItem[] =>
+            items.map((item) => {
                 if (item.id === itemId) {
                     return { ...item, expanded: !item.expanded }
                 }
@@ -146,55 +160,57 @@ export const useAppStore = create<AppState>((set) => ({
                 }
                 return item
             })
-        }
+
         return { navigationItems: toggleExpanded(state.navigationItems) }
     }),
 
     // Tab management
-    tabs: [],
-    activeTabId: null,
+    tabs: [HOME_TAB],
+    activeTabId: HOME_TAB.id,
 
     addTab: (tab) => set((state) => {
-        const existingTab = state.tabs.find(t => t.id === tab.id)
+        const existingTab = state.tabs.find((t) => t.id === tab.id)
         if (existingTab) {
             return { activeTabId: tab.id }
         }
+
         return {
             tabs: [...state.tabs, tab],
-            activeTabId: tab.id
+            activeTabId: tab.id,
         }
     }),
 
-    removeTab: (tabId) => set((state) => {
-        const newTabs = state.tabs.filter(t => t.id !== tabId)
-        let newActiveTab = state.activeTabId
+    removeTab: (tabId) => {
+        if (tabId === HOME_TAB.id) {
+            return
+        }
 
-        if (state.activeTabId === tabId) {
-            const removedIndex = state.tabs.findIndex(t => t.id === tabId)
-            if (newTabs.length > 0) {
-                if (removedIndex > 0) {
-                    newActiveTab = newTabs[removedIndex - 1].id
-                } else {
-                    newActiveTab = newTabs[0].id
+        set((state) => {
+            const newTabs = state.tabs.filter((t) => t.id !== tabId)
+            if (newTabs.length === 0) {
+                return {
+                    tabs: [HOME_TAB],
+                    activeTabId: HOME_TAB.id,
                 }
-            } else {
-                newActiveTab = null
             }
-        }
 
-        return {
-            tabs: newTabs,
-            activeTabId: newActiveTab
-        }
-    }),
+            const removedIndex = state.tabs.findIndex((t) => t.id === tabId)
+            const fallbackIndex = Math.max(removedIndex - 1, 0)
+            const fallbackTab = newTabs[fallbackIndex] ?? newTabs[0]
+
+            return {
+                tabs: newTabs,
+                activeTabId: fallbackTab.id,
+            }
+        })
+    },
 
     setActiveTab: (tabId) => set({ activeTabId: tabId }),
 
-    updateTab: (tabId, updates) => set((state) => ({
-        tabs: state.tabs.map(tab =>
-            tab.id === tabId ? { ...tab, ...updates } : tab
-        )
-    })),
+    updateTab: (tabId, updates) =>
+        set((state) => ({
+            tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...updates } : tab)),
+        })),
 
     // Global loading state
     isLoading: false,
@@ -207,13 +223,14 @@ export const useAppStore = create<AppState>((set) => ({
     // Selected items
     selectedItems: [],
     setSelectedItems: (items) => set({ selectedItems: items }),
-    toggleSelectedItem: (itemId) => set((state) => {
-        const isSelected = state.selectedItems.includes(itemId)
-        return {
-            selectedItems: isSelected
-                ? state.selectedItems.filter(id => id !== itemId)
-                : [...state.selectedItems, itemId]
-        }
-    }),
+    toggleSelectedItem: (itemId) =>
+        set((state) => {
+            const isSelected = state.selectedItems.includes(itemId)
+            return {
+                selectedItems: isSelected
+                    ? state.selectedItems.filter((id) => id !== itemId)
+                    : [...state.selectedItems, itemId],
+            }
+        }),
     clearSelectedItems: () => set({ selectedItems: [] }),
 }))
