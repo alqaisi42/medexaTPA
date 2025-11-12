@@ -577,12 +577,20 @@ export function ProceduresPriceListsPage() {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label>Specialist Physician Percentage</Label>
-                                                <Input type="number" defaultValue="0" suffix="%" />
+                                                <div className="relative">
+                                                    <Input type="number" defaultValue="0" className="pr-8" />
+                                                    <span className="absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                                                </div>
                                             </div>
+
                                             <div className="space-y-2">
                                                 <Label>General Physician Percentage</Label>
-                                                <Input type="number" defaultValue="0" suffix="%" />
+                                                <div className="relative">
+                                                    <Input type="number" defaultValue="0" className="pr-8" />
+                                                    <span className="absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                                                </div>
                                             </div>
+
                                         </div>
                                     </div>
                                 </TabsContent>
