@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Plus, Search, Download, Upload, Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,18 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { formatDate, cn } from '@/lib/utils'
-import { LookupCategory, LookupRecord, AgeGroupRecord, BaseLookupRecord } from '@/types'
+import { LookupCategory, LookupRecord, AgeGroupRecord } from '@/types'
+import { useMasterLookups } from '../hooks/use-master-lookups'
+import type { CreateLookupPayload } from '../services/master-lookup-service'
 
-interface LookupFormState {
-    code: string
-    nameEn: string
-    nameAr: string
-    minAgeYears?: number | null
-    maxAgeYears?: number | null
-    isActive?: boolean
-    effectiveFrom?: string | null
-    effectiveTo?: string | null
-}
+type LookupFormState = CreateLookupPayload
 
 interface LookupTableColumn {
     id: string
@@ -227,14 +220,13 @@ const lookupCategoryConfigs: LookupCategoryConfig[] = [
 
 export function LookupManagementPage() {
     const [selectedCategory, setSelectedCategory] = useState<LookupCategory>(lookupCategoryConfigs[0].value)
-    const [lookupRecords, setLookupRecords] = useState<LookupRecord[]>([])
+    const { records, isLoading, fetchError, loadRecords, createRecord, isSaving, clearError } =
+        useMasterLookups()
+    const isSubmitting = isSaving
     const [searchTerm, setSearchTerm] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [formData, setFormData] = useState<LookupFormState>(lookupCategoryConfigs[0].createInitialFormState())
     const [formError, setFormError] = useState<string | null>(null)
-    const [isSubmitting, setIsSubmitting] = useState(false)
-    const [isLoading, setIsLoading] = useState(false)
-    const [fetchError, setFetchError] = useState<string | null>(null)
 
     const categoryConfig = useMemo(
         () => lookupCategoryConfigs.find((config) => config.value === selectedCategory),
@@ -244,48 +236,23 @@ export function LookupManagementPage() {
     const columns = categoryConfig?.columns ?? []
     const columnCount = Math.max(columns.length, 1)
 
-    const fetchLookups = useCallback(
-        async (category: LookupCategory) => {
-            setIsLoading(true)
-            setFetchError(null)
-
-            try {
-                const response = await fetch(`/api/master/${category}`, { cache: 'no-store' })
-
-                if (!response.ok) {
-                    throw new Error('Unable to load lookup records')
-                }
-
-                const data = await response.json()
-                const normalized = normalizeLookupRecords(category, data)
-                setLookupRecords(normalized)
-            } catch (error) {
-                console.error('Failed to load lookup records', error)
-                setLookupRecords([])
-                setFetchError(error instanceof Error ? error.message : 'Failed to load lookup records')
-            } finally {
-                setIsLoading(false)
-            }
-        },
-        [],
-    )
-
     useEffect(() => {
-        fetchLookups(selectedCategory)
+        clearError()
+        void loadRecords(selectedCategory)
         setFormData(categoryConfig?.createInitialFormState() ?? createDefaultFormState())
         setFormError(null)
         setSearchTerm('')
-    }, [selectedCategory, categoryConfig, fetchLookups])
+    }, [selectedCategory, categoryConfig, loadRecords, clearError])
 
     const filteredLookups = useMemo(() => {
         if (!searchTerm) {
-            return lookupRecords
+            return records
         }
 
         const term = searchTerm.toLowerCase()
         const fields = categoryConfig?.searchableFields ?? []
 
-        return lookupRecords.filter((record) => {
+        return records.filter((record) => {
             return fields.some((field) => {
                 const value = (record as Record<string, unknown>)[field]
 
@@ -300,7 +267,7 @@ export function LookupManagementPage() {
                 return false
             })
         })
-    }, [lookupRecords, searchTerm, categoryConfig])
+    }, [records, searchTerm, categoryConfig])
 
     const handleAdd = () => {
         setFormData(categoryConfig?.createInitialFormState() ?? createDefaultFormState())
@@ -332,31 +299,14 @@ export function LookupManagementPage() {
         }
 
         setFormError(null)
-        setIsSubmitting(true)
 
         try {
-            const payload = buildRequestPayload(selectedCategory, formData)
-            const response = await fetch(`/api/master/${selectedCategory}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-            })
-
-            if (!response.ok) {
-                const errorBody = await response.json().catch(() => null)
-                throw new Error(errorBody?.message ?? 'Unable to save lookup record')
-            }
-
-            await fetchLookups(selectedCategory)
+            await createRecord(selectedCategory, formData)
             setIsDialogOpen(false)
             setFormData(categoryConfig?.createInitialFormState() ?? createDefaultFormState())
         } catch (error) {
             console.error('Failed to save lookup record', error)
             setFormError(error instanceof Error ? error.message : 'Failed to save lookup record')
-        } finally {
-            setIsSubmitting(false)
         }
     }
 
@@ -636,110 +586,4 @@ export function LookupManagementPage() {
 
 function isAgeGroupRecord(record: LookupRecord): record is AgeGroupRecord {
     return 'minAgeYears' in record
-}
-
-type RawLookupRecord = Record<string, unknown>
-
-function normalizeLookupRecords(category: LookupCategory, payload: unknown): LookupRecord[] {
-    if (!Array.isArray(payload)) {
-        return []
-    }
-
-    return payload
-        .filter((item): item is RawLookupRecord => typeof item === 'object' && item !== null)
-        .map((item) => normalizeLookupRecord(category, item))
-}
-
-function normalizeLookupRecord(category: LookupCategory, item: RawLookupRecord): LookupRecord {
-    const baseRecord: BaseLookupRecord = {
-        id: toStringOrFallback(item['id'], globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
-        code: toStringOrEmpty(item['code']),
-        nameEn: toStringOrEmpty(item['nameEn'] ?? item['name_en']),
-        nameAr: toStringOrEmpty(item['nameAr'] ?? item['name_ar']),
-    }
-
-    if (category === 'age-groups') {
-        const minAge = parseNullableNumber(item['minAgeYears'] ?? item['from'])
-        const maxAge = parseNullableNumber(item['maxAgeYears'] ?? item['to'])
-        const isActiveRaw = item['isActive']
-        const effectiveFromRaw = item['effectiveFrom']
-        const effectiveToRaw = item['effectiveTo']
-
-        return {
-            ...baseRecord,
-            minAgeYears: minAge,
-            maxAgeYears: maxAge,
-            isActive: typeof isActiveRaw === 'boolean' ? isActiveRaw : true,
-            effectiveFrom: toIsoString(effectiveFromRaw),
-            effectiveTo: toIsoString(effectiveToRaw),
-        }
-    }
-
-    return baseRecord
-}
-
-function parseNullableNumber(value: unknown): number | null {
-    if (value === null || value === undefined || value === '') {
-        return null
-    }
-
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : null
-}
-
-function toStringOrEmpty(value: unknown): string {
-    if (typeof value === 'string') {
-        return value
-    }
-
-    if (typeof value === 'number') {
-        return String(value)
-    }
-
-    return ''
-}
-
-function toStringOrFallback(value: unknown, fallback: string): string {
-    if (typeof value === 'string' || typeof value === 'number') {
-        return String(value)
-    }
-
-    return fallback
-}
-
-function toIsoString(value: unknown): string | null {
-    if (value instanceof Date) {
-        return value.toISOString()
-    }
-
-    if (typeof value === 'string' && value.length > 0) {
-        return value
-    }
-
-    return null
-}
-
-function buildRequestPayload(category: LookupCategory, data: LookupFormState) {
-    if (category === 'age-groups') {
-        return {
-            code: data.code,
-            nameEn: data.nameEn,
-            nameAr: data.nameAr,
-            name_en: data.nameEn,
-            name_ar: data.nameAr,
-            minAgeYears: data.minAgeYears ?? null,
-            maxAgeYears: data.maxAgeYears ?? null,
-            from: data.minAgeYears ?? null,
-            to: data.maxAgeYears ?? null,
-            isActive: data.isActive ?? true,
-            effectiveFrom: data.effectiveFrom ? new Date(data.effectiveFrom).toISOString() : null,
-            effectiveTo: data.effectiveTo ? new Date(data.effectiveTo).toISOString() : null,
-        }
-    }
-
-    return {
-        code: data.code,
-        nameEn: data.nameEn,
-        nameAr: data.nameAr,
-    }
 }
