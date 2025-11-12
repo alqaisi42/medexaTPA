@@ -1,24 +1,27 @@
 export type LookupCategory =
-    | 'procedure_category'
-    | 'icd_category'
-    | 'relation_type'
-    | 'specialty'
-    | 'unit'
-    | 'price_list'
-    | 'factor'
-    | 'provider_type'
-    | 'insurance_degree'
-    | 'gender'
-    | 'claim_type'
-    | 'visit_type'
+    | 'uoms'
+    | 'service-types'
+    | 'service-categories'
+    | 'provider-types'
+    | 'genders'
+    | 'facility-levels'
+    | 'currencies'
+    | 'countries'
+    | 'age-groups'
 
-export interface LookupType {
+export interface BaseLookupRecord {
     id: string
-    type: LookupCategory
     code: string
     nameEn: string
     nameAr: string
-    description?: string
-    active: boolean
-    sortOrder?: number
 }
+
+export interface AgeGroupRecord extends BaseLookupRecord {
+    minAgeYears: number | null
+    maxAgeYears: number | null
+    isActive: boolean
+    effectiveFrom: string | null
+    effectiveTo: string | null
+}
+
+export type LookupRecord = BaseLookupRecord | AgeGroupRecord

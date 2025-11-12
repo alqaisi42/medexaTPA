@@ -1,188 +1,392 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Search, Filter, Download, Upload, Settings, Database } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Plus, Search, Download, Upload, Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { LookupType, LookupCategory } from '@/types'
-import { generateId } from '@/lib/utils'
-import { useAppStore } from '@/store/app-store'
+import { formatDate, cn } from '@/lib/utils'
+import { LookupCategory, LookupRecord, AgeGroupRecord, BaseLookupRecord } from '@/types'
+
+interface LookupFormState {
+    code: string
+    nameEn: string
+    nameAr: string
+    minAgeYears?: number | null
+    maxAgeYears?: number | null
+    isActive?: boolean
+    effectiveFrom?: string | null
+    effectiveTo?: string | null
+}
+
+interface LookupTableColumn {
+    id: string
+    header: string
+    className?: string
+    cell: (item: LookupRecord) => React.ReactNode
+}
+
+interface LookupCategoryConfig {
+    value: LookupCategory
+    label: string
+    singularLabel: string
+    description: string
+    searchableFields: string[]
+    columns: LookupTableColumn[]
+    createInitialFormState: () => LookupFormState
+}
+
+const baseLookupColumns: LookupTableColumn[] = [
+    {
+        id: 'code',
+        header: 'Code',
+        className: 'w-32 font-medium',
+        cell: (item) => item.code || '-',
+    },
+    {
+        id: 'nameEn',
+        header: 'Name (EN)',
+        cell: (item) => item.nameEn || '-',
+    },
+    {
+        id: 'nameAr',
+        header: 'Name (AR)',
+        className: 'text-right',
+        cell: (item) => item.nameAr || '-',
+    },
+]
+
+const ageGroupColumns: LookupTableColumn[] = [
+    {
+        id: 'code',
+        header: 'Code',
+        className: 'w-24 font-medium',
+        cell: (item) => item.code || '-',
+    },
+    {
+        id: 'nameEn',
+        header: 'Name (EN)',
+        cell: (item) => item.nameEn || '-',
+    },
+    {
+        id: 'nameAr',
+        header: 'Name (AR)',
+        className: 'text-right',
+        cell: (item) => item.nameAr || '-',
+    },
+    {
+        id: 'minAgeYears',
+        header: 'Min Age',
+        className: 'w-24 text-center',
+        cell: (item) => (isAgeGroupRecord(item) && item.minAgeYears !== null ? item.minAgeYears : '-'),
+    },
+    {
+        id: 'maxAgeYears',
+        header: 'Max Age',
+        className: 'w-24 text-center',
+        cell: (item) => (isAgeGroupRecord(item) && item.maxAgeYears !== null ? item.maxAgeYears : '-'),
+    },
+    {
+        id: 'effectiveFrom',
+        header: 'Effective From',
+        className: 'w-32 text-center',
+        cell: (item) =>
+            isAgeGroupRecord(item) && item.effectiveFrom ? formatDate(item.effectiveFrom) : '-',
+    },
+    {
+        id: 'effectiveTo',
+        header: 'Effective To',
+        className: 'w-32 text-center',
+        cell: (item) =>
+            isAgeGroupRecord(item) && item.effectiveTo ? formatDate(item.effectiveTo) : '-',
+    },
+    {
+        id: 'isActive',
+        header: 'Status',
+        className: 'w-28 text-center',
+        cell: (item) =>
+            isAgeGroupRecord(item) ? (
+                <span
+                    className={cn(
+                        'inline-flex items-center justify-center rounded-full px-2 py-1 text-xs font-medium',
+                        item.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800',
+                    )}
+                >
+                    {item.isActive ? 'Active' : 'Inactive'}
+                </span>
+            ) : (
+                '-'
+            ),
+    },
+]
+
+const createDefaultFormState = (): LookupFormState => ({
+    code: '',
+    nameEn: '',
+    nameAr: '',
+})
+
+const createAgeGroupFormState = (): LookupFormState => ({
+    code: '',
+    nameEn: '',
+    nameAr: '',
+    minAgeYears: 0,
+    maxAgeYears: 0,
+    isActive: true,
+    effectiveFrom: new Date().toISOString().slice(0, 10),
+    effectiveTo: null,
+})
+
+const lookupCategoryConfigs: LookupCategoryConfig[] = [
+    {
+        value: 'uoms',
+        label: 'Units of Measure',
+        singularLabel: 'Unit of Measure',
+        description: 'Standard units used across the application',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'service-types',
+        label: 'Service Types',
+        singularLabel: 'Service Type',
+        description: 'Categories describing the type of healthcare service',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'service-categories',
+        label: 'Service Categories',
+        singularLabel: 'Service Category',
+        description: 'Groups for classifying offered services',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'provider-types',
+        label: 'Provider Types',
+        singularLabel: 'Provider Type',
+        description: 'Types of medical providers available in the network',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'genders',
+        label: 'Genders',
+        singularLabel: 'Gender',
+        description: 'Gender values referenced across records',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'facility-levels',
+        label: 'Facility Levels',
+        singularLabel: 'Facility Level',
+        description: 'Facility levels for accreditation and pricing rules',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'currencies',
+        label: 'Currencies',
+        singularLabel: 'Currency',
+        description: 'Supported currencies for pricing and reporting',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'countries',
+        label: 'Countries',
+        singularLabel: 'Country',
+        description: 'Country references for locations and regulations',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
+    {
+        value: 'age-groups',
+        label: 'Age Groups',
+        singularLabel: 'Age Group',
+        description: 'Defined age groups used in eligibility and pricing rules',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: ageGroupColumns,
+        createInitialFormState: createAgeGroupFormState,
+    },
+]
 
 export function LookupManagementPage() {
-    const language = useAppStore(state => state.language)
-    const [lookupTypes, setLookupTypes] = useState<LookupType[]>([])
-    const [filteredLookups, setFilteredLookups] = useState<LookupType[]>([])
-    const [selectedLookup, setSelectedLookup] = useState<LookupType | null>(null)
-    const [isDialogOpen, setIsDialogOpen] = useState(false)
-    const [isEditMode, setIsEditMode] = useState(false)
+    const [selectedCategory, setSelectedCategory] = useState<LookupCategory>(lookupCategoryConfigs[0].value)
+    const [lookupRecords, setLookupRecords] = useState<LookupRecord[]>([])
     const [searchTerm, setSearchTerm] = useState('')
-    const [selectedCategory, setSelectedCategory] = useState<LookupCategory>('procedure_category')
+    const [isDialogOpen, setIsDialogOpen] = useState(false)
+    const [formData, setFormData] = useState<LookupFormState>(lookupCategoryConfigs[0].createInitialFormState())
+    const [formError, setFormError] = useState<string | null>(null)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isLoading, setIsLoading] = useState(false)
+    const [fetchError, setFetchError] = useState<string | null>(null)
 
-    // Lookup Form State
-    const [formData, setFormData] = useState<Partial<LookupType>>({
-        type: 'procedure_category',
-        code: '',
-        nameEn: '',
-        nameAr: '',
-        description: '',
-        active: true,
-        sortOrder: 0
-    })
+    const categoryConfig = useMemo(
+        () => lookupCategoryConfigs.find((config) => config.value === selectedCategory),
+        [selectedCategory],
+    )
 
-    // Lookup Categories Definition
-    const lookupCategories: { value: LookupCategory; label: string; description: string }[] = [
-        { value: 'procedure_category', label: 'Procedure Categories', description: 'Categories for medical procedures' },
-        { value: 'icd_category', label: 'ICD Categories', description: 'Categories for ICD codes' },
-        { value: 'relation_type', label: 'Relation Types', description: 'Types of relations between entities' },
-        { value: 'specialty', label: 'Specialties', description: 'Medical specialties' },
-        { value: 'unit', label: 'Units', description: 'Units of measure' },
-        { value: 'price_list', label: 'Price Lists', description: 'Types of price lists' },
-        { value: 'factor', label: 'Factors', description: 'Pricing and rule factors' },
-        { value: 'provider_type', label: 'Provider Types', description: 'Types of healthcare providers' },
-        { value: 'insurance_degree', label: 'Insurance Degrees', description: 'Insurance coverage levels' },
-        { value: 'gender', label: 'Gender', description: 'Gender options' },
-        { value: 'claim_type', label: 'Claim Types', description: 'Types of insurance claims' },
-        { value: 'visit_type', label: 'Visit Types', description: 'Types of medical visits' }
-    ]
+    const columns = categoryConfig?.columns ?? []
+    const columnCount = Math.max(columns.length, 1)
 
-    // Sample data generation
+    const fetchLookups = useCallback(
+        async (category: LookupCategory) => {
+            setIsLoading(true)
+            setFetchError(null)
+
+            try {
+                const response = await fetch(`/api/master/${category}`, { cache: 'no-store' })
+
+                if (!response.ok) {
+                    throw new Error('Unable to load lookup records')
+                }
+
+                const data = await response.json()
+                const normalized = normalizeLookupRecords(category, data)
+                setLookupRecords(normalized)
+            } catch (error) {
+                console.error('Failed to load lookup records', error)
+                setLookupRecords([])
+                setFetchError(error instanceof Error ? error.message : 'Failed to load lookup records')
+            } finally {
+                setIsLoading(false)
+            }
+        },
+        [],
+    )
+
     useEffect(() => {
-        const sampleData: LookupType[] = [
-            // Procedure Categories
-            { id: '1', type: 'procedure_category', code: 'SURG', nameEn: 'Surgery', nameAr: 'جراحة', active: true, sortOrder: 1 },
-            { id: '2', type: 'procedure_category', code: 'LAB', nameEn: 'Laboratory', nameAr: 'مختبر', active: true, sortOrder: 2 },
-            { id: '3', type: 'procedure_category', code: 'IMG', nameEn: 'Imaging', nameAr: 'تصوير', active: true, sortOrder: 3 },
-            { id: '4', type: 'procedure_category', code: 'CONS', nameEn: 'Consultation', nameAr: 'استشارة', active: true, sortOrder: 4 },
+        fetchLookups(selectedCategory)
+        setFormData(categoryConfig?.createInitialFormState() ?? createDefaultFormState())
+        setFormError(null)
+        setSearchTerm('')
+    }, [selectedCategory, categoryConfig, fetchLookups])
 
-            // Specialties
-            { id: '5', type: 'specialty', code: 'ORTH', nameEn: 'Orthopedics', nameAr: 'جراحة العظام', active: true, sortOrder: 1 },
-            { id: '6', type: 'specialty', code: 'CARD', nameEn: 'Cardiology', nameAr: 'أمراض القلب', active: true, sortOrder: 2 },
-            { id: '7', type: 'specialty', code: 'NEUR', nameEn: 'Neurology', nameAr: 'الأعصاب', active: true, sortOrder: 3 },
-
-            // Provider Types
-            { id: '8', type: 'provider_type', code: 'HOSP', nameEn: 'Hospital', nameAr: 'مستشفى', active: true, sortOrder: 1 },
-            { id: '9', type: 'provider_type', code: 'CLIN', nameEn: 'Clinic', nameAr: 'عيادة', active: true, sortOrder: 2 },
-            { id: '10', type: 'provider_type', code: 'LAB', nameEn: 'Laboratory', nameAr: 'مختبر', active: true, sortOrder: 3 },
-
-            // Insurance Degrees
-            { id: '11', type: 'insurance_degree', code: 'GOLD', nameEn: 'Gold', nameAr: 'ذهبي', description: 'Premium coverage', active: true, sortOrder: 1 },
-            { id: '12', type: 'insurance_degree', code: 'SILV', nameEn: 'Silver', nameAr: 'فضي', description: 'Standard coverage', active: true, sortOrder: 2 },
-            { id: '13', type: 'insurance_degree', code: 'BRNZ', nameEn: 'Bronze', nameAr: 'برونزي', description: 'Basic coverage', active: true, sortOrder: 3 },
-
-            // Claim Types
-            { id: '14', type: 'claim_type', code: 'CASH', nameEn: 'Cashless', nameAr: 'بدون نقد', active: true, sortOrder: 1 },
-            { id: '15', type: 'claim_type', code: 'REIMB', nameEn: 'Reimbursement', nameAr: 'استرداد', active: true, sortOrder: 2 },
-
-            // Units
-            { id: '16', type: 'unit', code: 'PROC', nameEn: 'Procedure', nameAr: 'إجراء', active: true, sortOrder: 1 },
-            { id: '17', type: 'unit', code: 'VISIT', nameEn: 'Visit', nameAr: 'زيارة', active: true, sortOrder: 2 },
-            { id: '18', type: 'unit', code: 'TEST', nameEn: 'Test', nameAr: 'فحص', active: true, sortOrder: 3 },
-            { id: '19', type: 'unit', code: 'DAY', nameEn: 'Day', nameAr: 'يوم', active: true, sortOrder: 4 }
-        ]
-
-        setLookupTypes(sampleData)
-    }, [])
-
-    // Filter lookups by selected category
-    useEffect(() => {
-        let filtered = lookupTypes.filter(lookup => lookup.type === selectedCategory)
-
-        if (searchTerm) {
-            filtered = filtered.filter(lookup =>
-                lookup.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                lookup.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                lookup.nameAr.includes(searchTerm)
-            )
+    const filteredLookups = useMemo(() => {
+        if (!searchTerm) {
+            return lookupRecords
         }
 
-        setFilteredLookups(filtered)
-    }, [selectedCategory, searchTerm, lookupTypes])
+        const term = searchTerm.toLowerCase()
+        const fields = categoryConfig?.searchableFields ?? []
+
+        return lookupRecords.filter((record) => {
+            return fields.some((field) => {
+                const value = (record as Record<string, unknown>)[field]
+
+                if (typeof value === 'string') {
+                    return value.toLowerCase().includes(term)
+                }
+
+                if (typeof value === 'number') {
+                    return value.toString().includes(term)
+                }
+
+                return false
+            })
+        })
+    }, [lookupRecords, searchTerm, categoryConfig])
 
     const handleAdd = () => {
-        setIsEditMode(false)
-        setFormData({
-            type: selectedCategory,
-            code: '',
-            nameEn: '',
-            nameAr: '',
-            description: '',
-            active: true,
-            sortOrder: filteredLookups.length + 1
-        })
+        setFormData(categoryConfig?.createInitialFormState() ?? createDefaultFormState())
+        setFormError(null)
         setIsDialogOpen(true)
     }
 
-    const handleEdit = (lookup: LookupType) => {
-        setIsEditMode(true)
-        setSelectedLookup(lookup)
-        setFormData(lookup)
-        setIsDialogOpen(true)
-    }
-
-    const handleDelete = (lookup: LookupType) => {
-        if (confirm(`Are you sure you want to delete "${lookup.nameEn}"?`)) {
-            setLookupTypes(prev => prev.filter(l => l.id !== lookup.id))
-        }
-    }
-
-    const handleSave = () => {
-        if (!formData.code || !formData.nameEn) {
-            alert('Please fill in required fields')
+    const handleSubmit = async () => {
+        if (!formData.code.trim() || !formData.nameEn.trim() || !formData.nameAr.trim()) {
+            setFormError('Code, English name, and Arabic name are required.')
             return
         }
 
-        if (isEditMode && selectedLookup) {
-            setLookupTypes(prev => prev.map(l =>
-                l.id === selectedLookup.id
-                    ? { ...l, ...formData } as LookupType
-                    : l
-            ))
-        } else {
-            const newLookup: LookupType = {
-                ...formData as LookupType,
-                id: generateId(),
-                type: selectedCategory
+        if (selectedCategory === 'age-groups') {
+            if (formData.minAgeYears === null || formData.minAgeYears === undefined) {
+                setFormError('Minimum age is required for age groups.')
+                return
             }
-            setLookupTypes(prev => [...prev, newLookup])
+
+            if (formData.maxAgeYears === null || formData.maxAgeYears === undefined) {
+                setFormError('Maximum age is required for age groups.')
+                return
+            }
+
+            if (formData.maxAgeYears < formData.minAgeYears) {
+                setFormError('Maximum age must be greater than or equal to minimum age.')
+                return
+            }
         }
 
-        setIsDialogOpen(false)
-    }
+        setFormError(null)
+        setIsSubmitting(true)
 
-    const currentCategory = lookupCategories.find(cat => cat.value === selectedCategory)
+        try {
+            const payload = buildRequestPayload(selectedCategory, formData)
+            const response = await fetch(`/api/master/${selectedCategory}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            })
+
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => null)
+                throw new Error(errorBody?.message ?? 'Unable to save lookup record')
+            }
+
+            await fetchLookups(selectedCategory)
+            setIsDialogOpen(false)
+            setFormData(categoryConfig?.createInitialFormState() ?? createDefaultFormState())
+        } catch (error) {
+            console.error('Failed to save lookup record', error)
+            setFormError(error instanceof Error ? error.message : 'Failed to save lookup record')
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
 
     return (
         <div className="p-6">
-            {/* Header */}
             <div className="mb-6">
                 <h1 className="text-2xl font-bold mb-2">Lookup Management</h1>
-                <p className="text-gray-600">Manage system reference data and master lists</p>
+                <p className="text-gray-600">Manage master data values used across the platform</p>
             </div>
 
-            {/* Category Selector */}
             <div className="bg-white rounded-lg shadow p-4 mb-6">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
                     <div className="flex items-center gap-4">
                         <Database className="h-6 w-6 text-tpa-primary" />
                         <div>
-                            <h2 className="text-lg font-semibold">{currentCategory?.label}</h2>
-                            <p className="text-sm text-gray-600">{currentCategory?.description}</p>
+                            <h2 className="text-lg font-semibold">{categoryConfig?.label}</h2>
+                            <p className="text-sm text-gray-600">{categoryConfig?.description}</p>
                         </div>
                     </div>
-                    <Select value={selectedCategory} onValueChange={(value) => setSelectedCategory(value as LookupCategory)}>
+                    <Select
+                        value={selectedCategory}
+                        onValueChange={(value) => setSelectedCategory(value as LookupCategory)}
+                    >
                         <SelectTrigger className="w-64">
-                            <SelectValue />
+                            <SelectValue placeholder="Select category" />
                         </SelectTrigger>
                         <SelectContent>
-                            {lookupCategories.map(cat => (
-                                <SelectItem key={cat.value} value={cat.value}>
-                                    {cat.label}
+                            {lookupCategoryConfigs.map((config) => (
+                                <SelectItem key={config.value} value={config.value}>
+                                    {config.label}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -190,21 +394,19 @@ export function LookupManagementPage() {
                 </div>
             </div>
 
-            {/* Toolbar */}
             <div className="bg-white rounded-lg shadow p-4 mb-6">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                             <Input
-                                placeholder={`Search ${currentCategory?.label}...`}
+                                placeholder={`Search ${categoryConfig?.label.toLowerCase() ?? 'lookup values'}...`}
                                 value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onChange={(event) => setSearchTerm(event.target.value)}
                                 className="pl-10 w-64"
                             />
                         </div>
                     </div>
-
                     <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm">
                             <Upload className="h-4 w-4 mr-2" />
@@ -214,114 +416,84 @@ export function LookupManagementPage() {
                             <Download className="h-4 w-4 mr-2" />
                             Export
                         </Button>
-                        <Button onClick={handleAdd} className="bg-tpa-primary hover:bg-tpa-accent">
+                        <Button
+                            onClick={handleAdd}
+                            className="bg-tpa-primary hover:bg-tpa-accent"
+                        >
                             <Plus className="h-4 w-4 mr-2" />
-                            Add {currentCategory?.label.slice(0, -1)}
+                            Add {categoryConfig?.singularLabel}
                         </Button>
                     </div>
                 </div>
+                {fetchError && (
+                    <p className="mt-4 text-sm text-red-600">{fetchError}</p>
+                )}
             </div>
 
-            {/* Data Table */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-12">
-                                <input type="checkbox" className="rounded" />
-                            </TableHead>
-                            <TableHead>Code</TableHead>
-                            <TableHead>Name (EN)</TableHead>
-                            <TableHead>Name (AR)</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead className="w-24">Sort Order</TableHead>
-                            <TableHead className="w-24">Status</TableHead>
-                            <TableHead className="w-32">Actions</TableHead>
+                            {columns.map((column) => (
+                                <TableHead key={column.id} className={column.className}>
+                                    {column.header}
+                                </TableHead>
+                            ))}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filteredLookups.map((lookup) => (
-                            <TableRow key={lookup.id} className="hover:bg-gray-50">
-                                <TableCell>
-                                    <input type="checkbox" className="rounded" />
-                                </TableCell>
-                                <TableCell className="font-medium">{lookup.code}</TableCell>
-                                <TableCell>{lookup.nameEn}</TableCell>
-                                <TableCell className="text-right" dir="rtl">{lookup.nameAr}</TableCell>
-                                <TableCell>{lookup.description || '-'}</TableCell>
-                                <TableCell className="text-center">{lookup.sortOrder || '-'}</TableCell>
-                                <TableCell>
-                  <span className={cn(
-                      "px-2 py-1 rounded-full text-xs font-medium",
-                      lookup.active
-                          ? "bg-green-100 text-green-800"
-                          : "bg-gray-100 text-gray-800"
-                  )}>
-                    {lookup.active ? 'Active' : 'Inactive'}
-                  </span>
-                                </TableCell>
-                                <TableCell>
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleEdit(lookup)}
-                                        >
-                                            <Edit className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDelete(lookup)}
-                                        >
-                                            <Trash2 className="h-4 w-4 text-red-500" />
-                                        </Button>
-                                    </div>
+                        {isLoading ? (
+                            <TableRow>
+                                <TableCell colSpan={columnCount} className="py-6 text-center text-sm text-gray-500">
+                                    Loading {categoryConfig?.label.toLowerCase() ?? 'lookup values'}...
                                 </TableCell>
                             </TableRow>
-                        ))}
+                        ) : filteredLookups.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={columnCount} className="py-6 text-center text-sm text-gray-500">
+                                    {fetchError
+                                        ? 'Unable to load lookup values at the moment.'
+                                        : `No ${categoryConfig?.label.toLowerCase()} found`}
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            filteredLookups.map((lookup) => (
+                                <TableRow key={lookup.id} className="hover:bg-gray-50">
+                                    {columns.map((column) => (
+                                        <TableCell key={column.id} className={column.className}>
+                                            {column.cell(lookup)}
+                                        </TableCell>
+                                    ))}
+                                </TableRow>
+                            ))
+                        )}
                     </TableBody>
                 </Table>
-
-                {filteredLookups.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                        No {currentCategory?.label.toLowerCase()} found
-                    </div>
-                )}
             </div>
 
-            {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>
-                            {isEditMode ? 'Edit' : 'Add New'} {currentCategory?.label.slice(0, -1)}
-                        </DialogTitle>
+                        <DialogTitle>Add {categoryConfig?.singularLabel}</DialogTitle>
                         <DialogDescription>
-                            {isEditMode ? 'Update the information below' : 'Enter the details below'}
+                            Provide the details below to create a new {categoryConfig?.singularLabel.toLowerCase()} entry.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="code">Code *</Label>
                                 <Input
                                     id="code"
                                     value={formData.code}
-                                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                                    onChange={(event) =>
+                                        setFormData((previous) => ({
+                                            ...previous,
+                                            code: event.target.value.toUpperCase(),
+                                        }))
+                                    }
                                     placeholder="Enter code"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="sortOrder">Sort Order</Label>
-                                <Input
-                                    id="sortOrder"
-                                    type="number"
-                                    value={formData.sortOrder || ''}
-                                    onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) })}
-                                    placeholder="0"
                                 />
                             </div>
 
@@ -330,52 +502,130 @@ export function LookupManagementPage() {
                                 <Input
                                     id="nameEn"
                                     value={formData.nameEn}
-                                    onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
+                                    onChange={(event) =>
+                                        setFormData((previous) => ({
+                                            ...previous,
+                                            nameEn: event.target.value,
+                                        }))
+                                    }
                                     placeholder="Enter English name"
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="nameAr">Name (Arabic)</Label>
+                                <Label htmlFor="nameAr">Name (Arabic) *</Label>
                                 <Input
                                     id="nameAr"
                                     value={formData.nameAr}
-                                    onChange={(e) => setFormData({ ...formData, nameAr: e.target.value })}
+                                    onChange={(event) =>
+                                        setFormData((previous) => ({
+                                            ...previous,
+                                            nameAr: event.target.value,
+                                        }))
+                                    }
                                     placeholder="أدخل الاسم بالعربية"
                                     dir="rtl"
                                 />
                             </div>
 
-                            <div className="col-span-2 space-y-2">
-                                <Label htmlFor="description">Description</Label>
-                                <textarea
-                                    id="description"
-                                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                    value={formData.description}
-                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    placeholder="Enter description (optional)"
-                                />
-                            </div>
-
-                            <div className="flex items-center space-x-2">
-                                <Switch
-                                    id="active"
-                                    checked={formData.active}
-                                    onCheckedChange={(checked) =>
-                                        setFormData({ ...formData, active: checked })
-                                    }
-                                />
-                                <Label htmlFor="active">Active</Label>
-                            </div>
+                            {selectedCategory === 'age-groups' && (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="minAgeYears">Minimum Age (years) *</Label>
+                                        <Input
+                                            id="minAgeYears"
+                                            type="number"
+                                            min={0}
+                                            value={formData.minAgeYears ?? ''}
+                                            onChange={(event) =>
+                                                setFormData((previous) => ({
+                                                    ...previous,
+                                                    minAgeYears:
+                                                        event.target.value === ''
+                                                            ? null
+                                                            : Number(event.target.value),
+                                                }))
+                                            }
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="maxAgeYears">Maximum Age (years) *</Label>
+                                        <Input
+                                            id="maxAgeYears"
+                                            type="number"
+                                            min={0}
+                                            value={formData.maxAgeYears ?? ''}
+                                            onChange={(event) =>
+                                                setFormData((previous) => ({
+                                                    ...previous,
+                                                    maxAgeYears:
+                                                        event.target.value === ''
+                                                            ? null
+                                                            : Number(event.target.value),
+                                                }))
+                                            }
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="effectiveFrom">Effective From</Label>
+                                        <Input
+                                            id="effectiveFrom"
+                                            type="date"
+                                            value={formData.effectiveFrom ?? ''}
+                                            onChange={(event) =>
+                                                setFormData((previous) => ({
+                                                    ...previous,
+                                                    effectiveFrom: event.target.value || null,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="effectiveTo">Effective To</Label>
+                                        <Input
+                                            id="effectiveTo"
+                                            type="date"
+                                            value={formData.effectiveTo ?? ''}
+                                            onChange={(event) =>
+                                                setFormData((previous) => ({
+                                                    ...previous,
+                                                    effectiveTo: event.target.value || null,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <Switch
+                                            id="isActive"
+                                            checked={formData.isActive ?? true}
+                                            onCheckedChange={(checked) =>
+                                                setFormData((previous) => ({
+                                                    ...previous,
+                                                    isActive: checked,
+                                                }))
+                                            }
+                                        />
+                                        <Label htmlFor="isActive">Active</Label>
+                                    </div>
+                                </>
+                            )}
                         </div>
+
+                        {formError && <p className="text-sm text-red-600">{formError}</p>}
                     </div>
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSave} className="bg-tpa-primary hover:bg-tpa-accent">
-                            {isEditMode ? 'Update' : 'Save'}
+                        <Button
+                            onClick={handleSubmit}
+                            className="bg-tpa-primary hover:bg-tpa-accent"
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? 'Saving...' : 'Save'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -384,6 +634,112 @@ export function LookupManagementPage() {
     )
 }
 
-function cn(...classes: string[]) {
-    return classes.filter(Boolean).join(' ')
+function isAgeGroupRecord(record: LookupRecord): record is AgeGroupRecord {
+    return 'minAgeYears' in record
+}
+
+type RawLookupRecord = Record<string, unknown>
+
+function normalizeLookupRecords(category: LookupCategory, payload: unknown): LookupRecord[] {
+    if (!Array.isArray(payload)) {
+        return []
+    }
+
+    return payload
+        .filter((item): item is RawLookupRecord => typeof item === 'object' && item !== null)
+        .map((item) => normalizeLookupRecord(category, item))
+}
+
+function normalizeLookupRecord(category: LookupCategory, item: RawLookupRecord): LookupRecord {
+    const baseRecord: BaseLookupRecord = {
+        id: toStringOrFallback(item['id'], globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
+        code: toStringOrEmpty(item['code']),
+        nameEn: toStringOrEmpty(item['nameEn'] ?? item['name_en']),
+        nameAr: toStringOrEmpty(item['nameAr'] ?? item['name_ar']),
+    }
+
+    if (category === 'age-groups') {
+        const minAge = parseNullableNumber(item['minAgeYears'] ?? item['from'])
+        const maxAge = parseNullableNumber(item['maxAgeYears'] ?? item['to'])
+        const isActiveRaw = item['isActive']
+        const effectiveFromRaw = item['effectiveFrom']
+        const effectiveToRaw = item['effectiveTo']
+
+        return {
+            ...baseRecord,
+            minAgeYears: minAge,
+            maxAgeYears: maxAge,
+            isActive: typeof isActiveRaw === 'boolean' ? isActiveRaw : true,
+            effectiveFrom: toIsoString(effectiveFromRaw),
+            effectiveTo: toIsoString(effectiveToRaw),
+        }
+    }
+
+    return baseRecord
+}
+
+function parseNullableNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') {
+        return null
+    }
+
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+}
+
+function toStringOrEmpty(value: unknown): string {
+    if (typeof value === 'string') {
+        return value
+    }
+
+    if (typeof value === 'number') {
+        return String(value)
+    }
+
+    return ''
+}
+
+function toStringOrFallback(value: unknown, fallback: string): string {
+    if (typeof value === 'string' || typeof value === 'number') {
+        return String(value)
+    }
+
+    return fallback
+}
+
+function toIsoString(value: unknown): string | null {
+    if (value instanceof Date) {
+        return value.toISOString()
+    }
+
+    if (typeof value === 'string' && value.length > 0) {
+        return value
+    }
+
+    return null
+}
+
+function buildRequestPayload(category: LookupCategory, data: LookupFormState) {
+    if (category === 'age-groups') {
+        return {
+            code: data.code,
+            nameEn: data.nameEn,
+            nameAr: data.nameAr,
+            name_en: data.nameEn,
+            name_ar: data.nameAr,
+            minAgeYears: data.minAgeYears ?? null,
+            maxAgeYears: data.maxAgeYears ?? null,
+            from: data.minAgeYears ?? null,
+            to: data.maxAgeYears ?? null,
+            isActive: data.isActive ?? true,
+            effectiveFrom: data.effectiveFrom ? new Date(data.effectiveFrom).toISOString() : null,
+            effectiveTo: data.effectiveTo ? new Date(data.effectiveTo).toISOString() : null,
+        }
+    }
+
+    return {
+        code: data.code,
+        nameEn: data.nameEn,
+        nameAr: data.nameAr,
+    }
 }
