@@ -1,3 +1,4 @@
+export * from './api'
 export * from './icd'
 export * from './diagnosis-category'
 export * from './procedure'

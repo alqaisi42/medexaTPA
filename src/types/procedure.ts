@@ -1,26 +1,105 @@
-export type ProcedureCategory =
-    | 'surgery'
-    | 'lab'
-    | 'imaging'
-    | 'consultation'
-    | 'therapy'
-    | 'emergency'
+import type { PaginatedResponse } from './api'
 
-export interface Procedure {
-    id: string
+export interface ProcedureCategorySummary {
+    id: number
+    code: string
+    nameEn: string
+    nameAr?: string
+    isActive?: boolean
+    mappingActiveFrom?: string
+    mappingActiveTo?: string
+}
+
+export interface ProcedureContainerSummary {
+    id: number
+    code: string
+    nameEn: string
+    nameAr?: string
+    levelNo: number
+    parentId?: number
+    parentName?: string
+    isActive?: boolean
+    mappingActiveFrom?: string
+    mappingActiveTo?: string
+}
+
+export interface ProcedureSummary {
+    id: number
+    systemCode: string
     code: string
     nameEn: string
     nameAr: string
-    description?: string
-    category: ProcedureCategory
-    specialty: string
-    referencePrice: number
     unitOfMeasure: string
-    linkedIcds: string[]
-    genderRestriction?: 'male' | 'female' | 'both'
-    minAge?: number
-    maxAge?: number
-    status: 'active' | 'inactive'
-    createdAt: Date
-    updatedAt: Date
+    isSurgical: boolean
+    isActive: boolean
+    validFrom: string
+    validTo: string
+    referencePrice: number
+    requiresAuthorization: boolean
+    requiresAnesthesia: boolean
+    minIntervalDays: number
+    maxFrequencyPerYear: number
+    standardDurationMinutes: number
+    categories: ProcedureCategorySummary[]
+    containers: ProcedureContainerSummary[]
+    effectiveFrom?: string
+    effectiveTo?: string
+    createdAt?: string
+    updatedAt?: string
 }
+
+export interface ProcedureDetails extends ProcedureSummary {
+    createdBy?: string
+    updatedBy?: string
+}
+
+export interface ProcedureCategoryRecord {
+    id: number
+    code: string
+    nameEn: string
+    nameAr: string
+    isActive: boolean
+    procedureCount: number
+    effectiveFrom?: string
+    effectiveTo?: string
+    createdAt?: string
+    updatedAt?: string
+}
+
+export interface CreateProcedurePayload {
+    systemCode: string
+    code: string
+    nameEn: string
+    nameAr: string
+    unitOfMeasure: string
+    isSurgical: boolean
+    referencePrice: number
+    requiresAuthorization: boolean
+    requiresAnesthesia: boolean
+    minIntervalDays: number
+    maxFrequencyPerYear: number
+    standardDurationMinutes: number
+    validFrom: string
+    validTo: string
+    isActive: boolean
+    createdBy?: string
+    updatedBy?: string
+}
+
+export interface ProcedureSearchFilters {
+    keyword?: string
+    systemCode?: string
+    isSurgical?: boolean | null
+    requiresAuthorization?: boolean | null
+    requiresAnesthesia?: boolean | null
+    isActive?: boolean | null
+    minPrice?: number | null
+    maxPrice?: number | null
+    validOn?: string | null
+    categoryId?: number | null
+    containerId?: number | null
+}
+
+export type ProcedureListResponse = PaginatedResponse<ProcedureSummary>
+export type ProcedureSearchResponse = PaginatedResponse<ProcedureSummary>
+export type ProcedureCategoryResponse = PaginatedResponse<ProcedureCategoryRecord>
