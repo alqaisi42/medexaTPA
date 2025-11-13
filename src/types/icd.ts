@@ -1,22 +1,79 @@
 export interface ICD {
-    id: string
+    id: number
+    systemCode: string
     code: string
     nameEn: string
     nameAr: string
-    description?: string
-    category: string
-    parentIcd?: string
-    relatedIcds?: string[]
-    status: 'active' | 'inactive'
-    notes?: string
-    createdAt: Date
-    updatedAt: Date
+    chapter: string
+    block: string
+    isBillable: boolean
+    validFrom: string
+    validTo: string
+    severityLevel: string
+    isChronic: boolean
+    requiresAuthorization: boolean
+    standardLosDays: number
+    isActive: boolean
+    complicationRisk?: string
+    createdAt?: string
+    updatedAt?: string
+    createdBy?: string
+    updatedBy?: string
+    effectiveFrom?: string
+    effectiveTo?: string
 }
 
-export interface ICDRelation {
-    id: string
-    sourceIcdId: string
-    targetIcdId: string
-    relationType: 'cause_of' | 'complication_of' | 'synonym_of' | 'related_to'
-    notes?: string
+export interface ApiResponse<T> {
+    success: boolean
+    code: number
+    message: string
+    data?: T
+    errors?: string[]
+    timestamp: string
+}
+
+export interface PaginatedResponse<T> {
+    totalPages: number
+    totalElements: number
+    first: boolean
+    last: boolean
+    size: number
+    content: T[]
+    number: number
+    sort?: {
+        empty: boolean
+        sorted: boolean
+        unsorted: boolean
+    }
+    numberOfElements: number
+    pageable?: {
+        offset: number
+        pageNumber: number
+        pageSize: number
+        paged: boolean
+        unpaged: boolean
+        sort?: {
+            empty: boolean
+            sorted: boolean
+            unsorted: boolean
+        }
+    }
+    empty: boolean
+}
+
+export interface IcdPayload {
+    systemCode: string
+    code: string
+    nameEn: string
+    nameAr: string
+    chapter: string
+    block: string
+    isBillable: boolean
+    validFrom: string
+    validTo: string
+    severityLevel: string
+    isChronic: boolean
+    requiresAuthorization: boolean
+    standardLosDays: number
+    isActive: boolean
 }
