@@ -1,4 +1,5 @@
 export * from './icd'
+export * from './diagnosis-category'
 export * from './procedure'
 export * from './lookup'
 export * from './provider'
