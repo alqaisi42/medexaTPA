@@ -254,6 +254,7 @@ export function LookupManagementPage() {
 
         return records.filter((record) => {
             return fields.some((field) => {
+                // @ts-ignore
                 const value = (record as Record<string, unknown>)[field]
 
                 if (typeof value === 'string') {

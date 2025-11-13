@@ -45,8 +45,8 @@ async function forwardRequest(resource: string, init?: RequestInit) {
     })
 }
 
-export async function GET(_: NextRequest, { params }: { params: { resource: string } }) {
-    const { resource } = params
+export async function GET(_: NextRequest, context: { params: Promise<{ resource: string }> }) {
+    const { resource } = await context.params
 
     if (!allowedResources.has(resource)) {
         return new Response(JSON.stringify({ message: "Resource not found" }), {
@@ -66,8 +66,11 @@ export async function GET(_: NextRequest, { params }: { params: { resource: stri
     }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { resource: string } }) {
-    const { resource } = params
+export async function POST(
+    request: NextRequest,
+    context: { params: Promise<{ resource: string }> }
+) {
+    const { resource } = await context.params
 
     if (!allowedResources.has(resource)) {
         return new Response(JSON.stringify({ message: "Resource not found" }), {
@@ -94,3 +97,4 @@ export async function POST(request: NextRequest, { params }: { params: { resourc
         })
     }
 }
+
