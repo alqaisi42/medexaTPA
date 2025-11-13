@@ -1,5 +1,13 @@
 'use client'
 
+import {
+    Select,
+    SelectTrigger,
+    SelectValue,
+    SelectContent,
+    SelectItem
+} from "@/components/ui/select"
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, ChevronsUpDown, LinkIcon, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 
@@ -128,10 +136,10 @@ export function IcdRelationsManager() {
         return error instanceof Error ? error.message : 'Unexpected error communicating with ICD relations service'
     }, [])
 
-    const selectedRelationType = useMemo(
-        () => relationTypes.find((type) => type.code === selectedRelationTypeCode) ?? null,
-        [relationTypes, selectedRelationTypeCode]
-    )
+    const selectedRelationType = useMemo(() => {
+        if (!Array.isArray(relationTypes)) return undefined
+        return relationTypes.find((type) => type.code === selectedRelationTypeCode)
+    }, [relationTypes, selectedRelationTypeCode])
 
     const filteredRelationTypes = useMemo(() => {
         const query = relationTypeSearch.trim().toLowerCase()
@@ -280,9 +288,10 @@ export function IcdRelationsManager() {
     const loadRelationTypes = useCallback(async () => {
         setRelationTypesLoading(true)
         setRelationTypesError(null)
+
         try {
-            const types = await fetchIcdRelationTypes()
-            setRelationTypes(types)
+            const normalized = await fetchIcdRelationTypes()
+            setRelationTypes(normalized)
         } catch (error) {
             setRelationTypes([])
             setRelationTypesError(handleApiError(error))
@@ -290,6 +299,8 @@ export function IcdRelationsManager() {
             setRelationTypesLoading(false)
         }
     }, [handleApiError])
+
+
 
     const searchSourceIcds = useCallback(
         async (term: string) => {
