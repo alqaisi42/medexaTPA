@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, LinkIcon, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircle, ChevronsUpDown, LinkIcon, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
     createIcdRelation,
@@ -102,6 +101,10 @@ export function IcdRelationsManager() {
     const [relationTypesLoading, setRelationTypesLoading] = useState(false)
     const [relationTypesError, setRelationTypesError] = useState<string | null>(null)
     const [selectedRelationTypeCode, setSelectedRelationTypeCode] = useState('')
+    const [isRelationTypeDropdownOpen, setIsRelationTypeDropdownOpen] = useState(false)
+    const [relationTypeSearch, setRelationTypeSearch] = useState('')
+
+    const relationTypeDropdownRef = useRef<HTMLDivElement | null>(null)
 
     const [note, setNote] = useState('')
     const [effectiveFrom, setEffectiveFrom] = useState('')
@@ -124,6 +127,51 @@ export function IcdRelationsManager() {
     const handleApiError = useCallback((error: unknown): string => {
         return error instanceof Error ? error.message : 'Unexpected error communicating with ICD relations service'
     }, [])
+
+    const selectedRelationType = useMemo(
+        () => relationTypes.find((type) => type.code === selectedRelationTypeCode) ?? null,
+        [relationTypes, selectedRelationTypeCode]
+    )
+
+    const filteredRelationTypes = useMemo(() => {
+        const query = relationTypeSearch.trim().toLowerCase()
+        if (!query) return relationTypes
+
+        return relationTypes.filter((type) => {
+            return (
+                type.code.toLowerCase().includes(query) ||
+                type.nameEn.toLowerCase().includes(query) ||
+                (type.nameAr?.toLowerCase().includes(query) ?? false)
+            )
+        })
+    }, [relationTypeSearch, relationTypes])
+
+    useEffect(() => {
+        if (!isRelationTypeDropdownOpen) {
+            return
+        }
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                relationTypeDropdownRef.current &&
+                !relationTypeDropdownRef.current.contains(event.target as Node)
+            ) {
+                setIsRelationTypeDropdownOpen(false)
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside)
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside)
+        }
+    }, [isRelationTypeDropdownOpen])
+
+    useEffect(() => {
+        if (!isRelationTypeDropdownOpen) {
+            setRelationTypeSearch('')
+        }
+    }, [isRelationTypeDropdownOpen])
 
     const loadRelations = useCallback(
         async (page: number, size: number) => {
@@ -1075,18 +1123,80 @@ export function IcdRelationsManager() {
                         <div className="space-y-2">
                             <Label htmlFor="relationType">Relation type *</Label>
                             {relationTypes.length > 0 ? (
-                                <Select value={selectedRelationTypeCode} onValueChange={setSelectedRelationTypeCode}>
-                                    <SelectTrigger id="relationType">
-                                        <SelectValue placeholder="Choose relation type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {relationTypes.map((type) => (
-                                            <SelectItem key={type.code} value={type.code}>
-                                                {type.code} — {type.nameEn}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <div className="relative" ref={relationTypeDropdownRef}>
+                                    <Button
+                                        type="button"
+                                        id="relationType"
+                                        variant="outline"
+                                        className="w-full justify-between"
+                                        aria-haspopup="listbox"
+                                        aria-expanded={isRelationTypeDropdownOpen}
+                                        onClick={() => setIsRelationTypeDropdownOpen((prev) => !prev)}
+                                        disabled={relationTypesLoading}
+                                    >
+                                        {selectedRelationType ? (
+                                            <span className="truncate">
+                                                {selectedRelationType.code} — {selectedRelationType.nameEn}
+                                            </span>
+                                        ) : (
+                                            <span className="text-gray-500">Choose relation type</span>
+                                        )}
+                                        <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                                    </Button>
+                                    {isRelationTypeDropdownOpen && (
+                                        <div className="absolute z-50 mt-2 w-full rounded-md border border-gray-200 bg-white shadow-lg">
+                                            <div className="border-b border-gray-100 p-2">
+                                                <div className="relative">
+                                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                                    <Input
+                                                        autoFocus
+                                                        value={relationTypeSearch}
+                                                        onChange={(event) => setRelationTypeSearch(event.target.value)}
+                                                        placeholder="Search relation types"
+                                                        className="pl-9"
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === 'Escape') {
+                                                                event.preventDefault()
+                                                                setIsRelationTypeDropdownOpen(false)
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="max-h-60 overflow-y-auto py-1">
+                                                {filteredRelationTypes.length === 0 ? (
+                                                    <p className="px-3 py-2 text-sm text-gray-500">
+                                                        {`No relation types match "${relationTypeSearch}".`}
+                                                    </p>
+                                                ) : (
+                                                    filteredRelationTypes.map((type) => {
+                                                        const isSelected = type.code === selectedRelationTypeCode
+                                                        return (
+                                                            <button
+                                                                key={type.code}
+                                                                type="button"
+                                                                role="option"
+                                                                aria-selected={isSelected}
+                                                                className={`flex w-full items-start gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 focus:bg-gray-100 ${
+                                                                    isSelected
+                                                                        ? 'bg-gray-100 font-semibold text-tpa-primary'
+                                                                        : 'text-gray-700'
+                                                                }`}
+                                                                onClick={() => {
+                                                                    setSelectedRelationTypeCode(type.code)
+                                                                    setIsRelationTypeDropdownOpen(false)
+                                                                }}
+                                                            >
+                                                                <span className="w-24 shrink-0 font-medium">{type.code}</span>
+                                                                <span className="flex-1 text-gray-600">{type.nameEn}</span>
+                                                            </button>
+                                                        )
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
                                 <>
                                     <Input
