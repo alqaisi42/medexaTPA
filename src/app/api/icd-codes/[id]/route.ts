@@ -1,0 +1,74 @@
+import { NextRequest } from "next/server"
+
+const apiBaseUrl = process.env.API_BASE_URL
+
+if (!apiBaseUrl) {
+    throw new Error("API_BASE_URL environment variable is not defined.")
+}
+
+function buildUpstreamUrl(id: string) {
+    return new URL(`/api/v1/icd-codes/${id}`, apiBaseUrl).toString()
+}
+
+async function forwardRequest(id: string, init?: RequestInit) {
+    const response = await fetch(buildUpstreamUrl(id), {
+        ...init,
+        headers: {
+            Accept: "application/json",
+            ...(init?.headers ?? {}),
+        },
+        cache: "no-store",
+    })
+
+    const text = await response.text()
+    const contentType = response.headers.get("content-type") ?? "application/json"
+    const body = contentType.includes("application/json") && text ? text : text || "{}"
+
+    return new Response(body, {
+        status: response.status,
+        headers: {
+            "Content-Type": contentType.includes("application/json") ? "application/json" : "text/plain",
+        },
+    })
+}
+
+export async function PUT(
+    request: NextRequest,
+    context: { params: Promise<{ id: string }> }
+) {
+    const { id } = await context.params
+    const payload = await request.json()
+
+    try {
+        return await forwardRequest(id, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+            headers: {
+                "Content-Type": "application/json",
+            },
+        })
+    } catch (error) {
+        console.error("Failed to proxy ICD update request", error)
+        return new Response(JSON.stringify({ message: "Failed to update ICD code" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+        })
+    }
+}
+
+export async function DELETE(
+    _: NextRequest,
+    context: { params: Promise<{ id: string }> }
+) {
+    const { id } = await context.params
+
+    try {
+        return await forwardRequest(id, { method: "DELETE" })
+    } catch (error) {
+        console.error("Failed to proxy ICD delete request", error)
+        return new Response(JSON.stringify({ message: "Failed to delete ICD code" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+        })
+    }
+}

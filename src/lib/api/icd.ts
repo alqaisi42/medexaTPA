@@ -1,21 +1,29 @@
 import { ApiResponse, ICD, IcdPayload, PaginatedResponse } from '@/types'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const ICD_API_BASE_PATH = API_BASE_URL ? '/api/v1' : '/api'
 
 const headers = {
     'Content-Type': 'application/json',
 }
 
 function buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>) {
-    const url = new URL(path, API_BASE_URL)
+    const searchParams = new URLSearchParams()
+
     if (params) {
         Object.entries(params).forEach(([key, value]) => {
             if (value !== undefined && value !== null && value !== '') {
-                url.searchParams.set(key, String(value))
+                searchParams.set(key, String(value))
             }
         })
     }
-    return url.toString()
+
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    const fullPath = `${ICD_API_BASE_PATH}${normalizedPath}`
+    const base = API_BASE_URL ? `${API_BASE_URL}${fullPath}` : fullPath
+    const query = searchParams.toString()
+
+    return query ? `${base}?${query}` : base
 }
 
 async function handleResponse<T>(response: Response): Promise<T | undefined> {
@@ -37,7 +45,7 @@ export interface FetchIcdsParams {
 }
 
 export async function fetchIcds({ page = 0, size = 10 }: FetchIcdsParams): Promise<PaginatedResponse<ICD>> {
-    const url = buildUrl('/api/v1/icd-codes', { page, size })
+    const url = buildUrl('/icd-codes', { page, size })
     const response = await fetch(url, {
         method: 'GET',
         headers,
@@ -52,7 +60,7 @@ export async function fetchIcds({ page = 0, size = 10 }: FetchIcdsParams): Promi
 }
 
 export async function searchIcds(keyword: string): Promise<ICD[]> {
-    const url = buildUrl('/api/v1/icd-codes/search', { keyword })
+    const url = buildUrl('/icd-codes/search', { keyword })
     const response = await fetch(url, {
         method: 'GET',
         headers,
@@ -67,7 +75,7 @@ export async function searchIcds(keyword: string): Promise<ICD[]> {
 }
 
 export async function createIcd(payload: IcdPayload): Promise<ICD> {
-    const url = buildUrl('/api/v1/icd-codes')
+    const url = buildUrl('/icd-codes')
     const response = await fetch(url, {
         method: 'POST',
         headers,
@@ -82,7 +90,7 @@ export async function createIcd(payload: IcdPayload): Promise<ICD> {
 }
 
 export async function updateIcd(id: number, payload: IcdPayload): Promise<ICD> {
-    const url = buildUrl(`/api/v1/icd-codes/${id}`)
+    const url = buildUrl(`/icd-codes/${id}`)
     const response = await fetch(url, {
         method: 'PUT',
         headers,
@@ -97,7 +105,7 @@ export async function updateIcd(id: number, payload: IcdPayload): Promise<ICD> {
 }
 
 export async function deleteIcd(id: number): Promise<void> {
-    const url = buildUrl(`/api/v1/icd-codes/${id}`)
+    const url = buildUrl(`/icd-codes/${id}`)
     const response = await fetch(url, {
         method: 'DELETE',
         headers,
