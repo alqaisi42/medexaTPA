@@ -4,7 +4,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { LinkIcon, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -56,6 +63,7 @@ export function IcdCategoryMappingManager() {
 
     const [feedback, setFeedback] = useState<FeedbackState | null>(null)
     const [actionLoading, setActionLoading] = useState(false)
+    const [pendingRemoval, setPendingRemoval] = useState<IcdCategoryMap | null>(null)
 
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [categoryOptions, setCategoryOptions] = useState<DiagnosisCategory[]>([])
@@ -136,15 +144,19 @@ export function IcdCategoryMappingManager() {
         setMapPageSize(PAGE_SIZE_OPTIONS[0])
     }
 
-    const handleRemoveMapping = async (mapping: IcdCategoryMap) => {
-        if (!selectedIcd) {
+    const handleRemoveMapping = (mapping: IcdCategoryMap) => {
+        setPendingRemoval(mapping)
+    }
+
+    const confirmRemoveMapping = async () => {
+        if (!pendingRemoval || !selectedIcd) {
             return
         }
 
         setActionLoading(true)
         setFeedback(null)
         try {
-            await removeIcdFromCategory(mapping.id.categoryId, mapping.id.icdId)
+            await removeIcdFromCategory(pendingRemoval.id.categoryId, pendingRemoval.id.icdId)
             setFeedback({ type: 'success', message: 'Mapping removed successfully.' })
             await refreshMappings()
         } catch (err) {
@@ -154,7 +166,15 @@ export function IcdCategoryMappingManager() {
             })
         } finally {
             setActionLoading(false)
+            setPendingRemoval(null)
         }
+    }
+
+    const cancelRemoveMapping = () => {
+        if (actionLoading) {
+            return
+        }
+        setPendingRemoval(null)
     }
 
     const filteredCategoryOptions = useMemo(() => {
@@ -514,6 +534,44 @@ export function IcdCategoryMappingManager() {
                                     <Plus className="mr-2 h-4 w-4" />
                                     Link Category
                                 </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={Boolean(pendingRemoval)} onOpenChange={(open) => !open && cancelRemoveMapping()}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Remove Mapping</DialogTitle>
+                        <DialogDescription>
+                            This action will unlink the diagnosis category from the selected ICD. You can re-create the
+                            mapping later if needed.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 text-sm text-gray-600">
+                        <p>
+                            ICD: <span className="font-medium text-gray-900">{selectedIcd?.code}</span>
+                        </p>
+                        <p>
+                            Category: <span className="font-medium text-gray-900">{pendingRemoval?.category.nameEn}</span>
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={cancelRemoveMapping} disabled={actionLoading}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={() => void confirmRemoveMapping()}
+                            className="bg-red-600 hover:bg-red-700"
+                            disabled={actionLoading}
+                        >
+                            {actionLoading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Removing...
+                                </>
+                            ) : (
+                                'Remove'
                             )}
                         </Button>
                     </DialogFooter>

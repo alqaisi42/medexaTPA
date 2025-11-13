@@ -98,6 +98,10 @@ export function DiagnosisCategoriesManager() {
     const [formData, setFormData] = useState<DiagnosisCategoryPayload>(INITIAL_FORM_STATE)
     const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
     const [formError, setFormError] = useState<string | null>(null)
+    const [pendingAction, setPendingAction] = useState<{
+        type: 'edit' | 'delete'
+        category: DiagnosisCategory
+    } | null>(null)
 
     useEffect(() => {
         const handler = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400)
@@ -211,24 +215,43 @@ export function DiagnosisCategoriesManager() {
     }
 
     const handleEdit = (category: DiagnosisCategory) => {
-        setEditingCategoryId(category.id)
-        setFormError(null)
-        setFormData({
-            code: category.code ?? '',
-            nameEn: category.nameEn ?? '',
-            nameAr: category.nameAr ?? '',
-            isActive: Boolean(category.isActive),
-            effectiveFrom: category.effectiveFrom ?? '',
-            effectiveTo: category.effectiveTo ?? '',
-        })
-        setIsDialogOpen(true)
+        setPendingAction({ type: 'edit', category })
     }
 
-    const handleDelete = async (category: DiagnosisCategory) => {
-        if (!confirm(`Are you sure you want to delete ${category.nameEn}?`)) {
+    const handleDelete = (category: DiagnosisCategory) => {
+        setPendingAction({ type: 'delete', category })
+    }
+
+    const cancelPendingAction = () => {
+        if (actionLoading) {
+            return
+        }
+        setPendingAction(null)
+    }
+
+    const executePendingAction = async () => {
+        if (!pendingAction) {
             return
         }
 
+        if (pendingAction.type === 'edit') {
+            const category = pendingAction.category
+            setPendingAction(null)
+            setEditingCategoryId(category.id)
+            setFormError(null)
+            setFormData({
+                code: category.code ?? '',
+                nameEn: category.nameEn ?? '',
+                nameAr: category.nameAr ?? '',
+                isActive: Boolean(category.isActive),
+                effectiveFrom: category.effectiveFrom ?? '',
+                effectiveTo: category.effectiveTo ?? '',
+            })
+            setIsDialogOpen(true)
+            return
+        }
+
+        const category = pendingAction.category
         setActionLoading(true)
         setFeedback(null)
         try {
@@ -242,6 +265,7 @@ export function DiagnosisCategoriesManager() {
             })
         } finally {
             setActionLoading(false)
+            setPendingAction(null)
         }
     }
 
@@ -296,6 +320,8 @@ export function DiagnosisCategoriesManager() {
     const totalRecordsLabel = isSearching
         ? `${filteredCategories.length} result${filteredCategories.length === 1 ? '' : 's'} found`
         : `${pageMeta.numberOfElements} of ${pageMeta.totalElements} records`
+
+    const pendingCategory = pendingAction?.category
 
     return (
         <div className="space-y-6">
@@ -592,6 +618,57 @@ export function DiagnosisCategoriesManager() {
                                 'Update'
                             ) : (
                                 'Save'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && cancelPendingAction()}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {pendingAction?.type === 'delete'
+                                ? 'Delete Diagnosis Category'
+                                : 'Edit Diagnosis Category'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {pendingAction?.type === 'delete'
+                                ? 'Deleting a category will remove it from reports and mappings. This action cannot be undone.'
+                                : 'You are about to modify this diagnosis category. Confirm to proceed.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 text-sm text-gray-600">
+                        <p>
+                            Category: <span className="font-medium text-gray-900">{pendingCategory?.nameEn}</span>
+                        </p>
+                        {pendingCategory?.code && (
+                            <p>
+                                Code: <span className="font-medium text-gray-900">{pendingCategory.code}</span>
+                            </p>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={cancelPendingAction} disabled={actionLoading}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={() => void executePendingAction()}
+                            className={cn(
+                                pendingAction?.type === 'delete'
+                                    ? 'bg-red-600 hover:bg-red-700'
+                                    : 'bg-tpa-primary hover:bg-tpa-accent'
+                            )}
+                            disabled={actionLoading}
+                        >
+                            {actionLoading && pendingAction?.type === 'delete' ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...
+                                </>
+                            ) : pendingAction?.type === 'delete' ? (
+                                'Delete'
+                            ) : (
+                                'Continue'
                             )}
                         </Button>
                     </DialogFooter>
