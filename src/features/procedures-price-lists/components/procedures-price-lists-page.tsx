@@ -288,7 +288,7 @@ export function ProceduresPriceListsPage() {
             <div className="bg-tpa-header text-white px-4 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <span className="font-bold">MEDEXA</span>
-                    <span className="text-sm">Serena Al Lama</span>
+                    <span className="text-sm">System User</span>
                 </div>
                 <h2 className="text-lg font-semibold">Procedures Price Lists</h2>
                 <div className="text-sm">

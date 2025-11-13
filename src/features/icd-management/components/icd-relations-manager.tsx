@@ -301,7 +301,6 @@ export function IcdRelationsManager() {
     }, [handleApiError])
 
 
-
     const searchSourceIcds = useCallback(
         async (term: string) => {
             const keyword = term.trim()

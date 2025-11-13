@@ -6,7 +6,8 @@ interface RouteContext {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-    const { id } = context.params
+    const params = await context.params
+    const id = params.id
 
     if (!id) {
         return new Response(JSON.stringify({ message: 'Procedure identifier is required' }), {

@@ -156,7 +156,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                     </Button>
 
                     <div className="text-lg font-bold">MEDEXA</div>
-                    <div className="text-sm opacity-80">Serena Al Lama</div>
+                    <div className="text-sm opacity-80">System User</div>
                 </div>
 
                 <div className="flex-1 text-center">
