@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import {
     Boxes,
     Filter,
@@ -16,14 +16,14 @@ import {
     Trash2,
     Unlink,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Switch } from '@/components/ui/switch'
+import {Button} from '@/components/ui/button'
+import {Input} from '@/components/ui/input'
+import {Label} from '@/components/ui/label'
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
+import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table'
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs'
+import {Switch} from '@/components/ui/switch'
 import {
     CreateProcedureCategoryPayload,
     CreateProcedureContainerPayload,
@@ -54,14 +54,14 @@ import {
     updateProcedureCategory,
     updateProcedureContainer,
 } from '@/lib/api/procedures'
-import { cn, formatCurrency, formatDate } from '@/lib/utils'
-import { useAppStore } from '@/store/app-store'
+import {cn, formatCurrency, formatDate} from '@/lib/utils'
+import {useAppStore} from '@/store/app-store'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50]
 const BOOLEAN_SELECT_OPTIONS = [
-    { label: 'All', value: 'all' },
-    { label: 'Yes', value: 'true' },
-    { label: 'No', value: 'false' },
+    {label: 'All', value: 'all'},
+    {label: 'Yes', value: 'true'},
+    {label: 'No', value: 'false'},
 ]
 
 const CONTAINER_USAGE_PAGE_SIZE = 10
@@ -199,7 +199,7 @@ export function ProceduresManagementPage() {
 
     const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false)
     const [linkingProcedure, setLinkingProcedure] = useState<ProcedureDetails | null>(null)
-    const [linkSelection, setLinkSelection] = useState<LinkSelectionState>({ categoryIds: [], containerIds: [] })
+    const [linkSelection, setLinkSelection] = useState<LinkSelectionState>({categoryIds: [], containerIds: []})
     const [isLinkSaving, setIsLinkSaving] = useState(false)
     const [linkingFeedback, setLinkingFeedback] = useState<FeedbackState | null>(null)
     const [linkCategoryQuery, setLinkCategoryQuery] = useState('')
@@ -226,7 +226,7 @@ export function ProceduresManagementPage() {
     const loadCategories = useCallback(async () => {
         setCategoriesLoading(true)
         try {
-            const data = await fetchProcedureCategories({ page: 0, size: 200 })
+            const data = await fetchProcedureCategories({page: 0, size: 200})
             const records = data.content ?? []
             setCategories(records)
             setEditingCategoryId((prev) => {
@@ -248,7 +248,7 @@ export function ProceduresManagementPage() {
     const loadContainers = useCallback(async () => {
         setContainersLoading(true)
         try {
-            const data = await fetchProcedureContainers({ page: 0, size: 200 })
+            const data = await fetchProcedureContainers({page: 0, size: 200})
             const records = data.content ?? []
             setContainers(records)
             setEditingContainerId((prev) => {
@@ -337,7 +337,7 @@ export function ProceduresManagementPage() {
                     return prev
                 }
                 setPage(0)
-                return { ...prev, keyword: trimmed }
+                return {...prev, keyword: trimmed}
             })
         }, 400)
 
@@ -352,7 +352,7 @@ export function ProceduresManagementPage() {
 
             try {
                 const usingSearch = hasActiveFilters(activeFilters)
-                const data = await searchProcedures({ filters: activeFilters, page: targetPage, size: targetSize })
+                const data = await searchProcedures({filters: activeFilters, page: targetPage, size: targetSize})
 
                 setProcedures(data.content ?? [])
                 setPageMeta({
@@ -366,7 +366,7 @@ export function ProceduresManagementPage() {
                 clearSelectedItems()
             } catch (err) {
                 setProcedures([])
-                setPageMeta({ totalPages: 0, totalElements: 0, numberOfElements: 0, first: true, last: true })
+                setPageMeta({totalPages: 0, totalElements: 0, numberOfElements: 0, first: true, last: true})
                 setError(err instanceof Error ? err.message : 'Failed to load procedures')
             } finally {
                 setIsLoading(false)
@@ -484,7 +484,7 @@ export function ProceduresManagementPage() {
                     }
                     return prev
                 })
-                setDetailsFeedback({ type: 'success', message: 'Procedure updated successfully.' })
+                setDetailsFeedback({type: 'success', message: 'Procedure updated successfully.'})
                 await loadProcedures(page, pageSize, filters)
             } else if (page !== 0) {
                 setPage(0)
@@ -530,37 +530,37 @@ export function ProceduresManagementPage() {
 
     const handleBooleanFilterChange = (field: keyof ProcedureSearchFilters) => (value: string) => {
         const parsedValue = parseBooleanSelect(value)
-        setFilters((prev) => ({ ...prev, [field]: parsedValue }))
+        setFilters((prev) => ({...prev, [field]: parsedValue}))
         setPage(0)
     }
 
     const handleCategoryChange = (value: string) => {
-        setFilters((prev) => ({ ...prev, categoryId: value === 'all' ? null : Number(value) }))
+        setFilters((prev) => ({...prev, categoryId: value === 'all' ? null : Number(value)}))
         setPage(0)
     }
 
     const handleValidOnChange = (value: string) => {
-        setFilters((prev) => ({ ...prev, validOn: value }))
+        setFilters((prev) => ({...prev, validOn: value}))
         setPage(0)
     }
 
     const handleMinPriceChange = (value: string) => {
-        setFilters((prev) => ({ ...prev, minPrice: value ? Number(value) : null }))
+        setFilters((prev) => ({...prev, minPrice: value ? Number(value) : null}))
         setPage(0)
     }
 
     const handleMaxPriceChange = (value: string) => {
-        setFilters((prev) => ({ ...prev, maxPrice: value ? Number(value) : null }))
+        setFilters((prev) => ({...prev, maxPrice: value ? Number(value) : null}))
         setPage(0)
     }
 
     const handleSystemCodeChange = (value: string) => {
-        setFilters((prev) => ({ ...prev, systemCode: value }))
+        setFilters((prev) => ({...prev, systemCode: value}))
         setPage(0)
     }
 
     const handleContainerChange = (value: string) => {
-        setFilters((prev) => ({ ...prev, containerId: value === 'all' ? null : Number(value) }))
+        setFilters((prev) => ({...prev, containerId: value === 'all' ? null : Number(value)}))
         setPage(0)
     }
 
@@ -617,12 +617,12 @@ export function ProceduresManagementPage() {
             } else {
                 await createProcedureCategory(payload)
             }
-            setCategoryFeedback({ type: 'success', message: successMessage })
+            setCategoryFeedback({type: 'success', message: successMessage})
             handleResetCategoryForm()
             await loadCategories()
         } catch (err) {
             setCategoryFormError(err instanceof Error ? err.message : failureMessage)
-            setCategoryFeedback({ type: 'error', message: failureMessage })
+            setCategoryFeedback({type: 'error', message: failureMessage})
         } finally {
             setIsSavingCategory(false)
         }
@@ -656,14 +656,14 @@ export function ProceduresManagementPage() {
         try {
             await deleteProcedureCategory(id)
             const successMessage = 'Category deleted successfully.'
-            setCategoryFeedback({ type: 'success', message: successMessage })
+            setCategoryFeedback({type: 'success', message: successMessage})
             if (editingCategoryId === id) {
                 handleResetCategoryForm()
             }
             await loadCategories()
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unable to delete category at this time.'
-            setCategoryFeedback({ type: 'error', message })
+            setCategoryFeedback({type: 'error', message})
             setCategoryFormError(message)
         } finally {
             setDeletingCategoryId(null)
@@ -706,17 +706,22 @@ export function ProceduresManagementPage() {
 
         setIsSavingContainer(true)
         try {
-            let updatedRecord: ProcedureContainerRecord | null = null
-            if (isEditing && editingContainerId !== null) {
-                updatedRecord = await updateProcedureContainer(editingContainerId, payload)
-            } else {
+            const updatedRecord = isEditing && editingContainerId !== null
+                ? await updateProcedureContainer(editingContainerId, payload)
+                : null
+
+            if (!isEditing) {
                 await createProcedureContainer(payload)
             }
+
             setContainerFeedback({ type: 'success', message: successMessage })
             handleResetContainerForm()
             await loadContainers()
-            if (updatedRecord) {
-                setContainerUsageContainer((prev) => (prev && prev.id === updatedRecord.id ? updatedRecord : prev))
+
+            if (updatedRecord !== null) {
+                setContainerUsageContainer(prev =>
+                    prev && prev.id === updatedRecord.id ? updatedRecord : prev
+                )
             }
         } catch (err) {
             setContainerFormError(err instanceof Error ? err.message : failureMessage)
@@ -724,6 +729,7 @@ export function ProceduresManagementPage() {
         } finally {
             setIsSavingContainer(false)
         }
+
     }
 
     const handleEditContainerRecord = (record: ProcedureContainerRecord) => {
@@ -757,7 +763,7 @@ export function ProceduresManagementPage() {
         try {
             await deleteProcedureContainer(id)
             const successMessage = 'Container deleted successfully.'
-            setContainerFeedback({ type: 'success', message: successMessage })
+            setContainerFeedback({type: 'success', message: successMessage})
             if (editingContainerId === id) {
                 handleResetContainerForm()
             }
@@ -780,7 +786,7 @@ export function ProceduresManagementPage() {
             await loadContainers()
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unable to delete container at this time.'
-            setContainerFeedback({ type: 'error', message })
+            setContainerFeedback({type: 'error', message})
             setContainerFormError(message)
         } finally {
             setDeletingContainerId(null)
@@ -899,7 +905,7 @@ export function ProceduresManagementPage() {
         setIsLinkDialogOpen(open)
         if (!open) {
             setLinkingProcedure(null)
-            setLinkSelection({ categoryIds: [], containerIds: [] })
+            setLinkSelection({categoryIds: [], containerIds: []})
             setLinkingFeedback(null)
             setLinkCategoryQuery('')
             setLinkContainerQuery('')
@@ -949,7 +955,7 @@ export function ProceduresManagementPage() {
                 ...prev,
                 categoryIds: prev.categoryIds.filter((id) => id !== categoryId),
             }))
-            setDetailsFeedback({ type: 'success', message: successMessage })
+            setDetailsFeedback({type: 'success', message: successMessage})
             await loadProcedures(page, pageSize, filters)
         } catch (err) {
             setDetailsFeedback({
@@ -1003,7 +1009,7 @@ export function ProceduresManagementPage() {
                 ...prev,
                 containerIds: prev.containerIds.filter((id) => id !== containerId),
             }))
-            setDetailsFeedback({ type: 'success', message: successMessage })
+            setDetailsFeedback({type: 'success', message: successMessage})
             await loadProcedures(page, pageSize, filters)
             if (containerUsageContainer && containerUsageContainer.id === containerId) {
                 void loadContainerUsage(containerId, containerUsagePage)
@@ -1105,16 +1111,16 @@ export function ProceduresManagementPage() {
             const updatedDetails: ProcedureDetails = result
                 ? result
                 : {
-                      ...linkingProcedure,
-                      categories: resolvedCategories,
-                      containers: resolvedContainers,
-                  }
+                    ...linkingProcedure,
+                    categories: resolvedCategories,
+                    containers: resolvedContainers,
+                }
 
             const successMessage = 'Procedure associations updated successfully.'
             setProcedureDetails((prev) => (prev && prev.id === updatedDetails.id ? updatedDetails : prev))
             setLinkingProcedure(updatedDetails)
-            setLinkingFeedback({ type: 'success', message: successMessage })
-            setDetailsFeedback({ type: 'success', message: successMessage })
+            setLinkingFeedback({type: 'success', message: successMessage})
+            setDetailsFeedback({type: 'success', message: successMessage})
             await loadProcedures(page, pageSize, filters)
         } catch (err) {
             setLinkingFeedback({
@@ -1161,8 +1167,8 @@ export function ProceduresManagementPage() {
         try {
             await deleteProcedure(procedureDetails.id)
             const successMessage = 'Procedure deleted successfully.'
-            setFeedback({ type: 'success', message: successMessage })
-            setDetailsFeedback({ type: 'success', message: successMessage })
+            setFeedback({type: 'success', message: successMessage})
+            setDetailsFeedback({type: 'success', message: successMessage})
             setIsDetailsOpen(false)
             setProcedureDetails(null)
             setDetailsId(null)
@@ -1292,8 +1298,9 @@ export function ProceduresManagementPage() {
             )}
 
             {error && (
-                <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    <Info className="h-4 w-4" />
+                <div
+                    className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <Info className="h-4 w-4"/>
                     {error}
                 </div>
             )}
@@ -1316,7 +1323,7 @@ export function ProceduresManagementPage() {
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                                 <div className="relative w-full sm:w-72">
-                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"/>
                                     <Input
                                         placeholder="Search by code or name..."
                                         value={searchTerm}
@@ -1326,9 +1333,10 @@ export function ProceduresManagementPage() {
                                     />
                                 </div>
 
-                                <Select value={booleanToSelectValue(filters.isActive)} onValueChange={handleBooleanFilterChange('isActive')}>
+                                <Select value={booleanToSelectValue(filters.isActive)}
+                                        onValueChange={handleBooleanFilterChange('isActive')}>
                                     <SelectTrigger className="w-full sm:w-32">
-                                        <SelectValue placeholder="Status" />
+                                        <SelectValue placeholder="Status"/>
                                     </SelectTrigger>
                                     <SelectContent>
                                         {BOOLEAN_SELECT_OPTIONS.map((option) => (
@@ -1341,7 +1349,7 @@ export function ProceduresManagementPage() {
 
                                 <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
                                     <SelectTrigger className="w-full sm:w-24">
-                                        <SelectValue placeholder="Page size" />
+                                        <SelectValue placeholder="Page size"/>
                                     </SelectTrigger>
                                     <SelectContent>
                                         {PAGE_SIZE_OPTIONS.map((option) => (
@@ -1360,7 +1368,7 @@ export function ProceduresManagementPage() {
                                     onClick={() => setActiveTab('categories')}
                                     className="flex items-center gap-2"
                                 >
-                                    <Library className="h-4 w-4" />
+                                    <Library className="h-4 w-4"/>
                                     Manage Categories
                                 </Button>
                                 <Button
@@ -1369,26 +1377,29 @@ export function ProceduresManagementPage() {
                                     onClick={() => setActiveTab('containers')}
                                     className="flex items-center gap-2"
                                 >
-                                    <Boxes className="h-4 w-4" />
+                                    <Boxes className="h-4 w-4"/>
                                     Manage Containers
                                 </Button>
-                                <Button type="button" variant="outline" onClick={handleFilterToggle} className="flex items-center gap-2">
-                                    <Filter className="h-4 w-4" />
+                                <Button type="button" variant="outline" onClick={handleFilterToggle}
+                                        className="flex items-center gap-2">
+                                    <Filter className="h-4 w-4"/>
                                     {showFilters ? 'Hide Filters' : 'Show Filters'}
                                 </Button>
-                                <Button type="button" variant="outline" onClick={handleRefresh} className="flex items-center gap-2">
-                                    <RefreshCcw className="h-4 w-4" />
+                                <Button type="button" variant="outline" onClick={handleRefresh}
+                                        className="flex items-center gap-2">
+                                    <RefreshCcw className="h-4 w-4"/>
                                     Refresh
                                 </Button>
                                 <Button onClick={handleAdd} className="bg-tpa-primary hover:bg-tpa-accent text-white">
-                                    <Plus className="h-4 w-4 mr-2" />
+                                    <Plus className="h-4 w-4 mr-2"/>
                                     Add Procedure
                                 </Button>
                             </div>
                         </div>
 
                         {showFilters && (
-                            <div className="grid grid-cols-1 gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-2 lg:grid-cols-3">
+                            <div
+                                className="grid grid-cols-1 gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-2 lg:grid-cols-3">
                                 <div className="space-y-2">
                                     <Label htmlFor="systemCode">System Code</Label>
                                     <Input
@@ -1406,7 +1417,7 @@ export function ProceduresManagementPage() {
                                         onValueChange={handleCategoryChange}
                                     >
                                         <SelectTrigger id="categoryFilter">
-                                            <SelectValue placeholder="All categories" />
+                                            <SelectValue placeholder="All categories"/>
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">All</SelectItem>
@@ -1426,7 +1437,7 @@ export function ProceduresManagementPage() {
                                         onValueChange={handleContainerChange}
                                     >
                                         <SelectTrigger id="containerFilter">
-                                            <SelectValue placeholder="All containers" />
+                                            <SelectValue placeholder="All containers"/>
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">All</SelectItem>
@@ -1478,7 +1489,7 @@ export function ProceduresManagementPage() {
                                         onValueChange={handleBooleanFilterChange('isSurgical')}
                                     >
                                         <SelectTrigger id="systemCodeFilter">
-                                            <SelectValue placeholder="Any" />
+                                            <SelectValue placeholder="Any"/>
                                         </SelectTrigger>
                                         <SelectContent>
                                             {BOOLEAN_SELECT_OPTIONS.map((option) => (
@@ -1497,7 +1508,7 @@ export function ProceduresManagementPage() {
                                         onValueChange={handleBooleanFilterChange('requiresAuthorization')}
                                     >
                                         <SelectTrigger id="requiresAuthorization">
-                                            <SelectValue placeholder="Any" />
+                                            <SelectValue placeholder="Any"/>
                                         </SelectTrigger>
                                         <SelectContent>
                                             {BOOLEAN_SELECT_OPTIONS.map((option) => (
@@ -1516,7 +1527,7 @@ export function ProceduresManagementPage() {
                                         onValueChange={handleBooleanFilterChange('requiresAnesthesia')}
                                     >
                                         <SelectTrigger id="requiresAnesthesia">
-                                            <SelectValue placeholder="Any" />
+                                            <SelectValue placeholder="Any"/>
                                         </SelectTrigger>
                                         <SelectContent>
                                             {BOOLEAN_SELECT_OPTIONS.map((option) => (
@@ -1546,7 +1557,7 @@ export function ProceduresManagementPage() {
                                         onClick={() => void loadProcedures(page, pageSize, filters)}
                                         className="flex items-center gap-2"
                                     >
-                                        <RefreshCcw className="h-4 w-4" />
+                                        <RefreshCcw className="h-4 w-4"/>
                                         Reload
                                     </Button>
                                 </div>
@@ -1579,15 +1590,18 @@ export function ProceduresManagementPage() {
                                     <TableBody>
                                         {isLoading ? (
                                             <TableRow>
-                                                <TableCell colSpan={8} className="h-40 text-center text-sm text-gray-500">
+                                                <TableCell colSpan={8}
+                                                           className="h-40 text-center text-sm text-gray-500">
                                                     <div className="flex items-center justify-center gap-2">
-                                                        <Loader2 className="h-4 w-4 animate-spin" /> Loading procedures...
+                                                        <Loader2 className="h-4 w-4 animate-spin"/> Loading
+                                                        procedures...
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
                                         ) : procedures.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={8} className="h-40 text-center text-sm text-gray-500">
+                                                <TableCell colSpan={8}
+                                                           className="h-40 text-center text-sm text-gray-500">
                                                     No procedures found. Try adjusting your search or filters.
                                                 </TableCell>
                                             </TableRow>
@@ -1603,11 +1617,13 @@ export function ProceduresManagementPage() {
                                                             aria-label={`Select procedure ${procedure.code}`}
                                                         />
                                                     </TableCell>
-                                                    <TableCell className="font-medium text-gray-900">{procedure.code}</TableCell>
+                                                    <TableCell
+                                                        className="font-medium text-gray-900">{procedure.code}</TableCell>
                                                     <TableCell>{procedure.nameEn}</TableCell>
                                                     <TableCell dir="rtl">{procedure.nameAr}</TableCell>
                                                     <TableCell>{procedure.unitOfMeasure}</TableCell>
-                                                    <TableCell className="text-right">{formatCurrency(procedure.referencePrice)}</TableCell>
+                                                    <TableCell
+                                                        className="text-right">{formatCurrency(procedure.referencePrice)}</TableCell>
                                                     <TableCell>
                                                         <span
                                                             className={cn(
@@ -1629,7 +1645,7 @@ export function ProceduresManagementPage() {
                                                                 onClick={() => handleOpenLinkFromRow(procedure)}
                                                                 aria-label={`Manage links for ${procedure.code}`}
                                                             >
-                                                                <Link2 className="h-4 w-4" />
+                                                                <Link2 className="h-4 w-4"/>
                                                             </Button>
                                                             <Button
                                                                 type="button"
@@ -1638,7 +1654,7 @@ export function ProceduresManagementPage() {
                                                                 onClick={() => handleViewDetails(procedure)}
                                                                 aria-label={`View details for ${procedure.code}`}
                                                             >
-                                                                <Eye className="h-4 w-4" />
+                                                                <Eye className="h-4 w-4"/>
                                                             </Button>
                                                         </div>
                                                     </TableCell>
@@ -1649,7 +1665,8 @@ export function ProceduresManagementPage() {
                                 </Table>
                             </div>
 
-                            <div className="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+                            <div
+                                className="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="flex items-center gap-2">
                                     <Button
                                         type="button"
@@ -1704,7 +1721,7 @@ export function ProceduresManagementPage() {
                                         disabled={categoriesLoading}
                                         className="flex items-center gap-2"
                                     >
-                                        <RefreshCcw className="h-4 w-4" />
+                                        <RefreshCcw className="h-4 w-4"/>
                                         Refresh
                                     </Button>
                                 </div>
@@ -1712,7 +1729,7 @@ export function ProceduresManagementPage() {
                                 <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
                                     {categoriesLoading ? (
                                         <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading categories...
                                         </div>
                                     ) : categories.length === 0 ? (
                                         <div className="p-4 text-sm text-gray-500">No categories available.</div>
@@ -1722,8 +1739,10 @@ export function ProceduresManagementPage() {
                                                 <li key={category.id} className="p-3 text-sm">
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
-                                                            <div className="font-medium text-gray-900">{category.nameEn}</div>
-                                                            <div className="text-xs text-gray-500">Code: {category.code}</div>
+                                                            <div
+                                                                className="font-medium text-gray-900">{category.nameEn}</div>
+                                                            <div
+                                                                className="text-xs text-gray-500">Code: {category.code}</div>
                                                             <div className="text-xs text-gray-500">
                                                                 Procedures linked: {category.procedureCount}
                                                             </div>
@@ -1736,7 +1755,7 @@ export function ProceduresManagementPage() {
                                                                 onClick={() => handleEditCategoryRecord(category)}
                                                                 aria-label={`Edit category ${category.code}`}
                                                             >
-                                                                <PencilLine className="h-4 w-4" />
+                                                                <PencilLine className="h-4 w-4"/>
                                                             </Button>
                                                             <Button
                                                                 type="button"
@@ -1747,9 +1766,9 @@ export function ProceduresManagementPage() {
                                                                 aria-label={`Delete category ${category.code}`}
                                                             >
                                                                 {deletingCategoryId === category.id ? (
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    <Loader2 className="h-4 w-4 animate-spin"/>
                                                                 ) : (
-                                                                    <Trash2 className="h-4 w-4" />
+                                                                    <Trash2 className="h-4 w-4"/>
                                                                 )}
                                                             </Button>
                                                         </div>
@@ -1780,7 +1799,7 @@ export function ProceduresManagementPage() {
                                         id="categoryCode"
                                         value={categoryForm.code}
                                         onChange={(event) =>
-                                            setCategoryForm((prev) => ({ ...prev, code: event.target.value }))
+                                            setCategoryForm((prev) => ({...prev, code: event.target.value}))
                                         }
                                         placeholder="Enter category code"
                                     />
@@ -1792,7 +1811,7 @@ export function ProceduresManagementPage() {
                                         id="categoryNameEn"
                                         value={categoryForm.nameEn}
                                         onChange={(event) =>
-                                            setCategoryForm((prev) => ({ ...prev, nameEn: event.target.value }))
+                                            setCategoryForm((prev) => ({...prev, nameEn: event.target.value}))
                                         }
                                         placeholder="Enter English name"
                                     />
@@ -1804,25 +1823,27 @@ export function ProceduresManagementPage() {
                                         id="categoryNameAr"
                                         value={categoryForm.nameAr}
                                         onChange={(event) =>
-                                            setCategoryForm((prev) => ({ ...prev, nameAr: event.target.value }))
+                                            setCategoryForm((prev) => ({...prev, nameAr: event.target.value}))
                                         }
                                         placeholder="أدخل الاسم بالعربية"
                                         dir="rtl"
                                     />
                                 </div>
 
-                                <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
+                                <div
+                                    className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
                                     <span className="text-sm font-medium">Active</span>
                                     <Switch
                                         checked={categoryForm.isActive}
                                         onCheckedChange={(checked) =>
-                                            setCategoryForm((prev) => ({ ...prev, isActive: checked }))
+                                            setCategoryForm((prev) => ({...prev, isActive: checked}))
                                         }
                                     />
                                 </div>
 
                                 {categoryFormError && (
-                                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                    <div
+                                        className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                                         {categoryFormError}
                                     </div>
                                 )}
@@ -1841,7 +1862,8 @@ export function ProceduresManagementPage() {
                                 )}
 
                                 {editingCategoryId && (
-                                    <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                                    <div
+                                        className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
                                         Editing existing category. Saving will update the linked record.
                                     </div>
                                 )}
@@ -1863,7 +1885,7 @@ export function ProceduresManagementPage() {
                                     >
                                         {isSavingCategory ? (
                                             <span className="flex items-center gap-2">
-                                                <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                                <Loader2 className="h-4 w-4 animate-spin"/> Saving...
                                             </span>
                                         ) : (
                                             editingCategoryId ? 'Save Changes' : 'Add Category'
@@ -1898,7 +1920,7 @@ export function ProceduresManagementPage() {
                                         disabled={containersLoading}
                                         className="flex items-center gap-2"
                                     >
-                                        <RefreshCcw className="h-4 w-4" />
+                                        <RefreshCcw className="h-4 w-4"/>
                                         Refresh
                                     </Button>
                                 </div>
@@ -1906,7 +1928,7 @@ export function ProceduresManagementPage() {
                                 <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
                                     {containersLoading ? (
                                         <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading containers...
                                         </div>
                                     ) : containers.length === 0 ? (
                                         <div className="p-4 text-sm text-gray-500">No containers available.</div>
@@ -1916,7 +1938,8 @@ export function ProceduresManagementPage() {
                                                 <li key={container.id} className="p-3 text-sm">
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
-                                                            <div className="font-medium text-gray-900">{container.nameEn}</div>
+                                                            <div
+                                                                className="font-medium text-gray-900">{container.nameEn}</div>
                                                             <div className="text-xs text-gray-500">
                                                                 Code: {container.code} · Level {container.levelNo}
                                                             </div>
@@ -1926,7 +1949,8 @@ export function ProceduresManagementPage() {
                                                                 </div>
                                                             )}
                                                             <div className="text-xs text-gray-500">
-                                                                Procedures linked: {container.procedureCount} · Children:{' '}
+                                                                Procedures linked: {container.procedureCount} ·
+                                                                Children:{' '}
                                                                 {container.childCount}
                                                             </div>
                                                         </div>
@@ -1938,7 +1962,7 @@ export function ProceduresManagementPage() {
                                                                 onClick={() => handleViewContainerUsage(container)}
                                                                 aria-label={`View usage for ${container.code}`}
                                                             >
-                                                                <Info className="h-4 w-4" />
+                                                                <Info className="h-4 w-4"/>
                                                             </Button>
                                                             <Button
                                                                 type="button"
@@ -1947,7 +1971,7 @@ export function ProceduresManagementPage() {
                                                                 onClick={() => handleEditContainerRecord(container)}
                                                                 aria-label={`Edit container ${container.code}`}
                                                             >
-                                                                <PencilLine className="h-4 w-4" />
+                                                                <PencilLine className="h-4 w-4"/>
                                                             </Button>
                                                             <Button
                                                                 type="button"
@@ -1958,9 +1982,9 @@ export function ProceduresManagementPage() {
                                                                 aria-label={`Delete container ${container.code}`}
                                                             >
                                                                 {deletingContainerId === container.id ? (
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    <Loader2 className="h-4 w-4 animate-spin"/>
                                                                 ) : (
-                                                                    <Trash2 className="h-4 w-4" />
+                                                                    <Trash2 className="h-4 w-4"/>
                                                                 )}
                                                             </Button>
                                                         </div>
@@ -1991,7 +2015,7 @@ export function ProceduresManagementPage() {
                                         id="containerCode"
                                         value={containerForm.code}
                                         onChange={(event) =>
-                                            setContainerForm((prev) => ({ ...prev, code: event.target.value }))
+                                            setContainerForm((prev) => ({...prev, code: event.target.value}))
                                         }
                                         placeholder="Enter container code"
                                     />
@@ -2003,7 +2027,7 @@ export function ProceduresManagementPage() {
                                         id="containerNameEn"
                                         value={containerForm.nameEn}
                                         onChange={(event) =>
-                                            setContainerForm((prev) => ({ ...prev, nameEn: event.target.value }))
+                                            setContainerForm((prev) => ({...prev, nameEn: event.target.value}))
                                         }
                                         placeholder="Enter English name"
                                     />
@@ -2015,7 +2039,7 @@ export function ProceduresManagementPage() {
                                         id="containerNameAr"
                                         value={containerForm.nameAr}
                                         onChange={(event) =>
-                                            setContainerForm((prev) => ({ ...prev, nameAr: event.target.value }))
+                                            setContainerForm((prev) => ({...prev, nameAr: event.target.value}))
                                         }
                                         placeholder="أدخل الاسم بالعربية"
                                         dir="rtl"
@@ -2038,7 +2062,7 @@ export function ProceduresManagementPage() {
                                         }
                                     >
                                         <SelectTrigger id="containerParent">
-                                            <SelectValue placeholder="No parent" />
+                                            <SelectValue placeholder="No parent"/>
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">No parent</SelectItem>
@@ -2058,7 +2082,7 @@ export function ProceduresManagementPage() {
                                             id="containerCreatedBy"
                                             value={containerForm.createdBy ?? ''}
                                             onChange={(event) =>
-                                                setContainerForm((prev) => ({ ...prev, createdBy: event.target.value }))
+                                                setContainerForm((prev) => ({...prev, createdBy: event.target.value}))
                                             }
                                             placeholder="Optional creator"
                                         />
@@ -2069,25 +2093,27 @@ export function ProceduresManagementPage() {
                                             id="containerUpdatedBy"
                                             value={containerForm.updatedBy ?? ''}
                                             onChange={(event) =>
-                                                setContainerForm((prev) => ({ ...prev, updatedBy: event.target.value }))
+                                                setContainerForm((prev) => ({...prev, updatedBy: event.target.value}))
                                             }
                                             placeholder="Optional editor"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
+                                <div
+                                    className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
                                     <span className="text-sm font-medium">Active</span>
                                     <Switch
                                         checked={containerForm.isActive}
                                         onCheckedChange={(checked) =>
-                                            setContainerForm((prev) => ({ ...prev, isActive: checked }))
+                                            setContainerForm((prev) => ({...prev, isActive: checked}))
                                         }
                                     />
                                 </div>
 
                                 {containerFormError && (
-                                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                    <div
+                                        className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                                         {containerFormError}
                                     </div>
                                 )}
@@ -2106,7 +2132,8 @@ export function ProceduresManagementPage() {
                                 )}
 
                                 {editingContainerId && (
-                                    <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                                    <div
+                                        className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
                                         Editing existing container. Saving will update the linked record.
                                     </div>
                                 )}
@@ -2128,7 +2155,7 @@ export function ProceduresManagementPage() {
                                     >
                                         {isSavingContainer ? (
                                             <span className="flex items-center gap-2">
-                                                <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                                <Loader2 className="h-4 w-4 animate-spin"/> Saving...
                                             </span>
                                         ) : (
                                             editingContainerId ? 'Save Changes' : 'Add Container'
@@ -2162,7 +2189,7 @@ export function ProceduresManagementPage() {
                                         id="systemCode"
                                         value={formData.systemCode}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, systemCode: event.target.value }))
+                                            setFormData((prev) => ({...prev, systemCode: event.target.value}))
                                         }
                                         placeholder="Enter system code"
                                     />
@@ -2173,7 +2200,10 @@ export function ProceduresManagementPage() {
                                     <Input
                                         id="code"
                                         value={formData.code}
-                                        onChange={(event) => setFormData((prev) => ({ ...prev, code: event.target.value }))}
+                                        onChange={(event) => setFormData((prev) => ({
+                                            ...prev,
+                                            code: event.target.value
+                                        }))}
                                         placeholder="Enter procedure code"
                                     />
                                 </div>
@@ -2183,7 +2213,10 @@ export function ProceduresManagementPage() {
                                     <Input
                                         id="nameEn"
                                         value={formData.nameEn}
-                                        onChange={(event) => setFormData((prev) => ({ ...prev, nameEn: event.target.value }))}
+                                        onChange={(event) => setFormData((prev) => ({
+                                            ...prev,
+                                            nameEn: event.target.value
+                                        }))}
                                         placeholder="Enter English name"
                                     />
                                 </div>
@@ -2193,7 +2226,10 @@ export function ProceduresManagementPage() {
                                     <Input
                                         id="nameAr"
                                         value={formData.nameAr}
-                                        onChange={(event) => setFormData((prev) => ({ ...prev, nameAr: event.target.value }))}
+                                        onChange={(event) => setFormData((prev) => ({
+                                            ...prev,
+                                            nameAr: event.target.value
+                                        }))}
                                         placeholder="أدخل الاسم بالعربية"
                                         dir="rtl"
                                     />
@@ -2205,7 +2241,7 @@ export function ProceduresManagementPage() {
                                         id="unitOfMeasure"
                                         value={formData.unitOfMeasure}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, unitOfMeasure: event.target.value }))
+                                            setFormData((prev) => ({...prev, unitOfMeasure: event.target.value}))
                                         }
                                         placeholder="e.g., procedure, visit"
                                     />
@@ -2216,7 +2252,7 @@ export function ProceduresManagementPage() {
                                         id="isActive"
                                         checked={formData.isActive}
                                         onCheckedChange={(checked) =>
-                                            setFormData((prev) => ({ ...prev, isActive: checked }))
+                                            setFormData((prev) => ({...prev, isActive: checked}))
                                         }
                                     />
                                     <Label htmlFor="isActive">Active</Label>
@@ -2227,7 +2263,7 @@ export function ProceduresManagementPage() {
                                         id="isSurgical"
                                         checked={formData.isSurgical}
                                         onCheckedChange={(checked) =>
-                                            setFormData((prev) => ({ ...prev, isSurgical: checked }))
+                                            setFormData((prev) => ({...prev, isSurgical: checked}))
                                         }
                                     />
                                     <Label htmlFor="isSurgical">Surgical procedure</Label>
@@ -2238,7 +2274,7 @@ export function ProceduresManagementPage() {
                                         id="requiresAuthorization"
                                         checked={formData.requiresAuthorization}
                                         onCheckedChange={(checked) =>
-                                            setFormData((prev) => ({ ...prev, requiresAuthorization: checked }))
+                                            setFormData((prev) => ({...prev, requiresAuthorization: checked}))
                                         }
                                     />
                                     <Label htmlFor="requiresAuthorization">Requires authorization</Label>
@@ -2249,7 +2285,7 @@ export function ProceduresManagementPage() {
                                         id="requiresAnesthesia"
                                         checked={formData.requiresAnesthesia}
                                         onCheckedChange={(checked) =>
-                                            setFormData((prev) => ({ ...prev, requiresAnesthesia: checked }))
+                                            setFormData((prev) => ({...prev, requiresAnesthesia: checked}))
                                         }
                                     />
                                     <Label htmlFor="requiresAnesthesia">Requires anesthesia</Label>
@@ -2268,7 +2304,10 @@ export function ProceduresManagementPage() {
                                         step="0.01"
                                         value={formData.referencePrice}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, referencePrice: Number(event.target.value) }))
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                referencePrice: Number(event.target.value)
+                                            }))
                                         }
                                         placeholder="0.00"
                                     />
@@ -2282,7 +2321,10 @@ export function ProceduresManagementPage() {
                                         min="0"
                                         value={formData.minIntervalDays}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, minIntervalDays: Number(event.target.value) }))
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                minIntervalDays: Number(event.target.value)
+                                            }))
                                         }
                                     />
                                 </div>
@@ -2295,7 +2337,10 @@ export function ProceduresManagementPage() {
                                         min="0"
                                         value={formData.maxFrequencyPerYear}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, maxFrequencyPerYear: Number(event.target.value) }))
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                maxFrequencyPerYear: Number(event.target.value)
+                                            }))
                                         }
                                     />
                                 </div>
@@ -2308,7 +2353,10 @@ export function ProceduresManagementPage() {
                                         min="0"
                                         value={formData.standardDurationMinutes}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, standardDurationMinutes: Number(event.target.value) }))
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                standardDurationMinutes: Number(event.target.value)
+                                            }))
                                         }
                                     />
                                 </div>
@@ -2320,7 +2368,7 @@ export function ProceduresManagementPage() {
                                         type="date"
                                         value={formData.validFrom}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, validFrom: event.target.value }))
+                                            setFormData((prev) => ({...prev, validFrom: event.target.value}))
                                         }
                                     />
                                 </div>
@@ -2332,7 +2380,7 @@ export function ProceduresManagementPage() {
                                         type="date"
                                         value={formData.validTo}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, validTo: event.target.value }))
+                                            setFormData((prev) => ({...prev, validTo: event.target.value}))
                                         }
                                     />
                                 </div>
@@ -2347,7 +2395,7 @@ export function ProceduresManagementPage() {
                                         id="createdBy"
                                         value={formData.createdBy ?? ''}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, createdBy: event.target.value }))
+                                            setFormData((prev) => ({...prev, createdBy: event.target.value}))
                                         }
                                         placeholder="Optional creator identifier"
                                     />
@@ -2359,14 +2407,15 @@ export function ProceduresManagementPage() {
                                         id="updatedBy"
                                         value={formData.updatedBy ?? ''}
                                         onChange={(event) =>
-                                            setFormData((prev) => ({ ...prev, updatedBy: event.target.value }))
+                                            setFormData((prev) => ({...prev, updatedBy: event.target.value}))
                                         }
                                         placeholder="Optional last editor"
                                     />
                                 </div>
                             </div>
                             <p className="text-sm text-gray-500">
-                                Ownership fields help track who created and last updated the procedure in downstream systems.
+                                Ownership fields help track who created and last updated the procedure in downstream
+                                systems.
                             </p>
                         </TabsContent>
                     </Tabs>
@@ -2389,7 +2438,7 @@ export function ProceduresManagementPage() {
                         >
                             {isSaving ? (
                                 <span className="flex items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                    <Loader2 className="h-4 w-4 animate-spin"/> Saving...
                                 </span>
                             ) : (
                                 'Save Procedure'
@@ -2403,7 +2452,8 @@ export function ProceduresManagementPage() {
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>Procedure Details</DialogTitle>
-                        <DialogDescription>Review the latest information received from the procedures service.</DialogDescription>
+                        <DialogDescription>Review the latest information received from the procedures
+                            service.</DialogDescription>
                     </DialogHeader>
 
                     {detailsFeedback && (
@@ -2421,26 +2471,28 @@ export function ProceduresManagementPage() {
 
                     {detailsLoading ? (
                         <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading details...
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading details...
                         </div>
                     ) : detailsError ? (
-                        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                            <Info className="h-4 w-4" />
+                        <div
+                            className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            <Info className="h-4 w-4"/>
                             {detailsError}
                         </div>
                     ) : procedureDetails ? (
                         <div className="space-y-6">
                             <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <DetailItem label="System Code" value={procedureDetails.systemCode} />
-                                <DetailItem label="Procedure Code" value={procedureDetails.code} />
-                                <DetailItem label="Name (EN)" value={procedureDetails.nameEn} />
-                                <DetailItem label="Name (AR)" value={procedureDetails.nameAr} rtl />
-                                <DetailItem label="Unit" value={procedureDetails.unitOfMeasure} />
-                                <DetailItem label="Reference Price" value={formatCurrency(procedureDetails.referencePrice)} />
-                                <DetailItem label="Valid From" value={formatDate(procedureDetails.validFrom)} />
-                                <DetailItem label="Valid To" value={formatDate(procedureDetails.validTo)} />
-                                <DetailItem label="Created By" value={procedureDetails.createdBy ?? '-'} />
-                                <DetailItem label="Updated By" value={procedureDetails.updatedBy ?? '-'} />
+                                <DetailItem label="System Code" value={procedureDetails.systemCode}/>
+                                <DetailItem label="Procedure Code" value={procedureDetails.code}/>
+                                <DetailItem label="Name (EN)" value={procedureDetails.nameEn}/>
+                                <DetailItem label="Name (AR)" value={procedureDetails.nameAr} rtl/>
+                                <DetailItem label="Unit" value={procedureDetails.unitOfMeasure}/>
+                                <DetailItem label="Reference Price"
+                                            value={formatCurrency(procedureDetails.referencePrice)}/>
+                                <DetailItem label="Valid From" value={formatDate(procedureDetails.validFrom)}/>
+                                <DetailItem label="Valid To" value={formatDate(procedureDetails.validTo)}/>
+                                <DetailItem label="Created By" value={procedureDetails.createdBy ?? '-'}/>
+                                <DetailItem label="Updated By" value={procedureDetails.updatedBy ?? '-'}/>
                             </section>
 
                             <section className="space-y-2">
@@ -2465,9 +2517,9 @@ export function ProceduresManagementPage() {
                                                     aria-label={`Unlink category ${category.code}`}
                                                 >
                                                     {unlinkingCategoryId === category.id ? (
-                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin"/>
                                                     ) : (
-                                                        <Unlink className="h-3.5 w-3.5" />
+                                                        <Unlink className="h-3.5 w-3.5"/>
                                                     )}
                                                 </Button>
                                             </div>
@@ -2489,10 +2541,12 @@ export function ProceduresManagementPage() {
                                             >
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div>
-                                                        <div className="font-medium text-gray-800">{container.nameEn}</div>
+                                                        <div
+                                                            className="font-medium text-gray-800">{container.nameEn}</div>
                                                         <div className="text-gray-500">Level {container.levelNo}</div>
                                                         {container.parentName && (
-                                                            <div className="text-gray-500">Parent: {container.parentName}</div>
+                                                            <div
+                                                                className="text-gray-500">Parent: {container.parentName}</div>
                                                         )}
                                                     </div>
                                                     <Button
@@ -2505,9 +2559,9 @@ export function ProceduresManagementPage() {
                                                         aria-label={`Unlink container ${container.code}`}
                                                     >
                                                         {unlinkingContainerId === container.id ? (
-                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                            <Loader2 className="h-4 w-4 animate-spin"/>
                                                         ) : (
-                                                            <Unlink className="h-4 w-4" />
+                                                            <Unlink className="h-4 w-4"/>
                                                         )}
                                                     </Button>
                                                 </div>
@@ -2533,7 +2587,7 @@ export function ProceduresManagementPage() {
                                 disabled={!procedureDetails || detailsLoading}
                                 className="flex items-center gap-2"
                             >
-                                <Link2 className="h-4 w-4" />
+                                <Link2 className="h-4 w-4"/>
                                 Manage Links
                             </Button>
                             <Button
@@ -2543,7 +2597,7 @@ export function ProceduresManagementPage() {
                                 disabled={!procedureDetails || detailsLoading}
                                 className="flex items-center gap-2"
                             >
-                                <PencilLine className="h-4 w-4" />
+                                <PencilLine className="h-4 w-4"/>
                                 Edit Procedure
                             </Button>
                         </div>
@@ -2554,7 +2608,7 @@ export function ProceduresManagementPage() {
                             disabled={!procedureDetails || isDeleting}
                             className="flex items-center gap-2"
                         >
-                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
                             {isDeleting ? 'Deleting...' : 'Delete'}
                         </Button>
                     </DialogFooter>
@@ -2573,13 +2627,14 @@ export function ProceduresManagementPage() {
                     </DialogHeader>
 
                     {containerUsageError ? (
-                        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                            <Info className="h-4 w-4" />
+                        <div
+                            className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            <Info className="h-4 w-4"/>
                             {containerUsageError}
                         </div>
                     ) : containerUsageLoading ? (
                         <div className="flex h-32 items-center justify-center text-sm text-gray-500">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading container usage...
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading container usage...
                         </div>
                     ) : containerUsageProcedures.length === 0 ? (
                         <p className="text-sm text-gray-500">
@@ -2596,7 +2651,8 @@ export function ProceduresManagementPage() {
                                         key={`${procedure.id}-${procedure.code}`}
                                         className="rounded-lg border border-gray-100 p-4 text-sm"
                                     >
-                                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                        <div
+                                            className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                             <div>
                                                 <div className="text-base font-semibold text-gray-900">
                                                     {procedure.nameEn}
@@ -2737,7 +2793,7 @@ interface DetailItemProps {
     rtl?: boolean
 }
 
-function DetailItem({ label, value, rtl = false }: DetailItemProps) {
+function DetailItem({label, value, rtl = false}: DetailItemProps) {
     return (
         <div>
             <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
