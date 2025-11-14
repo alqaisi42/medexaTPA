@@ -146,6 +146,7 @@ export function ProceduresManagementPage() {
     const [filters, setFilters] = useState<ProcedureSearchFilters>(INITIAL_FILTERS)
     const [showFilters, setShowFilters] = useState(false)
 
+    const [activeTab, setActiveTab] = useState<'procedures' | 'categories' | 'containers'>('procedures')
     const [categories, setCategories] = useState<ProcedureCategoryRecord[]>([])
     const [containers, setContainers] = useState<ProcedureContainerRecord[]>([])
 
@@ -164,13 +165,11 @@ export function ProceduresManagementPage() {
     const [formData, setFormData] = useState<CreateProcedurePayload>(INITIAL_FORM_STATE)
     const [editingProcedureId, setEditingProcedureId] = useState<number | null>(null)
 
-    const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
     const [categoryForm, setCategoryForm] = useState<CreateProcedureCategoryPayload>(INITIAL_CATEGORY_FORM)
     const [categoryFormError, setCategoryFormError] = useState<string | null>(null)
     const [categoryFeedback, setCategoryFeedback] = useState<FeedbackState | null>(null)
     const [isSavingCategory, setIsSavingCategory] = useState(false)
 
-    const [isContainerManagerOpen, setIsContainerManagerOpen] = useState(false)
     const [containerForm, setContainerForm] = useState<CreateProcedureContainerPayload>(INITIAL_CONTAINER_FORM)
     const [containerFormError, setContainerFormError] = useState<string | null>(null)
     const [containerFeedback, setContainerFeedback] = useState<FeedbackState | null>(null)
@@ -232,6 +231,30 @@ export function ProceduresManagementPage() {
         void loadCategories()
         void loadContainers()
     }, [loadCategories, loadContainers])
+
+    useEffect(() => {
+        if (activeTab === 'categories') {
+            setCategoryFeedback(null)
+            setCategoryFormError(null)
+            void loadCategories()
+        } else {
+            setCategoryForm(INITIAL_CATEGORY_FORM)
+            setCategoryFormError(null)
+            setCategoryFeedback(null)
+        }
+    }, [activeTab, loadCategories])
+
+    useEffect(() => {
+        if (activeTab === 'containers') {
+            setContainerFeedback(null)
+            setContainerFormError(null)
+            void loadContainers()
+        } else {
+            setContainerForm(INITIAL_CONTAINER_FORM)
+            setContainerFormError(null)
+            setContainerFeedback(null)
+        }
+    }, [activeTab, loadContainers])
 
     useEffect(() => {
         const handler = setTimeout(() => {
@@ -468,6 +491,12 @@ export function ProceduresManagementPage() {
         setPage(0)
     }
 
+    const handleTabValueChange = (value: string) => {
+        if (value === 'procedures' || value === 'categories' || value === 'containers') {
+            setActiveTab(value)
+        }
+    }
+
     const handleViewDetails = (procedure: ProcedureSummary) => {
         setOpenLinkAfterDetails(false)
         setDetailsId(procedure.id)
@@ -478,32 +507,6 @@ export function ProceduresManagementPage() {
         setDetailsId(procedure.id)
         setOpenLinkAfterDetails(true)
         setIsDetailsOpen(true)
-    }
-
-    const handleCategoryManagerChange = (open: boolean) => {
-        setIsCategoryManagerOpen(open)
-        if (open) {
-            setCategoryFeedback(null)
-            setCategoryFormError(null)
-            void loadCategories()
-        } else {
-            setCategoryForm(INITIAL_CATEGORY_FORM)
-            setCategoryFormError(null)
-            setCategoryFeedback(null)
-        }
-    }
-
-    const handleContainerManagerChange = (open: boolean) => {
-        setIsContainerManagerOpen(open)
-        if (open) {
-            setContainerFeedback(null)
-            setContainerFormError(null)
-            void loadContainers()
-        } else {
-            setContainerForm(INITIAL_CONTAINER_FORM)
-            setContainerFormError(null)
-            setContainerFeedback(null)
-        }
     }
 
     const handleSaveCategory = async () => {
@@ -874,891 +877,762 @@ export function ProceduresManagementPage() {
                 </div>
             )}
 
-            <div className="bg-white rounded-lg shadow p-4 space-y-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                        <div className="relative w-full sm:w-72">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                            <Input
-                                placeholder="Search by code or name..."
-                                value={searchTerm}
-                                onChange={(event) => setSearchTerm(event.target.value)}
-                                className="pl-10"
-                                aria-label="Search procedures"
-                            />
-                        </div>
+            <Tabs value={activeTab} onValueChange={handleTabValueChange} className="space-y-4">
+                <TabsList className="flex flex-wrap gap-2">
+                    <TabsTrigger value="procedures" className="flex items-center gap-2">
+                        Procedures
+                    </TabsTrigger>
+                    <TabsTrigger value="categories" className="flex items-center gap-2">
+                        Categories
+                    </TabsTrigger>
+                    <TabsTrigger value="containers" className="flex items-center gap-2">
+                        Containers
+                    </TabsTrigger>
+                </TabsList>
 
-                        <Select value={booleanToSelectValue(filters.isActive)} onValueChange={handleBooleanFilterChange('isActive')}>
-                            <SelectTrigger className="w-full sm:w-32">
-                                <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {BOOLEAN_SELECT_OPTIONS.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-
-                        <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
-                            <SelectTrigger className="w-full sm:w-24">
-                                <SelectValue placeholder="Page size" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {PAGE_SIZE_OPTIONS.map((option) => (
-                                    <SelectItem key={option} value={String(option)}>
-                                        {option} / page
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => handleCategoryManagerChange(true)}
-                            className="flex items-center gap-2"
-                        >
-                            <Library className="h-4 w-4" />
-                            Manage Categories
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => handleContainerManagerChange(true)}
-                            className="flex items-center gap-2"
-                        >
-                            <Boxes className="h-4 w-4" />
-                            Manage Containers
-                        </Button>
-                        <Button type="button" variant="outline" onClick={handleFilterToggle} className="flex items-center gap-2">
-                            <Filter className="h-4 w-4" />
-                            {showFilters ? 'Hide Filters' : 'Show Filters'}
-                        </Button>
-                        <Button type="button" variant="outline" onClick={handleRefresh} className="flex items-center gap-2">
-                            <RefreshCcw className="h-4 w-4" />
-                            Refresh
-                        </Button>
-                        <Button onClick={handleAdd} className="bg-tpa-primary hover:bg-tpa-accent text-white">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Procedure
-                        </Button>
-                    </div>
-                </div>
-
-                {showFilters && (
-                    <div className="grid grid-cols-1 gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-2 lg:grid-cols-3">
-                        <div className="space-y-2">
-                            <Label htmlFor="systemCode">System Code</Label>
-                            <Input
-                                id="systemCode"
-                                value={filters.systemCode ?? ''}
-                                onChange={(event) => handleSystemCodeChange(event.target.value)}
-                                placeholder="Filter by system code"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="categoryFilter">Category</Label>
-                            <Select
-                                value={filters.categoryId !== null && filters.categoryId !== undefined ? String(filters.categoryId) : 'all'}
-                                onValueChange={handleCategoryChange}
-                            >
-                                <SelectTrigger id="categoryFilter">
-                                    <SelectValue placeholder="All categories" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All categories</SelectItem>
-                                    {categories.map((category) => (
-                                        <SelectItem key={category.id} value={String(category.id)}>
-                                            {category.nameEn}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="validOn">Valid On</Label>
-                            <Input
-                                id="validOn"
-                                type="date"
-                                value={filters.validOn ?? ''}
-                                onChange={(event) => handleValidOnChange(event.target.value)}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="isSurgical">Surgical</Label>
-                            <Select
-                                value={booleanToSelectValue(filters.isSurgical)}
-                                onValueChange={handleBooleanFilterChange('isSurgical')}
-                            >
-                                <SelectTrigger id="isSurgical">
-                                    <SelectValue placeholder="All" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {BOOLEAN_SELECT_OPTIONS.map((option) => (
-                                        <SelectItem key={option.value} value={option.value}>
-                                            {option.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="requiresAuthorization">Requires Authorization</Label>
-                            <Select
-                                value={booleanToSelectValue(filters.requiresAuthorization)}
-                                onValueChange={handleBooleanFilterChange('requiresAuthorization')}
-                            >
-                                <SelectTrigger id="requiresAuthorization">
-                                    <SelectValue placeholder="All" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {BOOLEAN_SELECT_OPTIONS.map((option) => (
-                                        <SelectItem key={option.value} value={option.value}>
-                                            {option.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="requiresAnesthesia">Requires Anesthesia</Label>
-                            <Select
-                                value={booleanToSelectValue(filters.requiresAnesthesia)}
-                                onValueChange={handleBooleanFilterChange('requiresAnesthesia')}
-                            >
-                                <SelectTrigger id="requiresAnesthesia">
-                                    <SelectValue placeholder="All" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {BOOLEAN_SELECT_OPTIONS.map((option) => (
-                                        <SelectItem key={option.value} value={option.value}>
-                                            {option.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="minPrice">Min Reference Price</Label>
-                            <Input
-                                id="minPrice"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={filters.minPrice ?? ''}
-                                onChange={(event) => handleMinPriceChange(event.target.value)}
-                                placeholder="0.00"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="maxPrice">Max Reference Price</Label>
-                            <Input
-                                id="maxPrice"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={filters.maxPrice ?? ''}
-                                onChange={(event) => handleMaxPriceChange(event.target.value)}
-                                placeholder="0.00"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="containerFilter">Container</Label>
-                            <Select
-                                value={
-                                    filters.containerId !== null && filters.containerId !== undefined
-                                        ? String(filters.containerId)
-                                        : 'all'
-                                }
-                                onValueChange={handleContainerChange}
-                            >
-                                <SelectTrigger id="containerFilter">
-                                    <SelectValue placeholder="All containers" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All containers</SelectItem>
-                                    {containers.map((container) => (
-                                        <SelectItem key={container.id} value={String(container.id)}>
-                                            {container.nameEn} ({container.code})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 text-sm text-gray-600">
-                    <span>{totalRecordsLabel}</span>
-                    <span>{selectedItems.length} selected</span>
-                </div>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-12">
-                                <input
-                                    type="checkbox"
-                                    className="rounded"
-                                    checked={allDisplayedSelected}
-                                    onChange={handleToggleAll}
-                                    aria-label="Select all procedures"
-                                />
-                            </TableHead>
-                            <TableHead>Code</TableHead>
-                            <TableHead>Name (EN)</TableHead>
-                            <TableHead>Name (AR)</TableHead>
-                            <TableHead>Unit</TableHead>
-                            <TableHead>Reference Price</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Flags</TableHead>
-                            <TableHead className="w-24 text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {isLoading ? (
-                            <TableRow>
-                                <TableCell colSpan={9} className="h-32 text-center">
-                                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Loading procedures...
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ) : procedures.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={9} className="h-32 text-center text-sm text-gray-500">
-                                    No procedures found. Try adjusting your search or filters.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            procedures.map((procedure) => (
-                                <TableRow key={procedure.id} className="hover:bg-gray-50">
-                                    <TableCell>
-                                        <input
-                                            type="checkbox"
-                                            className="rounded"
-                                            checked={selectedItems.includes(String(procedure.id))}
-                                            onChange={() => toggleSelectedItem(String(procedure.id))}
-                                            aria-label={`Select procedure ${procedure.code}`}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="font-medium">{procedure.code}</TableCell>
-                                    <TableCell>{procedure.nameEn}</TableCell>
-                                    <TableCell className="text-right" dir="rtl">
-                                        {procedure.nameAr}
-                                    </TableCell>
-                                    <TableCell>{procedure.unitOfMeasure}</TableCell>
-                                    <TableCell>{formatCurrency(procedure.referencePrice)}</TableCell>
-                                    <TableCell>
-                                        <span
-                                            className={cn(
-                                                'inline-flex items-center rounded-full px-2 py-1 text-xs font-medium',
-                                                procedure.isActive
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-gray-100 text-gray-700',
-                                            )}
-                                        >
-                                            {procedure.isActive ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex flex-wrap gap-2 text-xs">
-                                            {procedure.isSurgical && (
-                                                <span className="rounded bg-blue-100 px-2 py-1 text-blue-700">Surgical</span>
-                                            )}
-                                            {procedure.requiresAuthorization && (
-                                                <span className="rounded bg-amber-100 px-2 py-1 text-amber-700">Auth</span>
-                                            )}
-                                            {procedure.requiresAnesthesia && (
-                                                <span className="rounded bg-purple-100 px-2 py-1 text-purple-700">Anesthesia</span>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleOpenLinkFromRow(procedure)}
-                                                aria-label={`Manage links for ${procedure.code}`}
-                                            >
-                                                <Link2 className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleViewDetails(procedure)}
-                                                aria-label={`View details for ${procedure.code}`}
-                                            >
-                                                <Eye className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-                <div className="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={pageMeta.first}
-                            onClick={() => handlePageChange('prev')}
-                        >
-                            Previous
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={pageMeta.last}
-                            onClick={() => handlePageChange('next')}
-                        >
-                            Next
-                        </Button>
-                        <span>
-                            Page {page + 1} of {Math.max(pageMeta.totalPages, 1)}
-                        </span>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                        Showing records {page * pageSize + 1} – {page * pageSize + procedures.length}
-                    </div>
-                </div>
-            </div>
-
-            <Dialog open={isCategoryManagerOpen} onOpenChange={handleCategoryManagerChange}>
-                <DialogContent className="max-w-4xl">
-                    <DialogHeader>
-                        <DialogTitle>Procedure Categories</DialogTitle>
-                        <DialogDescription>
-                            Review existing categories and add new definitions for procedures mapping.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm text-gray-500">
-                                    {categories.length} category{categories.length === 1 ? '' : 'ies'}
-                                </span>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => void loadCategories()}
-                                    disabled={categoriesLoading}
-                                    className="flex items-center gap-2"
-                                >
-                                    <RefreshCcw className="h-4 w-4" />
-                                    Refresh
-                                </Button>
-                            </div>
-
-                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
-                                {categoriesLoading ? (
-                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
-                                    </div>
-                                ) : categories.length === 0 ? (
-                                    <div className="p-4 text-sm text-gray-500">No categories available.</div>
-                                ) : (
-                                    <ul className="divide-y divide-gray-100">
-                                        {categories.map((category) => (
-                                            <li key={category.id} className="p-3 text-sm">
-                                                <div className="font-medium text-gray-900">{category.nameEn}</div>
-                                                <div className="text-xs text-gray-500">Code: {category.code}</div>
-                                                <div className="mt-1 text-xs">
-                                                    <span
-                                                        className={cn(
-                                                            'inline-flex rounded-full px-2 py-0.5',
-                                                            category.isActive
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : 'bg-gray-100 text-gray-600',
-                                                        )}
-                                                    >
-                                                        {category.isActive ? 'Active' : 'Inactive'}
-                                                    </span>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="categoryCode">Code *</Label>
-                                <Input
-                                    id="categoryCode"
-                                    value={categoryForm.code}
-                                    onChange={(event) =>
-                                        setCategoryForm((prev) => ({ ...prev, code: event.target.value }))
-                                    }
-                                    placeholder="Enter category code"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="categoryNameEn">Name (English) *</Label>
-                                <Input
-                                    id="categoryNameEn"
-                                    value={categoryForm.nameEn}
-                                    onChange={(event) =>
-                                        setCategoryForm((prev) => ({ ...prev, nameEn: event.target.value }))
-                                    }
-                                    placeholder="Enter English name"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="categoryNameAr">Name (Arabic) *</Label>
-                                <Input
-                                    id="categoryNameAr"
-                                    value={categoryForm.nameAr}
-                                    onChange={(event) =>
-                                        setCategoryForm((prev) => ({ ...prev, nameAr: event.target.value }))
-                                    }
-                                    placeholder="أدخل الاسم بالعربية"
-                                    dir="rtl"
-                                />
-                            </div>
-
-                            <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
-                                <span className="text-sm font-medium">Active</span>
-                                <Switch
-                                    checked={categoryForm.isActive}
-                                    onCheckedChange={(checked) =>
-                                        setCategoryForm((prev) => ({ ...prev, isActive: checked }))
-                                    }
-                                />
-                            </div>
-
-                            {categoryFormError && (
-                                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                    {categoryFormError}
+                <TabsContent value="procedures" className="space-y-4">
+                    <div className="bg-white rounded-lg shadow p-4 space-y-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                                <div className="relative w-full sm:w-72">
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                    <Input
+                                        placeholder="Search by code or name..."
+                                        value={searchTerm}
+                                        onChange={(event) => setSearchTerm(event.target.value)}
+                                        className="pl-10"
+                                        aria-label="Search procedures"
+                                    />
                                 </div>
-                            )}
 
-                            {categoryFeedback && (
-                                <div
-                                    className={cn(
-                                        'rounded-md border px-3 py-2 text-sm',
-                                        categoryFeedback.type === 'success'
-                                            ? 'border-green-200 bg-green-50 text-green-800'
-                                            : 'border-red-200 bg-red-50 text-red-700',
-                                    )}
-                                >
-                                    {categoryFeedback.message}
-                                </div>
-                            )}
-
-                            <div className="flex justify-end gap-2">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => setCategoryForm(INITIAL_CATEGORY_FORM)}
-                                    disabled={isSavingCategory}
-                                >
-                                    Reset
-                                </Button>
-                                <Button
-                                    type="button"
-                                    onClick={handleSaveCategory}
-                                    disabled={isSavingCategory}
-                                    className="bg-tpa-primary text-white hover:bg-tpa-accent"
-                                >
-                                    {isSavingCategory ? (
-                                        <span className="flex items-center gap-2">
-                                            <Loader2 className="h-4 w-4 animate-spin" /> Saving...
-                                        </span>
-                                    ) : (
-                                        'Add Category'
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={isContainerManagerOpen} onOpenChange={handleContainerManagerChange}>
-                <DialogContent className="max-w-5xl">
-                    <DialogHeader>
-                        <DialogTitle>Procedure Containers</DialogTitle>
-                        <DialogDescription>
-                            Maintain the hierarchical containers used to group procedures.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm text-gray-500">
-                                    {containers.length} container{containers.length === 1 ? '' : 's'}
-                                </span>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => void loadContainers()}
-                                    disabled={containersLoading}
-                                    className="flex items-center gap-2"
-                                >
-                                    <RefreshCcw className="h-4 w-4" />
-                                    Refresh
-                                </Button>
-                            </div>
-
-                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
-                                {containersLoading ? (
-                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
-                                    </div>
-                                ) : containers.length === 0 ? (
-                                    <div className="p-4 text-sm text-gray-500">No containers available.</div>
-                                ) : (
-                                    <ul className="divide-y divide-gray-100">
-                                        {containers.map((container) => (
-                                            <li key={container.id} className="p-3 text-sm">
-                                                <div className="font-medium text-gray-900">{container.nameEn}</div>
-                                                <div className="text-xs text-gray-500">
-                                                    Code: {container.code} · Level {container.levelNo}
-                                                </div>
-                                                {container.parentName && (
-                                                    <div className="text-xs text-gray-500">
-                                                        Parent: {container.parentName}
-                                                    </div>
-                                                )}
-                                                <div className="mt-1 text-xs">
-                                                    <span
-                                                        className={cn(
-                                                            'inline-flex rounded-full px-2 py-0.5',
-                                                            container.isActive
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : 'bg-gray-100 text-gray-600',
-                                                        )}
-                                                    >
-                                                        {container.isActive ? 'Active' : 'Inactive'}
-                                                    </span>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="containerCode">Code *</Label>
-                                <Input
-                                    id="containerCode"
-                                    value={containerForm.code}
-                                    onChange={(event) =>
-                                        setContainerForm((prev) => ({ ...prev, code: event.target.value }))
-                                    }
-                                    placeholder="Enter container code"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="containerNameEn">Name (English) *</Label>
-                                <Input
-                                    id="containerNameEn"
-                                    value={containerForm.nameEn}
-                                    onChange={(event) =>
-                                        setContainerForm((prev) => ({ ...prev, nameEn: event.target.value }))
-                                    }
-                                    placeholder="Enter English name"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="containerNameAr">Name (Arabic) *</Label>
-                                <Input
-                                    id="containerNameAr"
-                                    value={containerForm.nameAr}
-                                    onChange={(event) =>
-                                        setContainerForm((prev) => ({ ...prev, nameAr: event.target.value }))
-                                    }
-                                    placeholder="أدخل الاسم بالعربية"
-                                    dir="rtl"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="containerParent">Parent Container</Label>
-                                <Select
-                                    value={
-                                        typeof containerForm.parentId === 'number'
-                                            ? String(containerForm.parentId)
-                                            : 'none'
-                                    }
-                                    onValueChange={(value) =>
-                                        setContainerForm((prev) => ({
-                                            ...prev,
-                                            parentId: value === 'none' ? null : Number(value),
-                                        }))
-                                    }
-                                >
-                                    <SelectTrigger id="containerParent">
-                                        <SelectValue placeholder="No parent" />
+                                <Select value={booleanToSelectValue(filters.isActive)} onValueChange={handleBooleanFilterChange('isActive')}>
+                                    <SelectTrigger className="w-full sm:w-32">
+                                        <SelectValue placeholder="Status" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="none">No parent</SelectItem>
-                                        {containers.map((container) => (
-                                            <SelectItem key={container.id} value={String(container.id)}>
-                                                {container.nameEn} ({container.code})
+                                        {BOOLEAN_SELECT_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                                    <SelectTrigger className="w-full sm:w-24">
+                                        <SelectValue placeholder="Page size" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {PAGE_SIZE_OPTIONS.map((option) => (
+                                            <SelectItem key={option} value={String(option)}>
+                                                {option} / page
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="containerCreatedBy">Created By</Label>
-                                    <Input
-                                        id="containerCreatedBy"
-                                        value={containerForm.createdBy ?? ''}
-                                        onChange={(event) =>
-                                            setContainerForm((prev) => ({ ...prev, createdBy: event.target.value }))
-                                        }
-                                        placeholder="Optional creator"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="containerUpdatedBy">Updated By</Label>
-                                    <Input
-                                        id="containerUpdatedBy"
-                                        value={containerForm.updatedBy ?? ''}
-                                        onChange={(event) =>
-                                            setContainerForm((prev) => ({ ...prev, updatedBy: event.target.value }))
-                                        }
-                                        placeholder="Optional editor"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
-                                <span className="text-sm font-medium">Active</span>
-                                <Switch
-                                    checked={containerForm.isActive}
-                                    onCheckedChange={(checked) =>
-                                        setContainerForm((prev) => ({ ...prev, isActive: checked }))
-                                    }
-                                />
-                            </div>
-
-                            {containerFormError && (
-                                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                    {containerFormError}
-                                </div>
-                            )}
-
-                            {containerFeedback && (
-                                <div
-                                    className={cn(
-                                        'rounded-md border px-3 py-2 text-sm',
-                                        containerFeedback.type === 'success'
-                                            ? 'border-green-200 bg-green-50 text-green-800'
-                                            : 'border-red-200 bg-red-50 text-red-700',
-                                    )}
-                                >
-                                    {containerFeedback.message}
-                                </div>
-                            )}
-
-                            <div className="flex justify-end gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => setContainerForm(INITIAL_CONTAINER_FORM)}
-                                    disabled={isSavingContainer}
+                                    onClick={() => setActiveTab('categories')}
+                                    className="flex items-center gap-2"
                                 >
-                                    Reset
+                                    <Library className="h-4 w-4" />
+                                    Manage Categories
                                 </Button>
                                 <Button
                                     type="button"
-                                    onClick={handleSaveContainer}
-                                    disabled={isSavingContainer}
-                                    className="bg-tpa-primary text-white hover:bg-tpa-accent"
+                                    variant="outline"
+                                    onClick={() => setActiveTab('containers')}
+                                    className="flex items-center gap-2"
                                 >
-                                    {isSavingContainer ? (
-                                        <span className="flex items-center gap-2">
-                                            <Loader2 className="h-4 w-4 animate-spin" /> Saving...
-                                        </span>
-                                    ) : (
-                                        'Add Container'
-                                    )}
+                                    <Boxes className="h-4 w-4" />
+                                    Manage Containers
+                                </Button>
+                                <Button type="button" variant="outline" onClick={handleFilterToggle} className="flex items-center gap-2">
+                                    <Filter className="h-4 w-4" />
+                                    {showFilters ? 'Hide Filters' : 'Show Filters'}
+                                </Button>
+                                <Button type="button" variant="outline" onClick={handleRefresh} className="flex items-center gap-2">
+                                    <RefreshCcw className="h-4 w-4" />
+                                    Refresh
+                                </Button>
+                                <Button onClick={handleAdd} className="bg-tpa-primary hover:bg-tpa-accent text-white">
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Add Procedure
                                 </Button>
                             </div>
                         </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
 
-            <Dialog open={isLinkDialogOpen} onOpenChange={handleLinkDialogChange}>
-                <DialogContent className="max-w-4xl">
-                    <DialogHeader>
-                        <DialogTitle>Manage Procedure Links</DialogTitle>
-                        <DialogDescription>
-                            Link the procedure to the correct categories and containers to control downstream visibility.
-                        </DialogDescription>
-                    </DialogHeader>
+                        {showFilters && (
+                            <div className="grid grid-cols-1 gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-2 lg:grid-cols-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="systemCode">System Code</Label>
+                                    <Input
+                                        id="systemCode"
+                                        value={filters.systemCode ?? ''}
+                                        onChange={(event) => handleSystemCodeChange(event.target.value)}
+                                        placeholder="Filter by system code"
+                                    />
+                                </div>
 
-                    {linkingProcedure && (
-                        <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-                            Managing links for <span className="font-semibold">{linkingProcedure.nameEn}</span> ({linkingProcedure.code})
-                        </div>
-                    )}
+                                <div className="space-y-2">
+                                    <Label htmlFor="categoryFilter">Category</Label>
+                                    <Select
+                                        value={filters.categoryId !== null && filters.categoryId !== undefined ? String(filters.categoryId) : 'all'}
+                                        onValueChange={handleCategoryChange}
+                                    >
+                                        <SelectTrigger id="categoryFilter">
+                                            <SelectValue placeholder="All categories" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All</SelectItem>
+                                            {categories.map((category) => (
+                                                <SelectItem key={category.id} value={String(category.id)}>
+                                                    {category.nameEn} ({category.code})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                    {linkingFeedback && (
-                        <div
-                            className={cn(
-                                'rounded-md border px-3 py-2 text-sm',
-                                linkingFeedback.type === 'success'
-                                    ? 'border-green-200 bg-green-50 text-green-800'
-                                    : 'border-red-200 bg-red-50 text-red-700',
-                            )}
-                        >
-                            {linkingFeedback.message}
-                        </div>
-                    )}
+                                <div className="space-y-2">
+                                    <Label htmlFor="containerFilter">Container</Label>
+                                    <Select
+                                        value={filters.containerId !== null && filters.containerId !== undefined ? String(filters.containerId) : 'all'}
+                                        onValueChange={handleContainerChange}
+                                    >
+                                        <SelectTrigger id="containerFilter">
+                                            <SelectValue placeholder="All containers" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All</SelectItem>
+                                            {containers.map((container) => (
+                                                <SelectItem key={container.id} value={String(container.id)}>
+                                                    {container.nameEn} ({container.code})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                    <div className="grid gap-6 md:grid-cols-2">
-                        <section className="space-y-3">
-                            <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-semibold text-gray-700">Categories</h4>
-                                <span className="text-xs text-gray-500">
-                                    {linkSelection.categoryIds.length} selected
-                                </span>
+                                <div className="space-y-2">
+                                    <Label htmlFor="minPrice">Min Price</Label>
+                                    <Input
+                                        id="minPrice"
+                                        type="number"
+                                        value={filters.minPrice ?? ''}
+                                        onChange={(event) => handleMinPriceChange(event.target.value)}
+                                        placeholder="0"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="maxPrice">Max Price</Label>
+                                    <Input
+                                        id="maxPrice"
+                                        type="number"
+                                        value={filters.maxPrice ?? ''}
+                                        onChange={(event) => handleMaxPriceChange(event.target.value)}
+                                        placeholder="0"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="validOn">Valid On</Label>
+                                    <Input
+                                        id="validOn"
+                                        type="date"
+                                        value={filters.validOn ?? ''}
+                                        onChange={(event) => handleValidOnChange(event.target.value)}
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="systemCodeFilter">Is Surgical</Label>
+                                    <Select
+                                        value={booleanToSelectValue(filters.isSurgical)}
+                                        onValueChange={handleBooleanFilterChange('isSurgical')}
+                                    >
+                                        <SelectTrigger id="systemCodeFilter">
+                                            <SelectValue placeholder="Any" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {BOOLEAN_SELECT_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="requiresAuthorization">Requires Authorization</Label>
+                                    <Select
+                                        value={booleanToSelectValue(filters.requiresAuthorization)}
+                                        onValueChange={handleBooleanFilterChange('requiresAuthorization')}
+                                    >
+                                        <SelectTrigger id="requiresAuthorization">
+                                            <SelectValue placeholder="Any" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {BOOLEAN_SELECT_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="requiresAnesthesia">Requires Anesthesia</Label>
+                                    <Select
+                                        value={booleanToSelectValue(filters.requiresAnesthesia)}
+                                        onValueChange={handleBooleanFilterChange('requiresAnesthesia')}
+                                    >
+                                        <SelectTrigger id="requiresAnesthesia">
+                                            <SelectValue placeholder="Any" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {BOOLEAN_SELECT_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
-                            <Input
-                                placeholder="Search categories"
-                                value={linkCategoryQuery}
-                                onChange={(event) => setLinkCategoryQuery(event.target.value)}
-                            />
-                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
-                                {categoriesLoading ? (
-                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
-                                    </div>
-                                ) : filteredLinkCategories.length === 0 ? (
-                                    <div className="p-4 text-sm text-gray-500">No categories match your search.</div>
-                                ) : (
-                                    <ul className="divide-y divide-gray-100">
-                                        {filteredLinkCategories.map((category) => (
-                                            <li key={category.id}>
-                                                <label className="flex cursor-pointer items-start gap-2 p-3 hover:bg-gray-50">
+                        )}
+
+                        <div className="flex flex-col gap-2 rounded-lg border border-gray-100">
+                            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                                <div className="flex flex-col">
+                                    <span className="text-xs uppercase text-gray-500">{totalRecordsLabel}</span>
+                                    <span className="text-sm text-gray-600">
+                                        Page {page + 1} of {Math.max(pageMeta.totalPages, 1)}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => void loadProcedures(page, pageSize, filters)}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <RefreshCcw className="h-4 w-4" />
+                                        Reload
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader className="bg-gray-50">
+                                        <TableRow>
+                                            <TableHead className="w-12">
+                                                <div className="flex items-center justify-center">
                                                     <input
                                                         type="checkbox"
-                                                        className="mt-1"
-                                                        checked={linkSelection.categoryIds.includes(category.id)}
-                                                        onChange={() => toggleLinkCategory(category.id)}
+                                                        className="h-4 w-4 rounded border-gray-300"
+                                                        checked={allDisplayedSelected}
+                                                        onChange={handleToggleAll}
+                                                        aria-label="Select all procedures"
                                                     />
-                                                    <span className="space-y-1">
-                                                        <span className="block text-sm font-medium text-gray-900">
-                                                            {category.nameEn}
+                                                </div>
+                                            </TableHead>
+                                            <TableHead>Code</TableHead>
+                                            <TableHead>Name (EN)</TableHead>
+                                            <TableHead>Name (AR)</TableHead>
+                                            <TableHead>Unit</TableHead>
+                                            <TableHead className="text-right">Reference Price</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead className="w-48 text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {isLoading ? (
+                                            <TableRow>
+                                                <TableCell colSpan={8} className="h-40 text-center text-sm text-gray-500">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <Loader2 className="h-4 w-4 animate-spin" /> Loading procedures...
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : procedures.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={8} className="h-40 text-center text-sm text-gray-500">
+                                                    No procedures found. Try adjusting your search or filters.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            procedures.map((procedure) => (
+                                                <TableRow key={procedure.id}>
+                                                    <TableCell className="text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-4 w-4 rounded border-gray-300"
+                                                            checked={selectedItems.includes(String(procedure.id))}
+                                                            onChange={() => toggleSelectedItem(String(procedure.id))}
+                                                            aria-label={`Select procedure ${procedure.code}`}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="font-medium text-gray-900">{procedure.code}</TableCell>
+                                                    <TableCell>{procedure.nameEn}</TableCell>
+                                                    <TableCell dir="rtl">{procedure.nameAr}</TableCell>
+                                                    <TableCell>{procedure.unitOfMeasure}</TableCell>
+                                                    <TableCell className="text-right">{formatCurrency(procedure.referencePrice)}</TableCell>
+                                                    <TableCell>
+                                                        <span
+                                                            className={cn(
+                                                                'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+                                                                procedure.isActive
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : 'bg-gray-100 text-gray-600',
+                                                            )}
+                                                        >
+                                                            {procedure.isActive ? 'Active' : 'Inactive'}
                                                         </span>
-                                                        <span className="block text-xs text-gray-500">{category.code}</span>
-                                                    </span>
-                                                </label>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex justify-end gap-2">
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => handleOpenLinkFromRow(procedure)}
+                                                                aria-label={`Manage links for ${procedure.code}`}
+                                                            >
+                                                                <Link2 className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => handleViewDetails(procedure)}
+                                                                aria-label={`View details for ${procedure.code}`}
+                                                            >
+                                                                <Eye className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
                             </div>
-                        </section>
 
-                        <section className="space-y-3">
-                            <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-semibold text-gray-700">Containers</h4>
-                                <span className="text-xs text-gray-500">
-                                    {linkSelection.containerIds.length} selected
-                                </span>
+                            <div className="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={pageMeta.first}
+                                        onClick={() => handlePageChange('prev')}
+                                    >
+                                        Previous
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={pageMeta.last}
+                                        onClick={() => handlePageChange('next')}
+                                    >
+                                        Next
+                                    </Button>
+                                    <span>
+                                        Page {page + 1} of {Math.max(pageMeta.totalPages, 1)}
+                                    </span>
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    Showing records {page * pageSize + 1} – {page * pageSize + procedures.length}
+                                </div>
                             </div>
-                            <Input
-                                placeholder="Search containers"
-                                value={linkContainerQuery}
-                                onChange={(event) => setLinkContainerQuery(event.target.value)}
-                            />
-                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
-                                {containersLoading ? (
-                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
-                                    </div>
-                                ) : filteredLinkContainers.length === 0 ? (
-                                    <div className="p-4 text-sm text-gray-500">No containers match your search.</div>
-                                ) : (
-                                    <ul className="divide-y divide-gray-100">
-                                        {filteredLinkContainers.map((container) => (
-                                            <li key={container.id}>
-                                                <label className="flex cursor-pointer items-start gap-2 p-3 hover:bg-gray-50">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="mt-1"
-                                                        checked={linkSelection.containerIds.includes(container.id)}
-                                                        onChange={() => toggleLinkContainer(container.id)}
-                                                    />
-                                                    <span className="space-y-1">
-                                                        <span className="block text-sm font-medium text-gray-900">
-                                                            {container.nameEn}
-                                                        </span>
-                                                        <span className="block text-xs text-gray-500">
-                                                            {container.code}
-                                                            {container.parentName ? ` · ${container.parentName}` : ''}
-                                                        </span>
-                                                    </span>
-                                                </label>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                        </section>
+                        </div>
                     </div>
+                </TabsContent>
 
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => handleLinkDialogChange(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={handleSaveLinks}
-                            disabled={isLinkSaving || !linkingProcedure}
-                            className="bg-tpa-primary text-white hover:bg-tpa-accent"
-                        >
-                            {isLinkSaving ? (
-                                <span className="flex items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin" /> Saving...
-                                </span>
-                            ) : (
-                                'Save Links'
-                            )}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                <TabsContent value="categories" className="space-y-4">
+                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-semibold text-gray-900">Procedure Categories</h2>
+                            <p className="text-sm text-gray-600">
+                                Review existing categories and add new definitions for procedures mapping.
+                            </p>
+                        </div>
 
+                        <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-gray-500">
+                                        {categories.length} category{categories.length === 1 ? '' : 'ies'}
+                                    </span>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => void loadCategories()}
+                                        disabled={categoriesLoading}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <RefreshCcw className="h-4 w-4" />
+                                        Refresh
+                                    </Button>
+                                </div>
+
+                                <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
+                                    {categoriesLoading ? (
+                                        <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
+                                        </div>
+                                    ) : categories.length === 0 ? (
+                                        <div className="p-4 text-sm text-gray-500">No categories available.</div>
+                                    ) : (
+                                        <ul className="divide-y divide-gray-100">
+                                            {categories.map((category) => (
+                                                <li key={category.id} className="p-3 text-sm">
+                                                    <div className="font-medium text-gray-900">{category.nameEn}</div>
+                                                    <div className="text-xs text-gray-500">Code: {category.code}</div>
+                                                    <div className="mt-1 text-xs">
+                                                        <span
+                                                            className={cn(
+                                                                'inline-flex rounded-full px-2 py-0.5',
+                                                                category.isActive
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : 'bg-gray-100 text-gray-600',
+                                                            )}
+                                                        >
+                                                            {category.isActive ? 'Active' : 'Inactive'}
+                                                        </span>
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="categoryCode">Code *</Label>
+                                    <Input
+                                        id="categoryCode"
+                                        value={categoryForm.code}
+                                        onChange={(event) =>
+                                            setCategoryForm((prev) => ({ ...prev, code: event.target.value }))
+                                        }
+                                        placeholder="Enter category code"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="categoryNameEn">Name (English) *</Label>
+                                    <Input
+                                        id="categoryNameEn"
+                                        value={categoryForm.nameEn}
+                                        onChange={(event) =>
+                                            setCategoryForm((prev) => ({ ...prev, nameEn: event.target.value }))
+                                        }
+                                        placeholder="Enter English name"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="categoryNameAr">Name (Arabic) *</Label>
+                                    <Input
+                                        id="categoryNameAr"
+                                        value={categoryForm.nameAr}
+                                        onChange={(event) =>
+                                            setCategoryForm((prev) => ({ ...prev, nameAr: event.target.value }))
+                                        }
+                                        placeholder="أدخل الاسم بالعربية"
+                                        dir="rtl"
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
+                                    <span className="text-sm font-medium">Active</span>
+                                    <Switch
+                                        checked={categoryForm.isActive}
+                                        onCheckedChange={(checked) =>
+                                            setCategoryForm((prev) => ({ ...prev, isActive: checked }))
+                                        }
+                                    />
+                                </div>
+
+                                {categoryFormError && (
+                                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                        {categoryFormError}
+                                    </div>
+                                )}
+
+                                {categoryFeedback && (
+                                    <div
+                                        className={cn(
+                                            'rounded-md border px-3 py-2 text-sm',
+                                            categoryFeedback.type === 'success'
+                                                ? 'border-green-200 bg-green-50 text-green-800'
+                                                : 'border-red-200 bg-red-50 text-red-700',
+                                        )}
+                                    >
+                                        {categoryFeedback.message}
+                                    </div>
+                                )}
+
+                                <div className="flex justify-end gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setCategoryForm(INITIAL_CATEGORY_FORM)}
+                                        disabled={isSavingCategory}
+                                    >
+                                        Reset
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        onClick={handleSaveCategory}
+                                        disabled={isSavingCategory}
+                                        className="bg-tpa-primary text-white hover:bg-tpa-accent"
+                                    >
+                                        {isSavingCategory ? (
+                                            <span className="flex items-center gap-2">
+                                                <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                            </span>
+                                        ) : (
+                                            'Add Category'
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="containers" className="space-y-4">
+                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-semibold text-gray-900">Procedure Containers</h2>
+                            <p className="text-sm text-gray-600">
+                                Maintain the hierarchical containers used to group procedures.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-gray-500">
+                                        {containers.length} container{containers.length === 1 ? '' : 's'}
+                                    </span>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => void loadContainers()}
+                                        disabled={containersLoading}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <RefreshCcw className="h-4 w-4" />
+                                        Refresh
+                                    </Button>
+                                </div>
+
+                                <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
+                                    {containersLoading ? (
+                                        <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
+                                        </div>
+                                    ) : containers.length === 0 ? (
+                                        <div className="p-4 text-sm text-gray-500">No containers available.</div>
+                                    ) : (
+                                        <ul className="divide-y divide-gray-100">
+                                            {containers.map((container) => (
+                                                <li key={container.id} className="p-3 text-sm">
+                                                    <div className="font-medium text-gray-900">{container.nameEn}</div>
+                                                    <div className="text-xs text-gray-500">
+                                                        Code: {container.code} · Level {container.levelNo}
+                                                    </div>
+                                                    {container.parentName && (
+                                                        <div className="text-xs text-gray-500">
+                                                            Parent: {container.parentName}
+                                                        </div>
+                                                    )}
+                                                    <div className="mt-1 text-xs">
+                                                        <span
+                                                            className={cn(
+                                                                'inline-flex rounded-full px-2 py-0.5',
+                                                                container.isActive
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : 'bg-gray-100 text-gray-600',
+                                                            )}
+                                                        >
+                                                            {container.isActive ? 'Active' : 'Inactive'}
+                                                        </span>
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="containerCode">Code *</Label>
+                                    <Input
+                                        id="containerCode"
+                                        value={containerForm.code}
+                                        onChange={(event) =>
+                                            setContainerForm((prev) => ({ ...prev, code: event.target.value }))
+                                        }
+                                        placeholder="Enter container code"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="containerNameEn">Name (English) *</Label>
+                                    <Input
+                                        id="containerNameEn"
+                                        value={containerForm.nameEn}
+                                        onChange={(event) =>
+                                            setContainerForm((prev) => ({ ...prev, nameEn: event.target.value }))
+                                        }
+                                        placeholder="Enter English name"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="containerNameAr">Name (Arabic) *</Label>
+                                    <Input
+                                        id="containerNameAr"
+                                        value={containerForm.nameAr}
+                                        onChange={(event) =>
+                                            setContainerForm((prev) => ({ ...prev, nameAr: event.target.value }))
+                                        }
+                                        placeholder="أدخل الاسم بالعربية"
+                                        dir="rtl"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="containerParent">Parent Container</Label>
+                                    <Select
+                                        value={
+                                            typeof containerForm.parentId === 'number'
+                                                ? String(containerForm.parentId)
+                                                : 'none'
+                                        }
+                                        onValueChange={(value) =>
+                                            setContainerForm((prev) => ({
+                                                ...prev,
+                                                parentId: value === 'none' ? null : Number(value),
+                                            }))
+                                        }
+                                    >
+                                        <SelectTrigger id="containerParent">
+                                            <SelectValue placeholder="No parent" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">No parent</SelectItem>
+                                            {containers.map((container) => (
+                                                <SelectItem key={container.id} value={String(container.id)}>
+                                                    {container.nameEn} ({container.code})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="containerCreatedBy">Created By</Label>
+                                        <Input
+                                            id="containerCreatedBy"
+                                            value={containerForm.createdBy ?? ''}
+                                            onChange={(event) =>
+                                                setContainerForm((prev) => ({ ...prev, createdBy: event.target.value }))
+                                            }
+                                            placeholder="Optional creator"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="containerUpdatedBy">Updated By</Label>
+                                        <Input
+                                            id="containerUpdatedBy"
+                                            value={containerForm.updatedBy ?? ''}
+                                            onChange={(event) =>
+                                                setContainerForm((prev) => ({ ...prev, updatedBy: event.target.value }))
+                                            }
+                                            placeholder="Optional editor"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
+                                    <span className="text-sm font-medium">Active</span>
+                                    <Switch
+                                        checked={containerForm.isActive}
+                                        onCheckedChange={(checked) =>
+                                            setContainerForm((prev) => ({ ...prev, isActive: checked }))
+                                        }
+                                    />
+                                </div>
+
+                                {containerFormError && (
+                                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                        {containerFormError}
+                                    </div>
+                                )}
+
+                                {containerFeedback && (
+                                    <div
+                                        className={cn(
+                                            'rounded-md border px-3 py-2 text-sm',
+                                            containerFeedback.type === 'success'
+                                                ? 'border-green-200 bg-green-50 text-green-800'
+                                                : 'border-red-200 bg-red-50 text-red-700',
+                                        )}
+                                    >
+                                        {containerFeedback.message}
+                                    </div>
+                                )}
+
+                                <div className="flex justify-end gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setContainerForm(INITIAL_CONTAINER_FORM)}
+                                        disabled={isSavingContainer}
+                                    >
+                                        Reset
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        onClick={handleSaveContainer}
+                                        disabled={isSavingContainer}
+                                        className="bg-tpa-primary text-white hover:bg-tpa-accent"
+                                    >
+                                        {isSavingContainer ? (
+                                            <span className="flex items-center gap-2">
+                                                <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                            </span>
+                                        ) : (
+                                            'Add Container'
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </TabsContent>
+            </Tabs>
             <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
                 <DialogContent className="max-w-4xl">
                     <DialogHeader>
