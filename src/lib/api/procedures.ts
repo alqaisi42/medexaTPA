@@ -1,8 +1,13 @@
 import {
     ApiResponse,
+    CreateProcedureCategoryPayload,
+    CreateProcedureContainerPayload,
     CreateProcedurePayload,
+    LinkProcedurePayload,
     ProcedureCategoryRecord,
     ProcedureCategoryResponse,
+    ProcedureContainerRecord,
+    ProcedureContainerResponse,
     ProcedureDetails,
     ProcedureListResponse,
     ProcedureSearchFilters,
@@ -55,6 +60,39 @@ async function handleResponse<T>(response: Response, errorMessage: string): Prom
     }
 
     return payload.data
+}
+
+async function handleOptionalDataResponse<T>(response: Response, errorMessage: string): Promise<T | null> {
+    if (!response.ok) {
+        throw new Error(errorMessage)
+    }
+
+    const payload: ApiResponse<T> = await response.json()
+    if (!payload.success) {
+        throw new Error(payload.message || errorMessage)
+    }
+
+    return payload.data ?? null
+}
+
+async function handleEmptyResponse(response: Response, errorMessage: string): Promise<void> {
+    if (!response.ok) {
+        throw new Error(errorMessage)
+    }
+
+    try {
+        const payload: ApiResponse<unknown> = await response.json()
+        if (!payload.success) {
+            throw new Error(payload.message || errorMessage)
+        }
+    } catch (error) {
+        // Some endpoints may not return a JSON body. Consider the operation successful
+        // if the HTTP status code indicates success and parsing fails.
+        if (error instanceof SyntaxError) {
+            return
+        }
+        throw error
+    }
 }
 
 function hasActiveSearch(filters: ProcedureSearchFilters): boolean {
@@ -171,6 +209,27 @@ export async function createProcedure(payload: CreateProcedurePayload): Promise<
     return handleResponse<ProcedureDetails>(response, 'Unable to create procedure')
 }
 
+export async function updateProcedure(id: number, payload: CreateProcedurePayload): Promise<ProcedureDetails> {
+    const url = buildUrl(`/procedures/${id}`)
+    const response = await fetch(url, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+    })
+
+    return handleResponse<ProcedureDetails>(response, 'Unable to update procedure')
+}
+
+export async function deleteProcedure(id: number): Promise<void> {
+    const url = buildUrl(`/procedures/${id}`)
+    const response = await fetch(url, {
+        method: 'DELETE',
+        headers,
+    })
+
+    return handleEmptyResponse(response, 'Unable to delete procedure')
+}
+
 export async function fetchProcedureCategories({
     page = 0,
     size = 50,
@@ -183,6 +242,59 @@ export async function fetchProcedureCategories({
     })
 
     return handleResponse<ProcedureCategoryResponse>(response, 'Unable to load procedure categories')
+}
+
+export async function createProcedureCategory(
+    payload: CreateProcedureCategoryPayload,
+): Promise<ProcedureCategoryRecord> {
+    const url = buildUrl('/procedures/categories')
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+    })
+
+    return handleResponse<ProcedureCategoryRecord>(response, 'Unable to create procedure category')
+}
+
+export async function fetchProcedureContainers({
+    page = 0,
+    size = 50,
+}: FetchProceduresParams = {}): Promise<ProcedureContainerResponse> {
+    const url = buildUrl('/procedures/containers', { page, size })
+    const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        cache: 'no-store',
+    })
+
+    return handleResponse<ProcedureContainerResponse>(response, 'Unable to load procedure containers')
+}
+
+export async function createProcedureContainer(
+    payload: CreateProcedureContainerPayload,
+): Promise<ProcedureContainerRecord> {
+    const url = buildUrl('/procedures/containers')
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+    })
+
+    return handleResponse<ProcedureContainerRecord>(response, 'Unable to create procedure container')
+}
+
+export async function linkProcedureAssociations(
+    payload: LinkProcedurePayload,
+): Promise<ProcedureDetails | null> {
+    const url = buildUrl('/procedures/link')
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+    })
+
+    return handleOptionalDataResponse<ProcedureDetails>(response, 'Unable to link procedure associations')
 }
 
 export async function getProcedureDetails(id: number): Promise<ProcedureDetails> {

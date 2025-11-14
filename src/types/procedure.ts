@@ -66,6 +66,46 @@ export interface ProcedureCategoryRecord {
     updatedAt?: string
 }
 
+export interface ProcedureContainerRecord {
+    id: number
+    code: string
+    nameEn: string
+    nameAr: string
+    levelNo: number
+    parentId?: number
+    parentName?: string
+    isActive: boolean
+    procedureCount: number
+    childCount: number
+    effectiveFrom?: string
+    effectiveTo?: string
+    createdAt?: string
+    updatedAt?: string
+}
+
+export interface CreateProcedureCategoryPayload {
+    code: string
+    nameEn: string
+    nameAr: string
+    isActive: boolean
+}
+
+export interface CreateProcedureContainerPayload {
+    code: string
+    nameEn: string
+    nameAr: string
+    parentId?: number | null
+    isActive: boolean
+    createdBy?: string
+    updatedBy?: string
+}
+
+export interface LinkProcedurePayload {
+    procedureId: number
+    categoryIds: number[]
+    containerIds: number[]
+}
+
 export interface CreateProcedurePayload {
     systemCode: string
     code: string
@@ -103,3 +143,4 @@ export interface ProcedureSearchFilters {
 export type ProcedureListResponse = PaginatedResponse<ProcedureSummary>
 export type ProcedureSearchResponse = PaginatedResponse<ProcedureSummary>
 export type ProcedureCategoryResponse = PaginatedResponse<ProcedureCategoryRecord>
+export type ProcedureContainerResponse = PaginatedResponse<ProcedureContainerRecord>

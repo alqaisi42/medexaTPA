@@ -2,13 +2,18 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-    Plus,
-    Search,
+    Boxes,
     Filter,
-    Loader2,
     Eye,
-    RefreshCcw,
     Info,
+    Library,
+    Link2,
+    Loader2,
+    PencilLine,
+    Plus,
+    RefreshCcw,
+    Search,
+    Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,17 +24,27 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import {
+    CreateProcedureCategoryPayload,
+    CreateProcedureContainerPayload,
     CreateProcedurePayload,
+    LinkProcedurePayload,
     ProcedureCategoryRecord,
+    ProcedureContainerRecord,
     ProcedureDetails,
     ProcedureSearchFilters,
     ProcedureSummary,
 } from '@/types'
 import {
     createProcedure,
+    createProcedureCategory,
+    createProcedureContainer,
+    deleteProcedure,
     fetchProcedureCategories,
+    fetchProcedureContainers,
     getProcedureDetails,
+    linkProcedureAssociations,
     searchProcedures,
+    updateProcedure,
 } from '@/lib/api/procedures'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
@@ -59,6 +74,28 @@ const INITIAL_FORM_STATE: CreateProcedurePayload = {
     isActive: true,
     createdBy: '',
     updatedBy: '',
+}
+
+const INITIAL_CATEGORY_FORM: CreateProcedureCategoryPayload = {
+    code: '',
+    nameEn: '',
+    nameAr: '',
+    isActive: true,
+}
+
+const INITIAL_CONTAINER_FORM: CreateProcedureContainerPayload = {
+    code: '',
+    nameEn: '',
+    nameAr: '',
+    parentId: null,
+    isActive: true,
+    createdBy: '',
+    updatedBy: '',
+}
+
+type LinkSelectionState = {
+    categoryIds: number[]
+    containerIds: number[]
 }
 
 const INITIAL_FILTERS: ProcedureSearchFilters = {
@@ -110,6 +147,10 @@ export function ProceduresManagementPage() {
     const [showFilters, setShowFilters] = useState(false)
 
     const [categories, setCategories] = useState<ProcedureCategoryRecord[]>([])
+    const [containers, setContainers] = useState<ProcedureContainerRecord[]>([])
+
+    const [categoriesLoading, setCategoriesLoading] = useState(false)
+    const [containersLoading, setContainersLoading] = useState(false)
 
     const [isLoading, setIsLoading] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
@@ -119,13 +160,62 @@ export function ProceduresManagementPage() {
     const [feedback, setFeedback] = useState<FeedbackState | null>(null)
 
     const [isDialogOpen, setIsDialogOpen] = useState(false)
+    const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
     const [formData, setFormData] = useState<CreateProcedurePayload>(INITIAL_FORM_STATE)
+    const [editingProcedureId, setEditingProcedureId] = useState<number | null>(null)
+
+    const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false)
+    const [categoryForm, setCategoryForm] = useState<CreateProcedureCategoryPayload>(INITIAL_CATEGORY_FORM)
+    const [categoryFormError, setCategoryFormError] = useState<string | null>(null)
+    const [categoryFeedback, setCategoryFeedback] = useState<FeedbackState | null>(null)
+    const [isSavingCategory, setIsSavingCategory] = useState(false)
+
+    const [isContainerManagerOpen, setIsContainerManagerOpen] = useState(false)
+    const [containerForm, setContainerForm] = useState<CreateProcedureContainerPayload>(INITIAL_CONTAINER_FORM)
+    const [containerFormError, setContainerFormError] = useState<string | null>(null)
+    const [containerFeedback, setContainerFeedback] = useState<FeedbackState | null>(null)
+    const [isSavingContainer, setIsSavingContainer] = useState(false)
 
     const [isDetailsOpen, setIsDetailsOpen] = useState(false)
     const [detailsLoading, setDetailsLoading] = useState(false)
     const [detailsError, setDetailsError] = useState<string | null>(null)
+    const [detailsFeedback, setDetailsFeedback] = useState<FeedbackState | null>(null)
     const [procedureDetails, setProcedureDetails] = useState<ProcedureDetails | null>(null)
     const [detailsId, setDetailsId] = useState<number | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+
+    const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false)
+    const [linkingProcedure, setLinkingProcedure] = useState<ProcedureDetails | null>(null)
+    const [linkSelection, setLinkSelection] = useState<LinkSelectionState>({ categoryIds: [], containerIds: [] })
+    const [isLinkSaving, setIsLinkSaving] = useState(false)
+    const [linkingFeedback, setLinkingFeedback] = useState<FeedbackState | null>(null)
+    const [linkCategoryQuery, setLinkCategoryQuery] = useState('')
+    const [linkContainerQuery, setLinkContainerQuery] = useState('')
+    const [openLinkAfterDetails, setOpenLinkAfterDetails] = useState(false)
+
+    const loadCategories = useCallback(async () => {
+        setCategoriesLoading(true)
+        try {
+            const data = await fetchProcedureCategories({ page: 0, size: 200 })
+            setCategories(data.content ?? [])
+        } catch (categoryError) {
+            console.warn('Unable to load procedure categories', categoryError)
+        } finally {
+            setCategoriesLoading(false)
+        }
+    }, [])
+
+    const loadContainers = useCallback(async () => {
+        setContainersLoading(true)
+        try {
+            const data = await fetchProcedureContainers({ page: 0, size: 200 })
+            setContainers(data.content ?? [])
+        } catch (containerError) {
+            console.warn('Unable to load procedure containers', containerError)
+        } finally {
+            setContainersLoading(false)
+        }
+    }, [])
 
     const allDisplayedSelected =
         procedures.length > 0 && procedures.every((procedure) => selectedItems.includes(String(procedure.id)))
@@ -139,22 +229,9 @@ export function ProceduresManagementPage() {
     }
 
     useEffect(() => {
-        let isMounted = true
-        ;(async () => {
-            try {
-                const data = await fetchProcedureCategories({ page: 0, size: 100 })
-                if (isMounted) {
-                    setCategories(data.content ?? [])
-                }
-            } catch (categoryError) {
-                console.warn('Unable to load procedure categories', categoryError)
-            }
-        })()
-
-        return () => {
-            isMounted = false
-        }
-    }, [])
+        void loadCategories()
+        void loadContainers()
+    }, [loadCategories, loadContainers])
 
     useEffect(() => {
         const handler = setTimeout(() => {
@@ -206,7 +283,31 @@ export function ProceduresManagementPage() {
         void loadProcedures(page, pageSize, filters)
     }, [page, pageSize, filters, loadProcedures])
 
+    const populateFormFromDetails = useCallback((details: ProcedureDetails) => {
+        setFormData({
+            systemCode: details.systemCode ?? '',
+            code: details.code ?? '',
+            nameEn: details.nameEn ?? '',
+            nameAr: details.nameAr ?? '',
+            unitOfMeasure: details.unitOfMeasure ?? '',
+            isSurgical: Boolean(details.isSurgical),
+            referencePrice: Number(details.referencePrice ?? 0),
+            requiresAuthorization: Boolean(details.requiresAuthorization),
+            requiresAnesthesia: Boolean(details.requiresAnesthesia),
+            minIntervalDays: Number(details.minIntervalDays ?? 0),
+            maxFrequencyPerYear: Number(details.maxFrequencyPerYear ?? 0),
+            standardDurationMinutes: Number(details.standardDurationMinutes ?? 0),
+            validFrom: details.validFrom ?? '',
+            validTo: details.validTo ?? '',
+            isActive: Boolean(details.isActive),
+            createdBy: details.createdBy ?? '',
+            updatedBy: details.updatedBy ?? '',
+        })
+    }, [])
+
     const handleAdd = () => {
+        setDialogMode('create')
+        setEditingProcedureId(null)
         setFormData(INITIAL_FORM_STATE)
         setFormError(null)
         setIsDialogOpen(true)
@@ -215,6 +316,8 @@ export function ProceduresManagementPage() {
     const handleDialogChange = (open: boolean) => {
         setIsDialogOpen(open)
         if (!open) {
+            setDialogMode('create')
+            setEditingProcedureId(null)
             setFormData(INITIAL_FORM_STATE)
             setFormError(null)
         }
@@ -265,19 +368,42 @@ export function ProceduresManagementPage() {
             updatedBy: formData.updatedBy?.trim() || undefined,
         }
 
+        const isEditingMode = dialogMode === 'edit' && editingProcedureId !== null
         setIsSaving(true)
         try {
-            await createProcedure(payload)
-            setFeedback({ type: 'success', message: 'Procedure created successfully.' })
+            const result = isEditingMode
+                ? await updateProcedure(editingProcedureId, payload)
+                : await createProcedure(payload)
+
+            setFeedback({
+                type: 'success',
+                message: isEditingMode ? 'Procedure updated successfully.' : 'Procedure created successfully.',
+            })
             handleDialogChange(false)
-            if (page !== 0) {
+
+            if (isEditingMode) {
+                setProcedureDetails((prev) => {
+                    if (prev && result && prev.id === result.id) {
+                        return result
+                    }
+                    return prev
+                })
+                setDetailsFeedback({ type: 'success', message: 'Procedure updated successfully.' })
+                await loadProcedures(page, pageSize, filters)
+            } else if (page !== 0) {
                 setPage(0)
             } else {
                 await loadProcedures(0, pageSize, filters)
             }
         } catch (err) {
-            setFormError(err instanceof Error ? err.message : 'Unable to create procedure at this time.')
-            setFeedback({ type: 'error', message: 'Unable to create procedure.' })
+            const defaultMessage = isEditingMode
+                ? 'Unable to update procedure at this time.'
+                : 'Unable to create procedure at this time.'
+            setFormError(err instanceof Error ? err.message : defaultMessage)
+            setFeedback({
+                type: 'error',
+                message: isEditingMode ? 'Unable to update procedure.' : 'Unable to create procedure.',
+            })
         } finally {
             setIsSaving(false)
         }
@@ -338,13 +464,303 @@ export function ProceduresManagementPage() {
     }
 
     const handleContainerChange = (value: string) => {
-        setFilters((prev) => ({ ...prev, containerId: value ? Number(value) : null }))
+        setFilters((prev) => ({ ...prev, containerId: value === 'all' ? null : Number(value) }))
         setPage(0)
     }
 
     const handleViewDetails = (procedure: ProcedureSummary) => {
+        setOpenLinkAfterDetails(false)
         setDetailsId(procedure.id)
         setIsDetailsOpen(true)
+    }
+
+    const handleOpenLinkFromRow = (procedure: ProcedureSummary) => {
+        setDetailsId(procedure.id)
+        setOpenLinkAfterDetails(true)
+        setIsDetailsOpen(true)
+    }
+
+    const handleCategoryManagerChange = (open: boolean) => {
+        setIsCategoryManagerOpen(open)
+        if (open) {
+            setCategoryFeedback(null)
+            setCategoryFormError(null)
+            void loadCategories()
+        } else {
+            setCategoryForm(INITIAL_CATEGORY_FORM)
+            setCategoryFormError(null)
+            setCategoryFeedback(null)
+        }
+    }
+
+    const handleContainerManagerChange = (open: boolean) => {
+        setIsContainerManagerOpen(open)
+        if (open) {
+            setContainerFeedback(null)
+            setContainerFormError(null)
+            void loadContainers()
+        } else {
+            setContainerForm(INITIAL_CONTAINER_FORM)
+            setContainerFormError(null)
+            setContainerFeedback(null)
+        }
+    }
+
+    const handleSaveCategory = async () => {
+        setCategoryFormError(null)
+        setCategoryFeedback(null)
+
+        const payload: CreateProcedureCategoryPayload = {
+            code: categoryForm.code.trim(),
+            nameEn: categoryForm.nameEn.trim(),
+            nameAr: categoryForm.nameAr.trim(),
+            isActive: categoryForm.isActive,
+        }
+
+        if (!payload.code || !payload.nameEn || !payload.nameAr) {
+            setCategoryFormError('Code, English name, and Arabic name are required.')
+            return
+        }
+
+        setIsSavingCategory(true)
+        try {
+            await createProcedureCategory(payload)
+            setCategoryFeedback({ type: 'success', message: 'Category created successfully.' })
+            setCategoryForm(INITIAL_CATEGORY_FORM)
+            await loadCategories()
+        } catch (err) {
+            setCategoryFormError(err instanceof Error ? err.message : 'Unable to create category at this time.')
+            setCategoryFeedback({ type: 'error', message: 'Unable to create category.' })
+        } finally {
+            setIsSavingCategory(false)
+        }
+    }
+
+    const handleSaveContainer = async () => {
+        setContainerFormError(null)
+        setContainerFeedback(null)
+
+        const payload: CreateProcedureContainerPayload = {
+            code: containerForm.code.trim(),
+            nameEn: containerForm.nameEn.trim(),
+            nameAr: containerForm.nameAr.trim(),
+            parentId:
+                typeof containerForm.parentId === 'number' && !Number.isNaN(containerForm.parentId)
+                    ? containerForm.parentId
+                    : null,
+            isActive: containerForm.isActive,
+            createdBy: containerForm.createdBy?.trim() || undefined,
+            updatedBy: containerForm.updatedBy?.trim() || undefined,
+        }
+
+        if (!payload.code || !payload.nameEn || !payload.nameAr) {
+            setContainerFormError('Code, English name, and Arabic name are required.')
+            return
+        }
+
+        setIsSavingContainer(true)
+        try {
+            await createProcedureContainer(payload)
+            setContainerFeedback({ type: 'success', message: 'Container created successfully.' })
+            setContainerForm(INITIAL_CONTAINER_FORM)
+            await loadContainers()
+        } catch (err) {
+            setContainerFormError(err instanceof Error ? err.message : 'Unable to create container at this time.')
+            setContainerFeedback({ type: 'error', message: 'Unable to create container.' })
+        } finally {
+            setIsSavingContainer(false)
+        }
+    }
+
+    const handleManageLinks = () => {
+        if (!procedureDetails) {
+            return
+        }
+
+        setLinkingProcedure(procedureDetails)
+        setLinkSelection({
+            categoryIds: procedureDetails.categories.map((category) => category.id),
+            containerIds: procedureDetails.containers.map((container) => container.id),
+        })
+        setLinkCategoryQuery('')
+        setLinkContainerQuery('')
+        setLinkingFeedback(null)
+        setIsLinkDialogOpen(true)
+        void loadCategories()
+        void loadContainers()
+    }
+
+    const handleLinkDialogChange = (open: boolean) => {
+        setIsLinkDialogOpen(open)
+        if (!open) {
+            setLinkingProcedure(null)
+            setLinkSelection({ categoryIds: [], containerIds: [] })
+            setLinkingFeedback(null)
+            setLinkCategoryQuery('')
+            setLinkContainerQuery('')
+            setOpenLinkAfterDetails(false)
+        }
+    }
+
+    const toggleLinkCategory = (id: number) => {
+        setLinkSelection((prev) => {
+            const exists = prev.categoryIds.includes(id)
+            return {
+                ...prev,
+                categoryIds: exists
+                    ? prev.categoryIds.filter((value) => value !== id)
+                    : [...prev.categoryIds, id],
+            }
+        })
+    }
+
+    const toggleLinkContainer = (id: number) => {
+        setLinkSelection((prev) => {
+            const exists = prev.containerIds.includes(id)
+            return {
+                ...prev,
+                containerIds: exists
+                    ? prev.containerIds.filter((value) => value !== id)
+                    : [...prev.containerIds, id],
+            }
+        })
+    }
+
+    const handleSaveLinks = async () => {
+        if (!linkingProcedure) {
+            return
+        }
+
+        setIsLinkSaving(true)
+        setLinkingFeedback(null)
+
+        const payload: LinkProcedurePayload = {
+            procedureId: linkingProcedure.id,
+            categoryIds: linkSelection.categoryIds,
+            containerIds: linkSelection.containerIds,
+        }
+
+        try {
+            const result = await linkProcedureAssociations(payload)
+
+            const resolvedCategories =
+                linkSelection.categoryIds.length === 0
+                    ? []
+                    : linkSelection.categoryIds
+                          .map((categoryId) => {
+                              const fromList = categories.find((category) => category.id === categoryId)
+                              if (fromList) {
+                                  return {
+                                      id: fromList.id,
+                                      code: fromList.code,
+                                      nameEn: fromList.nameEn,
+                                      nameAr: fromList.nameAr,
+                                      isActive: fromList.isActive,
+                                  }
+                              }
+                              return linkingProcedure.categories.find((category) => category.id === categoryId) ?? null
+                          })
+                          .filter((value): value is NonNullable<typeof value>)
+
+            const resolvedContainers =
+                linkSelection.containerIds.length === 0
+                    ? []
+                    : linkSelection.containerIds
+                          .map((containerId) => {
+                              const fromList = containers.find((container) => container.id === containerId)
+                              if (fromList) {
+                                  return {
+                                      id: fromList.id,
+                                      code: fromList.code,
+                                      nameEn: fromList.nameEn,
+                                      nameAr: fromList.nameAr,
+                                      levelNo: fromList.levelNo,
+                                      parentId: fromList.parentId,
+                                      parentName: fromList.parentName,
+                                  }
+                              }
+                              return linkingProcedure.containers.find((container) => container.id === containerId) ?? null
+                          })
+                          .filter((value): value is NonNullable<typeof value>)
+
+            const updatedDetails: ProcedureDetails = result
+                ? result
+                : {
+                      ...linkingProcedure,
+                      categories: resolvedCategories,
+                      containers: resolvedContainers,
+                  }
+
+            const successMessage = 'Procedure associations updated successfully.'
+            setProcedureDetails((prev) => (prev && prev.id === updatedDetails.id ? updatedDetails : prev))
+            setLinkingProcedure(updatedDetails)
+            setLinkingFeedback({ type: 'success', message: successMessage })
+            setDetailsFeedback({ type: 'success', message: successMessage })
+            await loadProcedures(page, pageSize, filters)
+        } catch (err) {
+            setLinkingFeedback({
+                type: 'error',
+                message: err instanceof Error ? err.message : 'Unable to update procedure associations.',
+            })
+        } finally {
+            setIsLinkSaving(false)
+        }
+    }
+
+    const handleEditProcedure = () => {
+        if (!procedureDetails) {
+            return
+        }
+
+        populateFormFromDetails(procedureDetails)
+        setDialogMode('edit')
+        setEditingProcedureId(procedureDetails.id)
+        setFormError(null)
+        setFeedback(null)
+        setIsDetailsOpen(false)
+        setIsDialogOpen(true)
+    }
+
+    const handleDeleteProcedure = async () => {
+        if (!procedureDetails) {
+            return
+        }
+
+        const confirmed = window.confirm(
+            'Are you sure you want to delete this procedure? This action cannot be undone.',
+        )
+
+        if (!confirmed) {
+            return
+        }
+
+        setIsDeleting(true)
+        setDetailsFeedback(null)
+        setOpenLinkAfterDetails(false)
+        handleLinkDialogChange(false)
+
+        try {
+            await deleteProcedure(procedureDetails.id)
+            const successMessage = 'Procedure deleted successfully.'
+            setFeedback({ type: 'success', message: successMessage })
+            setDetailsFeedback({ type: 'success', message: successMessage })
+            setIsDetailsOpen(false)
+            setProcedureDetails(null)
+            setDetailsId(null)
+
+            if (pageMeta.numberOfElements === 1 && page > 0) {
+                setPage((prev) => Math.max(prev - 1, 0))
+            } else {
+                await loadProcedures(page, pageSize, filters)
+            }
+        } catch (err) {
+            setDetailsFeedback({
+                type: 'error',
+                message: err instanceof Error ? err.message : 'Unable to delete procedure.',
+            })
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     const handleDetailsOpenChange = (open: boolean) => {
@@ -353,6 +769,7 @@ export function ProceduresManagementPage() {
             setProcedureDetails(null)
             setDetailsError(null)
             setDetailsId(null)
+            setDetailsFeedback(null)
         }
     }
 
@@ -369,17 +786,63 @@ export function ProceduresManagementPage() {
             try {
                 const detail = await getProcedureDetails(detailsId)
                 setProcedureDetails(detail)
+
+                if (openLinkAfterDetails) {
+                    setLinkingProcedure(detail)
+                    setLinkSelection({
+                        categoryIds: detail.categories.map((category) => category.id),
+                        containerIds: detail.containers.map((container) => container.id),
+                    })
+                    setLinkCategoryQuery('')
+                    setLinkContainerQuery('')
+                    setLinkingFeedback(null)
+                    setIsLinkDialogOpen(true)
+                    setOpenLinkAfterDetails(false)
+                    void loadCategories()
+                    void loadContainers()
+                }
             } catch (err) {
                 setDetailsError(err instanceof Error ? err.message : 'Failed to load procedure details')
             } finally {
                 setDetailsLoading(false)
             }
         })()
-    }, [isDetailsOpen, detailsId, getProcedureDetails])
+    }, [
+        isDetailsOpen,
+        detailsId,
+        getProcedureDetails,
+        openLinkAfterDetails,
+        loadCategories,
+        loadContainers,
+    ])
 
     const totalRecordsLabel = isSearching
         ? `${procedures.length} result${procedures.length === 1 ? '' : 's'} found`
         : `${pageMeta.numberOfElements} of ${pageMeta.totalElements} records`
+
+    const filteredLinkCategories = useMemo(() => {
+        const query = linkCategoryQuery.trim().toLowerCase()
+        if (!query) {
+            return categories
+        }
+
+        return categories.filter((category) => {
+            const values = [category.nameEn, category.code, category.nameAr ?? '']
+            return values.some((value) => value.toLowerCase().includes(query))
+        })
+    }, [categories, linkCategoryQuery])
+
+    const filteredLinkContainers = useMemo(() => {
+        const query = linkContainerQuery.trim().toLowerCase()
+        if (!query) {
+            return containers
+        }
+
+        return containers.filter((container) => {
+            const values = [container.nameEn, container.code, container.parentName ?? '']
+            return values.some((value) => value.toLowerCase().includes(query))
+        })
+    }, [containers, linkContainerQuery])
 
     return (
         <div className="space-y-6">
@@ -450,6 +913,24 @@ export function ProceduresManagementPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => handleCategoryManagerChange(true)}
+                            className="flex items-center gap-2"
+                        >
+                            <Library className="h-4 w-4" />
+                            Manage Categories
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => handleContainerManagerChange(true)}
+                            className="flex items-center gap-2"
+                        >
+                            <Boxes className="h-4 w-4" />
+                            Manage Containers
+                        </Button>
                         <Button type="button" variant="outline" onClick={handleFilterToggle} className="flex items-center gap-2">
                             <Filter className="h-4 w-4" />
                             {showFilters ? 'Hide Filters' : 'Show Filters'}
@@ -591,15 +1072,27 @@ export function ProceduresManagementPage() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="containerId">Container ID</Label>
-                            <Input
-                                id="containerId"
-                                type="number"
-                                min="0"
-                                value={filters.containerId ?? ''}
-                                onChange={(event) => handleContainerChange(event.target.value)}
-                                placeholder="Enter container identifier"
-                            />
+                            <Label htmlFor="containerFilter">Container</Label>
+                            <Select
+                                value={
+                                    filters.containerId !== null && filters.containerId !== undefined
+                                        ? String(filters.containerId)
+                                        : 'all'
+                                }
+                                onValueChange={handleContainerChange}
+                            >
+                                <SelectTrigger id="containerFilter">
+                                    <SelectValue placeholder="All containers" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All containers</SelectItem>
+                                    {containers.map((container) => (
+                                        <SelectItem key={container.id} value={String(container.id)}>
+                                            {container.nameEn} ({container.code})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                 )}
@@ -693,14 +1186,24 @@ export function ProceduresManagementPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleViewDetails(procedure)}
-                                            aria-label={`View details for ${procedure.code}`}
-                                        >
-                                            <Eye className="h-4 w-4" />
-                                        </Button>
+                                        <div className="flex justify-end gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleOpenLinkFromRow(procedure)}
+                                                aria-label={`Manage links for ${procedure.code}`}
+                                            >
+                                                <Link2 className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleViewDetails(procedure)}
+                                                aria-label={`View details for ${procedure.code}`}
+                                            >
+                                                <Eye className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))
@@ -736,6 +1239,522 @@ export function ProceduresManagementPage() {
                     </div>
                 </div>
             </div>
+
+            <Dialog open={isCategoryManagerOpen} onOpenChange={handleCategoryManagerChange}>
+                <DialogContent className="max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>Procedure Categories</DialogTitle>
+                        <DialogDescription>
+                            Review existing categories and add new definitions for procedures mapping.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-500">
+                                    {categories.length} category{categories.length === 1 ? '' : 'ies'}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void loadCategories()}
+                                    disabled={categoriesLoading}
+                                    className="flex items-center gap-2"
+                                >
+                                    <RefreshCcw className="h-4 w-4" />
+                                    Refresh
+                                </Button>
+                            </div>
+
+                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
+                                {categoriesLoading ? (
+                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
+                                    </div>
+                                ) : categories.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No categories available.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {categories.map((category) => (
+                                            <li key={category.id} className="p-3 text-sm">
+                                                <div className="font-medium text-gray-900">{category.nameEn}</div>
+                                                <div className="text-xs text-gray-500">Code: {category.code}</div>
+                                                <div className="mt-1 text-xs">
+                                                    <span
+                                                        className={cn(
+                                                            'inline-flex rounded-full px-2 py-0.5',
+                                                            category.isActive
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : 'bg-gray-100 text-gray-600',
+                                                        )}
+                                                    >
+                                                        {category.isActive ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="categoryCode">Code *</Label>
+                                <Input
+                                    id="categoryCode"
+                                    value={categoryForm.code}
+                                    onChange={(event) =>
+                                        setCategoryForm((prev) => ({ ...prev, code: event.target.value }))
+                                    }
+                                    placeholder="Enter category code"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="categoryNameEn">Name (English) *</Label>
+                                <Input
+                                    id="categoryNameEn"
+                                    value={categoryForm.nameEn}
+                                    onChange={(event) =>
+                                        setCategoryForm((prev) => ({ ...prev, nameEn: event.target.value }))
+                                    }
+                                    placeholder="Enter English name"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="categoryNameAr">Name (Arabic) *</Label>
+                                <Input
+                                    id="categoryNameAr"
+                                    value={categoryForm.nameAr}
+                                    onChange={(event) =>
+                                        setCategoryForm((prev) => ({ ...prev, nameAr: event.target.value }))
+                                    }
+                                    placeholder="أدخل الاسم بالعربية"
+                                    dir="rtl"
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
+                                <span className="text-sm font-medium">Active</span>
+                                <Switch
+                                    checked={categoryForm.isActive}
+                                    onCheckedChange={(checked) =>
+                                        setCategoryForm((prev) => ({ ...prev, isActive: checked }))
+                                    }
+                                />
+                            </div>
+
+                            {categoryFormError && (
+                                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                    {categoryFormError}
+                                </div>
+                            )}
+
+                            {categoryFeedback && (
+                                <div
+                                    className={cn(
+                                        'rounded-md border px-3 py-2 text-sm',
+                                        categoryFeedback.type === 'success'
+                                            ? 'border-green-200 bg-green-50 text-green-800'
+                                            : 'border-red-200 bg-red-50 text-red-700',
+                                    )}
+                                >
+                                    {categoryFeedback.message}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setCategoryForm(INITIAL_CATEGORY_FORM)}
+                                    disabled={isSavingCategory}
+                                >
+                                    Reset
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleSaveCategory}
+                                    disabled={isSavingCategory}
+                                    className="bg-tpa-primary text-white hover:bg-tpa-accent"
+                                >
+                                    {isSavingCategory ? (
+                                        <span className="flex items-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                        </span>
+                                    ) : (
+                                        'Add Category'
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isContainerManagerOpen} onOpenChange={handleContainerManagerChange}>
+                <DialogContent className="max-w-5xl">
+                    <DialogHeader>
+                        <DialogTitle>Procedure Containers</DialogTitle>
+                        <DialogDescription>
+                            Maintain the hierarchical containers used to group procedures.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-500">
+                                    {containers.length} container{containers.length === 1 ? '' : 's'}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void loadContainers()}
+                                    disabled={containersLoading}
+                                    className="flex items-center gap-2"
+                                >
+                                    <RefreshCcw className="h-4 w-4" />
+                                    Refresh
+                                </Button>
+                            </div>
+
+                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
+                                {containersLoading ? (
+                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
+                                    </div>
+                                ) : containers.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No containers available.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {containers.map((container) => (
+                                            <li key={container.id} className="p-3 text-sm">
+                                                <div className="font-medium text-gray-900">{container.nameEn}</div>
+                                                <div className="text-xs text-gray-500">
+                                                    Code: {container.code} · Level {container.levelNo}
+                                                </div>
+                                                {container.parentName && (
+                                                    <div className="text-xs text-gray-500">
+                                                        Parent: {container.parentName}
+                                                    </div>
+                                                )}
+                                                <div className="mt-1 text-xs">
+                                                    <span
+                                                        className={cn(
+                                                            'inline-flex rounded-full px-2 py-0.5',
+                                                            container.isActive
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : 'bg-gray-100 text-gray-600',
+                                                        )}
+                                                    >
+                                                        {container.isActive ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="containerCode">Code *</Label>
+                                <Input
+                                    id="containerCode"
+                                    value={containerForm.code}
+                                    onChange={(event) =>
+                                        setContainerForm((prev) => ({ ...prev, code: event.target.value }))
+                                    }
+                                    placeholder="Enter container code"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="containerNameEn">Name (English) *</Label>
+                                <Input
+                                    id="containerNameEn"
+                                    value={containerForm.nameEn}
+                                    onChange={(event) =>
+                                        setContainerForm((prev) => ({ ...prev, nameEn: event.target.value }))
+                                    }
+                                    placeholder="Enter English name"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="containerNameAr">Name (Arabic) *</Label>
+                                <Input
+                                    id="containerNameAr"
+                                    value={containerForm.nameAr}
+                                    onChange={(event) =>
+                                        setContainerForm((prev) => ({ ...prev, nameAr: event.target.value }))
+                                    }
+                                    placeholder="أدخل الاسم بالعربية"
+                                    dir="rtl"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="containerParent">Parent Container</Label>
+                                <Select
+                                    value={
+                                        typeof containerForm.parentId === 'number'
+                                            ? String(containerForm.parentId)
+                                            : 'none'
+                                    }
+                                    onValueChange={(value) =>
+                                        setContainerForm((prev) => ({
+                                            ...prev,
+                                            parentId: value === 'none' ? null : Number(value),
+                                        }))
+                                    }
+                                >
+                                    <SelectTrigger id="containerParent">
+                                        <SelectValue placeholder="No parent" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No parent</SelectItem>
+                                        {containers.map((container) => (
+                                            <SelectItem key={container.id} value={String(container.id)}>
+                                                {container.nameEn} ({container.code})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="containerCreatedBy">Created By</Label>
+                                    <Input
+                                        id="containerCreatedBy"
+                                        value={containerForm.createdBy ?? ''}
+                                        onChange={(event) =>
+                                            setContainerForm((prev) => ({ ...prev, createdBy: event.target.value }))
+                                        }
+                                        placeholder="Optional creator"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="containerUpdatedBy">Updated By</Label>
+                                    <Input
+                                        id="containerUpdatedBy"
+                                        value={containerForm.updatedBy ?? ''}
+                                        onChange={(event) =>
+                                            setContainerForm((prev) => ({ ...prev, updatedBy: event.target.value }))
+                                        }
+                                        placeholder="Optional editor"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-3">
+                                <span className="text-sm font-medium">Active</span>
+                                <Switch
+                                    checked={containerForm.isActive}
+                                    onCheckedChange={(checked) =>
+                                        setContainerForm((prev) => ({ ...prev, isActive: checked }))
+                                    }
+                                />
+                            </div>
+
+                            {containerFormError && (
+                                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                    {containerFormError}
+                                </div>
+                            )}
+
+                            {containerFeedback && (
+                                <div
+                                    className={cn(
+                                        'rounded-md border px-3 py-2 text-sm',
+                                        containerFeedback.type === 'success'
+                                            ? 'border-green-200 bg-green-50 text-green-800'
+                                            : 'border-red-200 bg-red-50 text-red-700',
+                                    )}
+                                >
+                                    {containerFeedback.message}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setContainerForm(INITIAL_CONTAINER_FORM)}
+                                    disabled={isSavingContainer}
+                                >
+                                    Reset
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleSaveContainer}
+                                    disabled={isSavingContainer}
+                                    className="bg-tpa-primary text-white hover:bg-tpa-accent"
+                                >
+                                    {isSavingContainer ? (
+                                        <span className="flex items-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                        </span>
+                                    ) : (
+                                        'Add Container'
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isLinkDialogOpen} onOpenChange={handleLinkDialogChange}>
+                <DialogContent className="max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>Manage Procedure Links</DialogTitle>
+                        <DialogDescription>
+                            Link the procedure to the correct categories and containers to control downstream visibility.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {linkingProcedure && (
+                        <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                            Managing links for <span className="font-semibold">{linkingProcedure.nameEn}</span> ({linkingProcedure.code})
+                        </div>
+                    )}
+
+                    {linkingFeedback && (
+                        <div
+                            className={cn(
+                                'rounded-md border px-3 py-2 text-sm',
+                                linkingFeedback.type === 'success'
+                                    ? 'border-green-200 bg-green-50 text-green-800'
+                                    : 'border-red-200 bg-red-50 text-red-700',
+                            )}
+                        >
+                            {linkingFeedback.message}
+                        </div>
+                    )}
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <section className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-gray-700">Categories</h4>
+                                <span className="text-xs text-gray-500">
+                                    {linkSelection.categoryIds.length} selected
+                                </span>
+                            </div>
+                            <Input
+                                placeholder="Search categories"
+                                value={linkCategoryQuery}
+                                onChange={(event) => setLinkCategoryQuery(event.target.value)}
+                            />
+                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
+                                {categoriesLoading ? (
+                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
+                                    </div>
+                                ) : filteredLinkCategories.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No categories match your search.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {filteredLinkCategories.map((category) => (
+                                            <li key={category.id}>
+                                                <label className="flex cursor-pointer items-start gap-2 p-3 hover:bg-gray-50">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-1"
+                                                        checked={linkSelection.categoryIds.includes(category.id)}
+                                                        onChange={() => toggleLinkCategory(category.id)}
+                                                    />
+                                                    <span className="space-y-1">
+                                                        <span className="block text-sm font-medium text-gray-900">
+                                                            {category.nameEn}
+                                                        </span>
+                                                        <span className="block text-xs text-gray-500">{category.code}</span>
+                                                    </span>
+                                                </label>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </section>
+
+                        <section className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-gray-700">Containers</h4>
+                                <span className="text-xs text-gray-500">
+                                    {linkSelection.containerIds.length} selected
+                                </span>
+                            </div>
+                            <Input
+                                placeholder="Search containers"
+                                value={linkContainerQuery}
+                                onChange={(event) => setLinkContainerQuery(event.target.value)}
+                            />
+                            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white">
+                                {containersLoading ? (
+                                    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
+                                    </div>
+                                ) : filteredLinkContainers.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No containers match your search.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {filteredLinkContainers.map((container) => (
+                                            <li key={container.id}>
+                                                <label className="flex cursor-pointer items-start gap-2 p-3 hover:bg-gray-50">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-1"
+                                                        checked={linkSelection.containerIds.includes(container.id)}
+                                                        onChange={() => toggleLinkContainer(container.id)}
+                                                    />
+                                                    <span className="space-y-1">
+                                                        <span className="block text-sm font-medium text-gray-900">
+                                                            {container.nameEn}
+                                                        </span>
+                                                        <span className="block text-xs text-gray-500">
+                                                            {container.code}
+                                                            {container.parentName ? ` · ${container.parentName}` : ''}
+                                                        </span>
+                                                    </span>
+                                                </label>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </section>
+                    </div>
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => handleLinkDialogChange(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleSaveLinks}
+                            disabled={isLinkSaving || !linkingProcedure}
+                            className="bg-tpa-primary text-white hover:bg-tpa-accent"
+                        >
+                            {isLinkSaving ? (
+                                <span className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                </span>
+                            ) : (
+                                'Save Links'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
                 <DialogContent className="max-w-4xl">
@@ -1003,6 +2022,19 @@ export function ProceduresManagementPage() {
                         <DialogDescription>Review the latest information received from the procedures service.</DialogDescription>
                     </DialogHeader>
 
+                    {detailsFeedback && (
+                        <div
+                            className={cn(
+                                'rounded-md border px-4 py-3 text-sm',
+                                detailsFeedback.type === 'success'
+                                    ? 'border-green-200 bg-green-50 text-green-800'
+                                    : 'border-red-200 bg-red-50 text-red-700',
+                            )}
+                        >
+                            {detailsFeedback.message}
+                        </div>
+                    )}
+
                     {detailsLoading ? (
                         <div className="flex h-40 items-center justify-center text-sm text-gray-500">
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading details...
@@ -1068,9 +2100,41 @@ export function ProceduresManagementPage() {
                         <div className="text-sm text-gray-500">No details available for the selected procedure.</div>
                     )}
 
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => handleDetailsOpenChange(false)}>
-                            Close
+                    <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            <Button type="button" variant="outline" onClick={() => handleDetailsOpenChange(false)}>
+                                Close
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={handleManageLinks}
+                                disabled={!procedureDetails || detailsLoading}
+                                className="flex items-center gap-2"
+                            >
+                                <Link2 className="h-4 w-4" />
+                                Manage Links
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={handleEditProcedure}
+                                disabled={!procedureDetails || detailsLoading}
+                                className="flex items-center gap-2"
+                            >
+                                <PencilLine className="h-4 w-4" />
+                                Edit Procedure
+                            </Button>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={handleDeleteProcedure}
+                            disabled={!procedureDetails || isDeleting}
+                            className="flex items-center gap-2"
+                        >
+                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            {isDeleting ? 'Deleting...' : 'Delete'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
