@@ -9,6 +9,7 @@ import {
     ProcedureContainerRecord,
     ProcedureContainerResponse,
     ProcedureDetails,
+    ProcedureDetailsPaginatedResponse,
     ProcedureListResponse,
     ProcedureSearchFilters,
     ProcedureSearchResponse,
@@ -306,6 +307,104 @@ export async function getProcedureDetails(id: number): Promise<ProcedureDetails>
     })
 
     return handleResponse<ProcedureDetails>(response, 'Unable to load procedure details')
+}
+
+export async function updateProcedureCategory(
+    id: number,
+    payload: CreateProcedureCategoryPayload,
+): Promise<ProcedureCategoryRecord> {
+    const url = buildUrl(`/procedures/categories/${id}`)
+    const response = await fetch(url, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+    })
+
+    return handleResponse<ProcedureCategoryRecord>(response, 'Unable to update procedure category')
+}
+
+export async function deleteProcedureCategory(id: number): Promise<void> {
+    const url = buildUrl(`/procedures/categories/${id}`)
+    const response = await fetch(url, {
+        method: 'DELETE',
+        headers,
+    })
+
+    return handleEmptyResponse(response, 'Unable to delete procedure category')
+}
+
+export async function updateProcedureContainer(
+    id: number,
+    payload: CreateProcedureContainerPayload,
+): Promise<ProcedureContainerRecord> {
+    const url = buildUrl(`/procedures/containers/${id}`)
+    const response = await fetch(url, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+    })
+
+    return handleResponse<ProcedureContainerRecord>(response, 'Unable to update procedure container')
+}
+
+export async function deleteProcedureContainer(id: number): Promise<void> {
+    const url = buildUrl(`/procedures/containers/${id}`)
+    const response = await fetch(url, {
+        method: 'DELETE',
+        headers,
+    })
+
+    return handleEmptyResponse(response, 'Unable to delete procedure container')
+}
+
+export interface GetProceduresByContainerParams {
+    containerId: number
+    page?: number
+    size?: number
+}
+
+export async function getProceduresByContainerDetails({
+    containerId,
+    page = 0,
+    size = 10,
+}: GetProceduresByContainerParams): Promise<ProcedureDetailsPaginatedResponse> {
+    const url = buildUrl(`/procedures/by-container/${containerId}/details`, { page, size })
+    const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        cache: 'no-store',
+    })
+
+    return handleResponse<ProcedureDetailsPaginatedResponse>(
+        response,
+        'Unable to load container procedure associations',
+    )
+}
+
+export async function unlinkProcedureCategory(
+    procedureId: number,
+    categoryId: number,
+): Promise<void> {
+    const url = buildUrl('/procedures/unlink/category', { procedureId, categoryId })
+    const response = await fetch(url, {
+        method: 'DELETE',
+        headers,
+    })
+
+    return handleEmptyResponse(response, 'Unable to unlink procedure category')
+}
+
+export async function unlinkProcedureContainer(
+    procedureId: number,
+    containerId: number,
+): Promise<void> {
+    const url = buildUrl('/procedures/unlink/container', { procedureId, containerId })
+    const response = await fetch(url, {
+        method: 'DELETE',
+        headers,
+    })
+
+    return handleEmptyResponse(response, 'Unable to unlink procedure container')
 }
 
 export type { ProcedureSummary }

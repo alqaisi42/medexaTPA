@@ -144,3 +144,4 @@ export type ProcedureListResponse = PaginatedResponse<ProcedureSummary>
 export type ProcedureSearchResponse = PaginatedResponse<ProcedureSummary>
 export type ProcedureCategoryResponse = PaginatedResponse<ProcedureCategoryRecord>
 export type ProcedureContainerResponse = PaginatedResponse<ProcedureContainerRecord>
+export type ProcedureDetailsPaginatedResponse = PaginatedResponse<ProcedureDetails>

@@ -14,6 +14,7 @@ import {
     RefreshCcw,
     Search,
     Trash2,
+    Unlink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,12 +40,19 @@ import {
     createProcedureCategory,
     createProcedureContainer,
     deleteProcedure,
+    deleteProcedureCategory,
+    deleteProcedureContainer,
     fetchProcedureCategories,
     fetchProcedureContainers,
     getProcedureDetails,
+    getProceduresByContainerDetails,
     linkProcedureAssociations,
     searchProcedures,
+    unlinkProcedureCategory,
+    unlinkProcedureContainer,
     updateProcedure,
+    updateProcedureCategory,
+    updateProcedureContainer,
 } from '@/lib/api/procedures'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
@@ -55,6 +63,8 @@ const BOOLEAN_SELECT_OPTIONS = [
     { label: 'Yes', value: 'true' },
     { label: 'No', value: 'false' },
 ]
+
+const CONTAINER_USAGE_PAGE_SIZE = 10
 
 const INITIAL_FORM_STATE: CreateProcedurePayload = {
     systemCode: '',
@@ -169,11 +179,15 @@ export function ProceduresManagementPage() {
     const [categoryFormError, setCategoryFormError] = useState<string | null>(null)
     const [categoryFeedback, setCategoryFeedback] = useState<FeedbackState | null>(null)
     const [isSavingCategory, setIsSavingCategory] = useState(false)
+    const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
+    const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
 
     const [containerForm, setContainerForm] = useState<CreateProcedureContainerPayload>(INITIAL_CONTAINER_FORM)
     const [containerFormError, setContainerFormError] = useState<string | null>(null)
     const [containerFeedback, setContainerFeedback] = useState<FeedbackState | null>(null)
     const [isSavingContainer, setIsSavingContainer] = useState(false)
+    const [editingContainerId, setEditingContainerId] = useState<number | null>(null)
+    const [deletingContainerId, setDeletingContainerId] = useState<number | null>(null)
 
     const [isDetailsOpen, setIsDetailsOpen] = useState(false)
     const [detailsLoading, setDetailsLoading] = useState(false)
@@ -192,11 +206,38 @@ export function ProceduresManagementPage() {
     const [linkContainerQuery, setLinkContainerQuery] = useState('')
     const [openLinkAfterDetails, setOpenLinkAfterDetails] = useState(false)
 
+    const [unlinkingCategoryId, setUnlinkingCategoryId] = useState<number | null>(null)
+    const [unlinkingContainerId, setUnlinkingContainerId] = useState<number | null>(null)
+
+    const [isContainerUsageOpen, setIsContainerUsageOpen] = useState(false)
+    const [containerUsageContainer, setContainerUsageContainer] = useState<ProcedureContainerRecord | null>(null)
+    const [containerUsageProcedures, setContainerUsageProcedures] = useState<ProcedureDetails[]>([])
+    const [containerUsageLoading, setContainerUsageLoading] = useState(false)
+    const [containerUsageError, setContainerUsageError] = useState<string | null>(null)
+    const [containerUsagePage, setContainerUsagePage] = useState(0)
+    const [containerUsageMeta, setContainerUsageMeta] = useState<PageMetadata>({
+        totalPages: 0,
+        totalElements: 0,
+        numberOfElements: 0,
+        first: true,
+        last: true,
+    })
+
     const loadCategories = useCallback(async () => {
         setCategoriesLoading(true)
         try {
             const data = await fetchProcedureCategories({ page: 0, size: 200 })
-            setCategories(data.content ?? [])
+            const records = data.content ?? []
+            setCategories(records)
+            setEditingCategoryId((prev) => {
+                if (prev !== null && !records.some((item) => item.id === prev)) {
+                    setCategoryForm(INITIAL_CATEGORY_FORM)
+                    setCategoryFormError(null)
+                    setCategoryFeedback(null)
+                    return null
+                }
+                return prev
+            })
         } catch (categoryError) {
             console.warn('Unable to load procedure categories', categoryError)
         } finally {
@@ -208,7 +249,39 @@ export function ProceduresManagementPage() {
         setContainersLoading(true)
         try {
             const data = await fetchProcedureContainers({ page: 0, size: 200 })
-            setContainers(data.content ?? [])
+            const records = data.content ?? []
+            setContainers(records)
+            setEditingContainerId((prev) => {
+                if (prev !== null && !records.some((item) => item.id === prev)) {
+                    setContainerForm(INITIAL_CONTAINER_FORM)
+                    setContainerFormError(null)
+                    setContainerFeedback(null)
+                    return null
+                }
+                return prev
+            })
+            setContainerUsageContainer((prev) => {
+                if (!prev) {
+                    return prev
+                }
+
+                const updated = records.find((item) => item.id === prev.id)
+                if (!updated) {
+                    setIsContainerUsageOpen(false)
+                    setContainerUsageProcedures([])
+                    setContainerUsageError(null)
+                    setContainerUsageMeta({
+                        totalPages: 0,
+                        totalElements: 0,
+                        numberOfElements: 0,
+                        first: true,
+                        last: true,
+                    })
+                    return null
+                }
+
+                return updated
+            })
         } catch (containerError) {
             console.warn('Unable to load procedure containers', containerError)
         } finally {
@@ -509,6 +582,12 @@ export function ProceduresManagementPage() {
         setIsDetailsOpen(true)
     }
 
+    const handleResetCategoryForm = () => {
+        setCategoryForm(INITIAL_CATEGORY_FORM)
+        setCategoryFormError(null)
+        setEditingCategoryId(null)
+    }
+
     const handleSaveCategory = async () => {
         setCategoryFormError(null)
         setCategoryFeedback(null)
@@ -525,18 +604,76 @@ export function ProceduresManagementPage() {
             return
         }
 
+        const isEditing = editingCategoryId !== null
+        const successMessage = isEditing ? 'Category updated successfully.' : 'Category created successfully.'
+        const failureMessage = isEditing
+            ? 'Unable to update category at this time.'
+            : 'Unable to create category at this time.'
+
         setIsSavingCategory(true)
         try {
-            await createProcedureCategory(payload)
-            setCategoryFeedback({ type: 'success', message: 'Category created successfully.' })
-            setCategoryForm(INITIAL_CATEGORY_FORM)
+            if (isEditing && editingCategoryId !== null) {
+                await updateProcedureCategory(editingCategoryId, payload)
+            } else {
+                await createProcedureCategory(payload)
+            }
+            setCategoryFeedback({ type: 'success', message: successMessage })
+            handleResetCategoryForm()
             await loadCategories()
         } catch (err) {
-            setCategoryFormError(err instanceof Error ? err.message : 'Unable to create category at this time.')
-            setCategoryFeedback({ type: 'error', message: 'Unable to create category.' })
+            setCategoryFormError(err instanceof Error ? err.message : failureMessage)
+            setCategoryFeedback({ type: 'error', message: failureMessage })
         } finally {
             setIsSavingCategory(false)
         }
+    }
+
+    const handleEditCategoryRecord = (record: ProcedureCategoryRecord) => {
+        setCategoryForm({
+            code: record.code,
+            nameEn: record.nameEn,
+            nameAr: record.nameAr,
+            isActive: record.isActive,
+        })
+        setEditingCategoryId(record.id)
+        setCategoryFormError(null)
+        setCategoryFeedback(null)
+    }
+
+    const handleDeleteCategoryRecord = async (id: number) => {
+        const confirmed = window.confirm(
+            'Are you sure you want to delete this category? Procedures linked to it will no longer reference it.',
+        )
+
+        if (!confirmed) {
+            return
+        }
+
+        setDeletingCategoryId(id)
+        setCategoryFeedback(null)
+        setCategoryFormError(null)
+
+        try {
+            await deleteProcedureCategory(id)
+            const successMessage = 'Category deleted successfully.'
+            setCategoryFeedback({ type: 'success', message: successMessage })
+            if (editingCategoryId === id) {
+                handleResetCategoryForm()
+            }
+            await loadCategories()
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to delete category at this time.'
+            setCategoryFeedback({ type: 'error', message })
+            setCategoryFormError(message)
+        } finally {
+            setDeletingCategoryId(null)
+        }
+    }
+
+    const handleResetContainerForm = () => {
+        setContainerForm(INITIAL_CONTAINER_FORM)
+        setContainerFormError(null)
+        setEditingContainerId(null)
     }
 
     const handleSaveContainer = async () => {
@@ -561,18 +698,183 @@ export function ProceduresManagementPage() {
             return
         }
 
+        const isEditing = editingContainerId !== null
+        const successMessage = isEditing ? 'Container updated successfully.' : 'Container created successfully.'
+        const failureMessage = isEditing
+            ? 'Unable to update container at this time.'
+            : 'Unable to create container at this time.'
+
         setIsSavingContainer(true)
         try {
-            await createProcedureContainer(payload)
-            setContainerFeedback({ type: 'success', message: 'Container created successfully.' })
-            setContainerForm(INITIAL_CONTAINER_FORM)
+            let updatedRecord: ProcedureContainerRecord | null = null
+            if (isEditing && editingContainerId !== null) {
+                updatedRecord = await updateProcedureContainer(editingContainerId, payload)
+            } else {
+                await createProcedureContainer(payload)
+            }
+            setContainerFeedback({ type: 'success', message: successMessage })
+            handleResetContainerForm()
             await loadContainers()
+            if (updatedRecord) {
+                setContainerUsageContainer((prev) => (prev && prev.id === updatedRecord.id ? updatedRecord : prev))
+            }
         } catch (err) {
-            setContainerFormError(err instanceof Error ? err.message : 'Unable to create container at this time.')
-            setContainerFeedback({ type: 'error', message: 'Unable to create container.' })
+            setContainerFormError(err instanceof Error ? err.message : failureMessage)
+            setContainerFeedback({ type: 'error', message: failureMessage })
         } finally {
             setIsSavingContainer(false)
         }
+    }
+
+    const handleEditContainerRecord = (record: ProcedureContainerRecord) => {
+        setContainerForm({
+            code: record.code,
+            nameEn: record.nameEn,
+            nameAr: record.nameAr,
+            parentId: record.parentId ?? null,
+            isActive: record.isActive,
+            createdBy: '',
+            updatedBy: '',
+        })
+        setEditingContainerId(record.id)
+        setContainerFormError(null)
+        setContainerFeedback(null)
+    }
+
+    const handleDeleteContainerRecord = async (id: number) => {
+        const confirmed = window.confirm(
+            'Deleting this container will remove its association from all procedures. Do you want to continue?',
+        )
+
+        if (!confirmed) {
+            return
+        }
+
+        setDeletingContainerId(id)
+        setContainerFeedback(null)
+        setContainerFormError(null)
+
+        try {
+            await deleteProcedureContainer(id)
+            const successMessage = 'Container deleted successfully.'
+            setContainerFeedback({ type: 'success', message: successMessage })
+            if (editingContainerId === id) {
+                handleResetContainerForm()
+            }
+            setContainerUsageContainer((prev) => {
+                if (prev && prev.id === id) {
+                    setIsContainerUsageOpen(false)
+                    setContainerUsageProcedures([])
+                    setContainerUsageError(null)
+                    setContainerUsageMeta({
+                        totalPages: 0,
+                        totalElements: 0,
+                        numberOfElements: 0,
+                        first: true,
+                        last: true,
+                    })
+                    return null
+                }
+                return prev
+            })
+            await loadContainers()
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to delete container at this time.'
+            setContainerFeedback({ type: 'error', message })
+            setContainerFormError(message)
+        } finally {
+            setDeletingContainerId(null)
+        }
+    }
+
+    const loadContainerUsage = useCallback(
+        async (containerId: number, targetPage = 0) => {
+            setContainerUsageLoading(true)
+            setContainerUsageError(null)
+
+            try {
+                const data = await getProceduresByContainerDetails({
+                    containerId,
+                    page: targetPage,
+                    size: CONTAINER_USAGE_PAGE_SIZE,
+                })
+
+                setContainerUsageProcedures(data.content ?? [])
+                setContainerUsageMeta({
+                    totalPages: data.totalPages,
+                    totalElements: data.totalElements,
+                    numberOfElements: data.numberOfElements,
+                    first: data.first,
+                    last: data.last,
+                })
+                setContainerUsagePage(targetPage)
+            } catch (err) {
+                setContainerUsageProcedures([])
+                setContainerUsageMeta({
+                    totalPages: 0,
+                    totalElements: 0,
+                    numberOfElements: 0,
+                    first: true,
+                    last: true,
+                })
+                setContainerUsageError(
+                    err instanceof Error ? err.message : 'Unable to load container usage at this time.',
+                )
+            } finally {
+                setContainerUsageLoading(false)
+            }
+        },
+        [],
+    )
+
+    const handleViewContainerUsage = (record: ProcedureContainerRecord) => {
+        setContainerUsageContainer(record)
+        setContainerUsageError(null)
+        setContainerUsageProcedures([])
+        setContainerUsagePage(0)
+        setContainerUsageMeta({
+            totalPages: 0,
+            totalElements: 0,
+            numberOfElements: 0,
+            first: true,
+            last: true,
+        })
+        setIsContainerUsageOpen(true)
+        void loadContainerUsage(record.id, 0)
+    }
+
+    const handleContainerUsageDialogChange = (open: boolean) => {
+        setIsContainerUsageOpen(open)
+        if (!open) {
+            setContainerUsageContainer(null)
+            setContainerUsageProcedures([])
+            setContainerUsageError(null)
+            setContainerUsagePage(0)
+            setContainerUsageMeta({
+                totalPages: 0,
+                totalElements: 0,
+                numberOfElements: 0,
+                first: true,
+                last: true,
+            })
+        }
+    }
+
+    const handleContainerUsagePageChange = (direction: 'next' | 'prev') => {
+        if (!containerUsageContainer) {
+            return
+        }
+
+        if (direction === 'next' && containerUsageMeta.last) {
+            return
+        }
+
+        if (direction === 'prev' && containerUsageMeta.first) {
+            return
+        }
+
+        const targetPage = direction === 'next' ? containerUsagePage + 1 : Math.max(containerUsagePage - 1, 0)
+        void loadContainerUsage(containerUsageContainer.id, targetPage)
     }
 
     const handleManageLinks = () => {
@@ -602,6 +904,117 @@ export function ProceduresManagementPage() {
             setLinkCategoryQuery('')
             setLinkContainerQuery('')
             setOpenLinkAfterDetails(false)
+        }
+    }
+
+    const handleUnlinkCategoryFromProcedure = async (categoryId: number) => {
+        if (!procedureDetails) {
+            return
+        }
+
+        const confirmed = window.confirm(
+            'This will unlink the category from the procedure. Do you want to continue?',
+        )
+
+        if (!confirmed) {
+            return
+        }
+
+        setUnlinkingCategoryId(categoryId)
+        setDetailsFeedback(null)
+
+        try {
+            await unlinkProcedureCategory(procedureDetails.id, categoryId)
+            const successMessage = 'Category unlinked from procedure successfully.'
+            setProcedureDetails((prev) => {
+                if (!prev) {
+                    return prev
+                }
+
+                return {
+                    ...prev,
+                    categories: prev.categories.filter((category) => category.id !== categoryId),
+                }
+            })
+            setLinkingProcedure((prev) => {
+                if (prev && prev.id === procedureDetails.id) {
+                    return {
+                        ...prev,
+                        categories: prev.categories.filter((category) => category.id !== categoryId),
+                    }
+                }
+                return prev
+            })
+            setLinkSelection((prev) => ({
+                ...prev,
+                categoryIds: prev.categoryIds.filter((id) => id !== categoryId),
+            }))
+            setDetailsFeedback({ type: 'success', message: successMessage })
+            await loadProcedures(page, pageSize, filters)
+        } catch (err) {
+            setDetailsFeedback({
+                type: 'error',
+                message: err instanceof Error ? err.message : 'Unable to unlink category.',
+            })
+        } finally {
+            setUnlinkingCategoryId(null)
+        }
+    }
+
+    const handleUnlinkContainerFromProcedure = async (containerId: number) => {
+        if (!procedureDetails) {
+            return
+        }
+
+        const confirmed = window.confirm(
+            'This will unlink the container from the procedure. Do you want to continue?',
+        )
+
+        if (!confirmed) {
+            return
+        }
+
+        setUnlinkingContainerId(containerId)
+        setDetailsFeedback(null)
+
+        try {
+            await unlinkProcedureContainer(procedureDetails.id, containerId)
+            const successMessage = 'Container unlinked from procedure successfully.'
+            setProcedureDetails((prev) => {
+                if (!prev) {
+                    return prev
+                }
+
+                return {
+                    ...prev,
+                    containers: prev.containers.filter((container) => container.id !== containerId),
+                }
+            })
+            setLinkingProcedure((prev) => {
+                if (prev && prev.id === procedureDetails.id) {
+                    return {
+                        ...prev,
+                        containers: prev.containers.filter((container) => container.id !== containerId),
+                    }
+                }
+                return prev
+            })
+            setLinkSelection((prev) => ({
+                ...prev,
+                containerIds: prev.containerIds.filter((id) => id !== containerId),
+            }))
+            setDetailsFeedback({ type: 'success', message: successMessage })
+            await loadProcedures(page, pageSize, filters)
+            if (containerUsageContainer && containerUsageContainer.id === containerId) {
+                void loadContainerUsage(containerId, containerUsagePage)
+            }
+        } catch (err) {
+            setDetailsFeedback({
+                type: 'error',
+                message: err instanceof Error ? err.message : 'Unable to unlink container.',
+            })
+        } finally {
+            setUnlinkingContainerId(null)
         }
     }
 
@@ -825,6 +1238,14 @@ export function ProceduresManagementPage() {
     const totalRecordsLabel = isSearching
         ? `${procedures.length} result${procedures.length === 1 ? '' : 's'} found`
         : `${pageMeta.numberOfElements} of ${pageMeta.totalElements} records`
+
+    const availableParentContainers = useMemo(
+        () =>
+            editingContainerId === null
+                ? containers
+                : containers.filter((container) => container.id !== editingContainerId),
+        [containers, editingContainerId],
+    )
 
     const filteredLinkCategories = useMemo(() => {
         const query = linkCategoryQuery.trim().toLowerCase()
@@ -1299,9 +1720,41 @@ export function ProceduresManagementPage() {
                                         <ul className="divide-y divide-gray-100">
                                             {categories.map((category) => (
                                                 <li key={category.id} className="p-3 text-sm">
-                                                    <div className="font-medium text-gray-900">{category.nameEn}</div>
-                                                    <div className="text-xs text-gray-500">Code: {category.code}</div>
-                                                    <div className="mt-1 text-xs">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <div className="font-medium text-gray-900">{category.nameEn}</div>
+                                                            <div className="text-xs text-gray-500">Code: {category.code}</div>
+                                                            <div className="text-xs text-gray-500">
+                                                                Procedures linked: {category.procedureCount}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleEditCategoryRecord(category)}
+                                                                aria-label={`Edit category ${category.code}`}
+                                                            >
+                                                                <PencilLine className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => void handleDeleteCategoryRecord(category.id)}
+                                                                disabled={deletingCategoryId === category.id}
+                                                                aria-label={`Delete category ${category.code}`}
+                                                            >
+                                                                {deletingCategoryId === category.id ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 text-xs">
                                                         <span
                                                             className={cn(
                                                                 'inline-flex rounded-full px-2 py-0.5',
@@ -1387,14 +1840,20 @@ export function ProceduresManagementPage() {
                                     </div>
                                 )}
 
+                                {editingCategoryId && (
+                                    <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                                        Editing existing category. Saving will update the linked record.
+                                    </div>
+                                )}
+
                                 <div className="flex justify-end gap-2">
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        onClick={() => setCategoryForm(INITIAL_CATEGORY_FORM)}
+                                        onClick={handleResetCategoryForm}
                                         disabled={isSavingCategory}
                                     >
-                                        Reset
+                                        {editingCategoryId ? 'Cancel' : 'Reset'}
                                     </Button>
                                     <Button
                                         type="button"
@@ -1407,7 +1866,7 @@ export function ProceduresManagementPage() {
                                                 <Loader2 className="h-4 w-4 animate-spin" /> Saving...
                                             </span>
                                         ) : (
-                                            'Add Category'
+                                            editingCategoryId ? 'Save Changes' : 'Add Category'
                                         )}
                                     </Button>
                                 </div>
@@ -1455,16 +1914,58 @@ export function ProceduresManagementPage() {
                                         <ul className="divide-y divide-gray-100">
                                             {containers.map((container) => (
                                                 <li key={container.id} className="p-3 text-sm">
-                                                    <div className="font-medium text-gray-900">{container.nameEn}</div>
-                                                    <div className="text-xs text-gray-500">
-                                                        Code: {container.code} · Level {container.levelNo}
-                                                    </div>
-                                                    {container.parentName && (
-                                                        <div className="text-xs text-gray-500">
-                                                            Parent: {container.parentName}
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <div className="font-medium text-gray-900">{container.nameEn}</div>
+                                                            <div className="text-xs text-gray-500">
+                                                                Code: {container.code} · Level {container.levelNo}
+                                                            </div>
+                                                            {container.parentName && (
+                                                                <div className="text-xs text-gray-500">
+                                                                    Parent: {container.parentName}
+                                                                </div>
+                                                            )}
+                                                            <div className="text-xs text-gray-500">
+                                                                Procedures linked: {container.procedureCount} · Children:{' '}
+                                                                {container.childCount}
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                    <div className="mt-1 text-xs">
+                                                        <div className="flex items-center gap-1">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleViewContainerUsage(container)}
+                                                                aria-label={`View usage for ${container.code}`}
+                                                            >
+                                                                <Info className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleEditContainerRecord(container)}
+                                                                aria-label={`Edit container ${container.code}`}
+                                                            >
+                                                                <PencilLine className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => void handleDeleteContainerRecord(container.id)}
+                                                                disabled={deletingContainerId === container.id}
+                                                                aria-label={`Delete container ${container.code}`}
+                                                            >
+                                                                {deletingContainerId === container.id ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 text-xs">
                                                         <span
                                                             className={cn(
                                                                 'inline-flex rounded-full px-2 py-0.5',
@@ -1541,7 +2042,7 @@ export function ProceduresManagementPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">No parent</SelectItem>
-                                            {containers.map((container) => (
+                                            {availableParentContainers.map((container) => (
                                                 <SelectItem key={container.id} value={String(container.id)}>
                                                     {container.nameEn} ({container.code})
                                                 </SelectItem>
@@ -1604,14 +2105,20 @@ export function ProceduresManagementPage() {
                                     </div>
                                 )}
 
+                                {editingContainerId && (
+                                    <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                                        Editing existing container. Saving will update the linked record.
+                                    </div>
+                                )}
+
                                 <div className="flex justify-end gap-2">
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        onClick={() => setContainerForm(INITIAL_CONTAINER_FORM)}
+                                        onClick={handleResetContainerForm}
                                         disabled={isSavingContainer}
                                     >
-                                        Reset
+                                        {editingContainerId ? 'Cancel' : 'Reset'}
                                     </Button>
                                     <Button
                                         type="button"
@@ -1624,7 +2131,7 @@ export function ProceduresManagementPage() {
                                                 <Loader2 className="h-4 w-4 animate-spin" /> Saving...
                                             </span>
                                         ) : (
-                                            'Add Container'
+                                            editingContainerId ? 'Save Changes' : 'Add Container'
                                         )}
                                     </Button>
                                 </div>
@@ -1943,12 +2450,27 @@ export function ProceduresManagementPage() {
                                         <span className="text-sm text-gray-500">No categories linked.</span>
                                     ) : (
                                         procedureDetails.categories.map((category) => (
-                                            <span
+                                            <div
                                                 key={`${category.id}-${category.code}`}
-                                                className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800"
+                                                className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800"
                                             >
-                                                {category.nameEn}
-                                            </span>
+                                                <span>{category.nameEn}</span>
+                                                <Button
+                                                    type="button"
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-5 w-5 rounded-full text-blue-700 hover:bg-blue-200 hover:text-blue-900"
+                                                    onClick={() => void handleUnlinkCategoryFromProcedure(category.id)}
+                                                    disabled={unlinkingCategoryId === category.id}
+                                                    aria-label={`Unlink category ${category.code}`}
+                                                >
+                                                    {unlinkingCategoryId === category.id ? (
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Unlink className="h-3.5 w-3.5" />
+                                                    )}
+                                                </Button>
+                                            </div>
                                         ))
                                     )}
                                 </div>
@@ -1961,12 +2483,34 @@ export function ProceduresManagementPage() {
                                         <p className="text-sm text-gray-500">No container mappings available.</p>
                                     ) : (
                                         procedureDetails.containers.map((container) => (
-                                            <div key={`${container.id}-${container.code}`} className="rounded-lg border border-gray-100 p-3 text-sm">
-                                                <div className="font-medium text-gray-800">{container.nameEn}</div>
-                                                <div className="text-gray-500">Level {container.levelNo}</div>
-                                                {container.parentName && (
-                                                    <div className="text-gray-500">Parent: {container.parentName}</div>
-                                                )}
+                                            <div
+                                                key={`${container.id}-${container.code}`}
+                                                className="rounded-lg border border-gray-100 p-3 text-sm"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <div className="font-medium text-gray-800">{container.nameEn}</div>
+                                                        <div className="text-gray-500">Level {container.levelNo}</div>
+                                                        {container.parentName && (
+                                                            <div className="text-gray-500">Parent: {container.parentName}</div>
+                                                        )}
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-6 w-6 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                                                        onClick={() => void handleUnlinkContainerFromProcedure(container.id)}
+                                                        disabled={unlinkingContainerId === container.id}
+                                                        aria-label={`Unlink container ${container.code}`}
+                                                    >
+                                                        {unlinkingContainerId === container.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Unlink className="h-4 w-4" />
+                                                        )}
+                                                    </Button>
+                                                </div>
                                             </div>
                                         ))
                                     )}
@@ -2012,6 +2556,131 @@ export function ProceduresManagementPage() {
                         >
                             {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                             {isDeleting ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isContainerUsageOpen} onOpenChange={handleContainerUsageDialogChange}>
+                <DialogContent className="max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>Container Usage</DialogTitle>
+                        <DialogDescription>
+                            {containerUsageContainer
+                                ? `Procedures linked to ${containerUsageContainer.nameEn} (${containerUsageContainer.code}).`
+                                : 'Review procedures currently linked to the selected container.'}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {containerUsageError ? (
+                        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            <Info className="h-4 w-4" />
+                            {containerUsageError}
+                        </div>
+                    ) : containerUsageLoading ? (
+                        <div className="flex h-32 items-center justify-center text-sm text-gray-500">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading container usage...
+                        </div>
+                    ) : containerUsageProcedures.length === 0 ? (
+                        <p className="text-sm text-gray-500">
+                            No procedures are currently linked to this container.
+                        </p>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="text-xs uppercase tracking-wide text-gray-500">
+                                Showing {containerUsageProcedures.length} of {containerUsageMeta.totalElements} procedures
+                            </div>
+                            <div className="space-y-3">
+                                {containerUsageProcedures.map((procedure) => (
+                                    <div
+                                        key={`${procedure.id}-${procedure.code}`}
+                                        className="rounded-lg border border-gray-100 p-4 text-sm"
+                                    >
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                            <div>
+                                                <div className="text-base font-semibold text-gray-900">
+                                                    {procedure.nameEn}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    Code: {procedure.code} · System: {procedure.systemCode}
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                                Reference Price: {formatCurrency(procedure.referencePrice)}
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                            <div>
+                                                <div className="text-xs uppercase text-gray-500">Categories</div>
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                    {procedure.categories.length === 0 ? (
+                                                        <span className="text-xs text-gray-400">None</span>
+                                                    ) : (
+                                                        procedure.categories.map((category) => (
+                                                            <span
+                                                                key={`usage-category-${procedure.id}-${category.id}`}
+                                                                className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700"
+                                                            >
+                                                                {category.nameEn}
+                                                            </span>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs uppercase text-gray-500">Containers</div>
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                    {procedure.containers.length === 0 ? (
+                                                        <span className="text-xs text-gray-400">None</span>
+                                                    ) : (
+                                                        procedure.containers.map((linkedContainer) => (
+                                                            <span
+                                                                key={`usage-container-${procedure.id}-${linkedContainer.id}`}
+                                                                className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700"
+                                                            >
+                                                                {linkedContainer.nameEn}
+                                                            </span>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleContainerUsagePageChange('prev')}
+                                disabled={containerUsageMeta.first || containerUsageLoading}
+                            >
+                                Previous
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleContainerUsagePageChange('next')}
+                                disabled={containerUsageMeta.last || containerUsageLoading}
+                            >
+                                Next
+                            </Button>
+                            <span>
+                                Page {containerUsagePage + 1} of {Math.max(containerUsageMeta.totalPages, 1)}
+                            </span>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => handleContainerUsageDialogChange(false)}
+                        >
+                            Close
                         </Button>
                     </DialogFooter>
                 </DialogContent>
