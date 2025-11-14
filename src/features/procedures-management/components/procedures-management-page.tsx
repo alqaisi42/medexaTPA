@@ -647,41 +647,44 @@ export function ProceduresManagementPage() {
                 linkSelection.categoryIds.length === 0
                     ? []
                     : linkSelection.categoryIds
-                          .map((categoryId) => {
-                              const fromList = categories.find((category) => category.id === categoryId)
-                              if (fromList) {
-                                  return {
-                                      id: fromList.id,
-                                      code: fromList.code,
-                                      nameEn: fromList.nameEn,
-                                      nameAr: fromList.nameAr,
-                                      isActive: fromList.isActive,
-                                  }
-                              }
-                              return linkingProcedure.categories.find((category) => category.id === categoryId) ?? null
-                          })
-                          .filter((value): value is NonNullable<typeof value>)
+                        .map((categoryId) => {
+                            const fromList = categories.find((c) => c.id === categoryId)
+                            if (fromList) {
+                                return {
+                                    id: fromList.id,
+                                    code: fromList.code,
+                                    nameEn: fromList.nameEn,
+                                    nameAr: fromList.nameAr,
+                                    isActive: fromList.isActive,
+                                }
+                            }
+
+                            return linkingProcedure.categories.find((c) => c.id === categoryId) ?? null
+                        })
+                        .filter(notNull)
+
 
             const resolvedContainers =
                 linkSelection.containerIds.length === 0
                     ? []
                     : linkSelection.containerIds
-                          .map((containerId) => {
-                              const fromList = containers.find((container) => container.id === containerId)
-                              if (fromList) {
-                                  return {
-                                      id: fromList.id,
-                                      code: fromList.code,
-                                      nameEn: fromList.nameEn,
-                                      nameAr: fromList.nameAr,
-                                      levelNo: fromList.levelNo,
-                                      parentId: fromList.parentId,
-                                      parentName: fromList.parentName,
-                                  }
-                              }
-                              return linkingProcedure.containers.find((container) => container.id === containerId) ?? null
-                          })
-                          .filter((value): value is NonNullable<typeof value>)
+                        .map((containerId) => {
+                            const fromList = containers.find((c) => c.id === containerId)
+                            if (fromList) {
+                                return {
+                                    id: fromList.id,
+                                    code: fromList.code,
+                                    nameEn: fromList.nameEn,
+                                    nameAr: fromList.nameAr,
+                                    levelNo: fromList.levelNo,
+                                    parentId: fromList.parentId,
+                                    parentName: fromList.parentName,
+                                }
+                            }
+
+                            return linkingProcedure.containers.find((c) => c.id === containerId) ?? null
+                        })
+                        .filter(notNull)
 
             const updatedDetails: ProcedureDetails = result
                 ? result
@@ -2200,4 +2203,8 @@ function DetailItem({ label, value, rtl = false }: DetailItemProps) {
             </div>
         </div>
     )
+}
+
+export function notNull<T>(value: T): value is NonNullable<T> {
+    return value !== null && value !== undefined
 }
