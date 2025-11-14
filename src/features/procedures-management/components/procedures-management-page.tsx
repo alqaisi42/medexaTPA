@@ -2167,6 +2167,239 @@ export function ProceduresManagementPage() {
                     </div>
                 </TabsContent>
             </Tabs>
+            <Dialog open={isLinkDialogOpen} onOpenChange={handleLinkDialogChange}>
+                <DialogContent className="max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>Manage Procedure Links</DialogTitle>
+                        <DialogDescription>
+                            {linkingProcedure
+                                ? `Update category and container associations for ${linkingProcedure.nameEn} (${linkingProcedure.code}).`
+                                : 'Select a procedure to manage its linked categories and containers.'}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {linkingFeedback && (
+                        <div
+                            className={cn(
+                                'rounded-md border px-4 py-3 text-sm',
+                                linkingFeedback.type === 'success'
+                                    ? 'border-green-200 bg-green-50 text-green-800'
+                                    : 'border-red-200 bg-red-50 text-red-700',
+                            )}
+                        >
+                            {linkingFeedback.message}
+                        </div>
+                    )}
+
+                    {linkingProcedure ? (
+                        <div className="space-y-6">
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <section className="space-y-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-gray-800">Categories</h3>
+                                            <p className="text-xs text-gray-500">
+                                                Choose the categories that should be associated with this procedure.
+                                            </p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => void loadCategories()}
+                                            disabled={categoriesLoading}
+                                            className="flex items-center gap-2"
+                                        >
+                                            {categoriesLoading ? (
+                                                <>
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    Loading
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <RefreshCcw className="h-3.5 w-3.5" />
+                                                    Refresh
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                        <Input
+                                            placeholder="Search categories..."
+                                            value={linkCategoryQuery}
+                                            onChange={(event) => setLinkCategoryQuery(event.target.value)}
+                                            className="pl-10"
+                                        />
+                                    </div>
+
+                                    <div className="max-h-64 overflow-y-auto rounded-md border border-gray-200">
+                                        {categoriesLoading ? (
+                                            <div className="flex h-32 items-center justify-center text-sm text-gray-500">
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
+                                            </div>
+                                        ) : filteredLinkCategories.length === 0 ? (
+                                            <div className="px-4 py-6 text-center text-sm text-gray-500">
+                                                No categories available.
+                                            </div>
+                                        ) : (
+                                            <div className="divide-y divide-gray-100">
+                                                {filteredLinkCategories.map((category) => {
+                                                    const checked = linkSelection.categoryIds.includes(category.id)
+                                                    return (
+                                                        <label
+                                                            key={category.id}
+                                                            className="flex cursor-pointer items-start gap-3 px-4 py-3 text-sm hover:bg-gray-50"
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-1 h-4 w-4 rounded border-gray-300"
+                                                                checked={checked}
+                                                                onChange={() => toggleLinkCategory(category.id)}
+                                                                aria-label={`Toggle category ${category.code}`}
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span className="font-medium text-gray-900">
+                                                                    {category.nameEn}
+                                                                </span>
+                                                                <span className="text-xs text-gray-500">
+                                                                    Code: {category.code} · Procedures linked: {category.procedureCount}
+                                                                </span>
+                                                                {!category.isActive && (
+                                                                    <span className="mt-1 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                                                        Inactive
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </label>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+
+                                <section className="space-y-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-gray-800">Containers</h3>
+                                            <p className="text-xs text-gray-500">
+                                                Link the procedure to the containers it should belong to.
+                                            </p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => void loadContainers()}
+                                            disabled={containersLoading}
+                                            className="flex items-center gap-2"
+                                        >
+                                            {containersLoading ? (
+                                                <>
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    Loading
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <RefreshCcw className="h-3.5 w-3.5" />
+                                                    Refresh
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                        <Input
+                                            placeholder="Search containers..."
+                                            value={linkContainerQuery}
+                                            onChange={(event) => setLinkContainerQuery(event.target.value)}
+                                            className="pl-10"
+                                        />
+                                    </div>
+
+                                    <div className="max-h-64 overflow-y-auto rounded-md border border-gray-200">
+                                        {containersLoading ? (
+                                            <div className="flex h-32 items-center justify-center text-sm text-gray-500">
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
+                                            </div>
+                                        ) : filteredLinkContainers.length === 0 ? (
+                                            <div className="px-4 py-6 text-center text-sm text-gray-500">
+                                                No containers available.
+                                            </div>
+                                        ) : (
+                                            <div className="divide-y divide-gray-100">
+                                                {filteredLinkContainers.map((container) => {
+                                                    const checked = linkSelection.containerIds.includes(container.id)
+                                                    return (
+                                                        <label
+                                                            key={container.id}
+                                                            className="flex cursor-pointer items-start gap-3 px-4 py-3 text-sm hover:bg-gray-50"
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-1 h-4 w-4 rounded border-gray-300"
+                                                                checked={checked}
+                                                                onChange={() => toggleLinkContainer(container.id)}
+                                                                aria-label={`Toggle container ${container.code}`}
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span className="font-medium text-gray-900">
+                                                                    {container.nameEn}
+                                                                </span>
+                                                                <span className="text-xs text-gray-500">
+                                                                    Code: {container.code} · Level {container.levelNo}
+                                                                </span>
+                                                                {container.parentName && (
+                                                                    <span className="text-xs text-gray-500">
+                                                                        Parent: {container.parentName}
+                                                                    </span>
+                                                                )}
+                                                                {!container.isActive && (
+                                                                    <span className="mt-1 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                                                        Inactive
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </label>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-6 text-sm text-gray-600">
+                            Select a procedure to review and update its linked categories and containers.
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => handleLinkDialogChange(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => void handleSaveLinks()}
+                            disabled={!linkingProcedure || isLinkSaving}
+                            className="bg-tpa-primary text-white hover:bg-tpa-accent"
+                        >
+                            {isLinkSaving ? (
+                                <span className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                </span>
+                            ) : (
+                                'Save Changes'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
                 <DialogContent className="max-w-4xl">
                     <DialogHeader>
