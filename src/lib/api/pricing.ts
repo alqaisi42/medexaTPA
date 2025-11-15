@@ -5,6 +5,7 @@ import {
     PaginatedResponse,
     PeriodDiscountRecord,
     PointRateRecord,
+    PriceListSummary,
     PricingCalculationRequest,
     PricingCalculationResponse,
     PricingFactor,
@@ -75,6 +76,32 @@ export async function fetchPricingFactors({
 }: FetchPricingFactorsParams = {}): Promise<PaginatedResponse<PricingFactor>> {
     const url = buildUrl('/api/pricing/pricing-factors', { page, size })
     return requestJson<PaginatedResponse<PricingFactor>>(url, { method: 'GET' }, 'Failed to load pricing factors')
+}
+
+export interface FetchPriceListsParams {
+    page?: number
+    size?: number
+    code?: string
+    providerType?: string
+    nameEn?: string
+}
+
+export async function fetchPriceLists({
+    page = 0,
+    size = 20,
+    code,
+    providerType,
+    nameEn,
+}: FetchPriceListsParams = {}): Promise<PaginatedResponse<PriceListSummary>> {
+    const url = buildUrl('/api/pricing/price-lists', {
+        page,
+        size,
+        code,
+        providerType,
+        nameEn,
+    })
+
+    return requestJson<PaginatedResponse<PriceListSummary>>(url, { method: 'GET' }, 'Failed to load price lists')
 }
 
 export interface CreatePricingFactorPayload {

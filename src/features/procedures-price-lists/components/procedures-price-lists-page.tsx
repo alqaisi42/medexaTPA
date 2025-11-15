@@ -25,10 +25,12 @@ import {
     createPricingRule,
     fetchPeriodDiscounts,
     fetchPointRates,
+    fetchPriceLists,
     fetchPricingFactors,
     fetchPricingRules,
     updatePointRate,
 } from '@/lib/api/pricing'
+import {searchProcedures} from '@/lib/api/procedures'
 import {
     CreatePeriodDiscountPayload,
     CreatePointRatePayload,
@@ -36,12 +38,14 @@ import {
     PaginatedResponse,
     PeriodDiscountRecord,
     PointRateRecord,
+    PriceListSummary,
     PricingCalculationRequest,
     PricingCalculationResponse,
     PricingFactor,
     PricingMode,
     PricingRuleCondition,
     PricingRuleResponse,
+    ProcedureSummary,
 } from '@/types'
 import {cn, formatCurrency, formatDate, generateId} from '@/lib/utils'
 
@@ -411,6 +415,15 @@ function formatConditionValue(factor: string, value: any): string {
     return String(value);
 }
 
+function formatProcedureLabel(procedure: ProcedureSummary): string {
+    return `${procedure.code} · ${procedure.nameEn}`
+}
+
+function formatPriceListLabel(priceList: PriceListSummary): string {
+    const baseLabel = `${priceList.code} · ${priceList.nameEn}`
+    return priceList.providerType ? `${baseLabel} (${priceList.providerType})` : baseLabel
+}
+
 function extractRuleConditions(ruleJson: Record<string, unknown> | null): any[] {
     if (!ruleJson) {
         return [];
@@ -631,6 +644,20 @@ export function ProceduresPriceListsPage() {
     const [simulationError, setSimulationError] = useState<string | null>(null)
     const [simulationResult, setSimulationResult] = useState<PricingCalculationResponse | null>(null)
 
+    const [procedureSearchTerm, setProcedureSearchTerm] = useState('')
+    const [procedureDropdownOpen, setProcedureDropdownOpen] = useState(false)
+    const [procedureOptions, setProcedureOptions] = useState<ProcedureSummary[]>([])
+    const [procedureSearchLoading, setProcedureSearchLoading] = useState(false)
+    const [procedureSearchError, setProcedureSearchError] = useState<string | null>(null)
+    const [selectedProcedure, setSelectedProcedure] = useState<ProcedureSummary | null>(null)
+
+    const [priceListSearchTerm, setPriceListSearchTerm] = useState('')
+    const [priceListDropdownOpen, setPriceListDropdownOpen] = useState(false)
+    const [priceListOptions, setPriceListOptions] = useState<PriceListSummary[]>([])
+    const [priceListSearchLoading, setPriceListSearchLoading] = useState(false)
+    const [priceListSearchError, setPriceListSearchError] = useState<string | null>(null)
+    const [selectedPriceList, setSelectedPriceList] = useState<PriceListSummary | null>(null)
+
     const [ruleForm, setRuleForm] = useState({
         procedureId: '',
         priceListId: '',
@@ -678,6 +705,94 @@ export function ProceduresPriceListsPage() {
     const [periodDiscountsView, setPeriodDiscountsView] = useState<'listing' | 'form'>('listing')
     const [factorsView, setFactorsView] = useState<'listing' | 'create'>('listing')
     const [simulationView, setSimulationView] = useState<'setup' | 'insights'>('setup')
+
+    useEffect(() => {
+        if (!procedureDropdownOpen) {
+            setProcedureSearchLoading(false)
+            return
+        }
+
+        setProcedureSearchLoading(true)
+        setProcedureSearchError(null)
+
+        let cancelled = false
+        const handler = setTimeout(() => {
+            const term = procedureSearchTerm.trim()
+            const filters = term ? { keyword: term } : {}
+
+            searchProcedures({ filters, page: 0, size: 10 })
+                .then(response => {
+                    if (cancelled) {
+                        return
+                    }
+                    setProcedureOptions(response.content)
+                    setProcedureSearchError(null)
+                })
+                .catch(error => {
+                    if (cancelled) {
+                        return
+                    }
+                    setProcedureOptions([])
+                    setProcedureSearchError(error instanceof Error ? error.message : 'Failed to search procedures')
+                })
+                .finally(() => {
+                    if (!cancelled) {
+                        setProcedureSearchLoading(false)
+                    }
+                })
+        }, 300)
+
+        return () => {
+            cancelled = true
+            clearTimeout(handler)
+        }
+    }, [procedureDropdownOpen, procedureSearchTerm])
+
+    useEffect(() => {
+        if (!priceListDropdownOpen) {
+            setPriceListSearchLoading(false)
+            return
+        }
+
+        setPriceListSearchLoading(true)
+        setPriceListSearchError(null)
+
+        let cancelled = false
+        const handler = setTimeout(() => {
+            const term = priceListSearchTerm.trim()
+
+            fetchPriceLists({
+                page: 0,
+                size: 10,
+                code: term || undefined,
+                nameEn: term || undefined,
+            })
+                .then(response => {
+                    if (cancelled) {
+                        return
+                    }
+                    setPriceListOptions(response.content)
+                    setPriceListSearchError(null)
+                })
+                .catch(error => {
+                    if (cancelled) {
+                        return
+                    }
+                    setPriceListOptions([])
+                    setPriceListSearchError(error instanceof Error ? error.message : 'Failed to search price lists')
+                })
+                .finally(() => {
+                    if (!cancelled) {
+                        setPriceListSearchLoading(false)
+                    }
+                })
+        }, 300)
+
+        return () => {
+            cancelled = true
+            clearTimeout(handler)
+        }
+    }, [priceListDropdownOpen, priceListSearchTerm])
 
     useEffect(() => {
         let active = true
@@ -801,6 +916,26 @@ export function ProceduresPriceListsPage() {
         return () => {
             active = false
         }
+    }
+
+    const handleProcedureSelect = (procedure: ProcedureSummary) => {
+        setSelectedProcedure(procedure)
+        setRuleForm(prev => ({
+            ...prev,
+            procedureId: String(procedure.id),
+        }))
+        setProcedureDropdownOpen(false)
+        setProcedureSearchTerm('')
+    }
+
+    const handlePriceListSelect = (priceList: PriceListSummary) => {
+        setSelectedPriceList(priceList)
+        setRuleForm(prev => ({
+            ...prev,
+            priceListId: String(priceList.id),
+        }))
+        setPriceListDropdownOpen(false)
+        setPriceListSearchTerm('')
     }
 
     const filteredPointRates = useMemo(() => {
@@ -1434,28 +1569,168 @@ export function ProceduresPriceListsPage() {
                                 <div className="space-y-6">
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label htmlFor="rule-procedure">Procedure ID</Label>
-                                            <Input
-                                                id="rule-procedure"
-                                                type="number"
-                                                value={ruleForm.procedureId}
-                                                onChange={event => setRuleForm(prev => ({
-                                                    ...prev,
-                                                    procedureId: event.target.value
-                                                }))}
-                                            />
+                                            <Label htmlFor="rule-procedure">Procedure</Label>
+                                            <div className="relative">
+                                                <Input
+                                                    id="rule-procedure"
+                                                    type="text"
+                                                    autoComplete="off"
+                                                    placeholder="Search procedure by code or name"
+                                                    value={
+                                                        procedureDropdownOpen
+                                                            ? procedureSearchTerm
+                                                            : selectedProcedure
+                                                                ? formatProcedureLabel(selectedProcedure)
+                                                                : procedureSearchTerm
+                                                    }
+                                                    onChange={event => {
+                                                        const value = event.target.value
+                                                        setProcedureSearchTerm(value)
+                                                        setProcedureDropdownOpen(true)
+                                                        setSelectedProcedure(null)
+                                                        setRuleForm(prev =>
+                                                            prev.procedureId === ''
+                                                                ? prev
+                                                                : {
+                                                                      ...prev,
+                                                                      procedureId: '',
+                                                                  },
+                                                        )
+                                                    }}
+                                                    onFocus={() => {
+                                                        setProcedureDropdownOpen(true)
+                                                        setProcedureSearchTerm(prev =>
+                                                            prev === '' && selectedProcedure
+                                                                ? formatProcedureLabel(selectedProcedure)
+                                                                : prev,
+                                                        )
+                                                    }}
+                                                    onBlur={() => {
+                                                        setTimeout(() => setProcedureDropdownOpen(false), 150)
+                                                    }}
+                                                />
+                                                {procedureSearchLoading ? (
+                                                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                                                ) : null}
+                                                {procedureDropdownOpen && (
+                                                    <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                                                        {procedureSearchLoading ? (
+                                                            <div className="px-3 py-2 text-sm text-slate-500">Searching procedures…</div>
+                                                        ) : procedureSearchError ? (
+                                                            <div className="px-3 py-2 text-sm text-red-600">{procedureSearchError}</div>
+                                                        ) : procedureOptions.length === 0 ? (
+                                                            <div className="px-3 py-2 text-sm text-slate-500">No procedures found.</div>
+                                                        ) : (
+                                                            procedureOptions.map(procedure => (
+                                                                <button
+                                                                    key={procedure.id}
+                                                                    type="button"
+                                                                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-slate-100"
+                                                                    onMouseDown={event => event.preventDefault()}
+                                                                    onClick={() => handleProcedureSelect(procedure)}
+                                                                >
+                                                                    <span className="text-sm font-medium text-slate-700">
+                                                                        {formatProcedureLabel(procedure)}
+                                                                    </span>
+                                                                    <span className="text-xs text-slate-500">
+                                                                        ID: {procedure.id} · System: {procedure.systemCode}
+                                                                    </span>
+                                                                </button>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500">
+                                                {selectedProcedure
+                                                    ? `${formatProcedureLabel(selectedProcedure)} (ID: ${selectedProcedure.id})`
+                                                    : ruleForm.procedureId
+                                                        ? `Selected procedure ID: ${ruleForm.procedureId}`
+                                                        : 'Type to search and select a procedure.'}
+                                            </p>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="rule-price-list">Price list ID</Label>
-                                            <Input
-                                                id="rule-price-list"
-                                                type="number"
-                                                value={ruleForm.priceListId}
-                                                onChange={event => setRuleForm(prev => ({
-                                                    ...prev,
-                                                    priceListId: event.target.value
-                                                }))}
-                                            />
+                                            <Label htmlFor="rule-price-list">Price list</Label>
+                                            <div className="relative">
+                                                <Input
+                                                    id="rule-price-list"
+                                                    type="text"
+                                                    autoComplete="off"
+                                                    placeholder="Search price list by code or name"
+                                                    value={
+                                                        priceListDropdownOpen
+                                                            ? priceListSearchTerm
+                                                            : selectedPriceList
+                                                                ? formatPriceListLabel(selectedPriceList)
+                                                                : priceListSearchTerm
+                                                    }
+                                                    onChange={event => {
+                                                        const value = event.target.value
+                                                        setPriceListSearchTerm(value)
+                                                        setPriceListDropdownOpen(true)
+                                                        setSelectedPriceList(null)
+                                                        setRuleForm(prev =>
+                                                            prev.priceListId === ''
+                                                                ? prev
+                                                                : {
+                                                                      ...prev,
+                                                                      priceListId: '',
+                                                                  },
+                                                        )
+                                                    }}
+                                                    onFocus={() => {
+                                                        setPriceListDropdownOpen(true)
+                                                        setPriceListSearchTerm(prev =>
+                                                            prev === '' && selectedPriceList
+                                                                ? formatPriceListLabel(selectedPriceList)
+                                                                : prev,
+                                                        )
+                                                    }}
+                                                    onBlur={() => {
+                                                        setTimeout(() => setPriceListDropdownOpen(false), 150)
+                                                    }}
+                                                />
+                                                {priceListSearchLoading ? (
+                                                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                                                ) : null}
+                                                {priceListDropdownOpen && (
+                                                    <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                                                        {priceListSearchLoading ? (
+                                                            <div className="px-3 py-2 text-sm text-slate-500">Searching price lists…</div>
+                                                        ) : priceListSearchError ? (
+                                                            <div className="px-3 py-2 text-sm text-red-600">{priceListSearchError}</div>
+                                                        ) : priceListOptions.length === 0 ? (
+                                                            <div className="px-3 py-2 text-sm text-slate-500">No price lists found.</div>
+                                                        ) : (
+                                                            priceListOptions.map(priceList => (
+                                                                <button
+                                                                    key={priceList.id}
+                                                                    type="button"
+                                                                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-slate-100"
+                                                                    onMouseDown={event => event.preventDefault()}
+                                                                    onClick={() => handlePriceListSelect(priceList)}
+                                                                >
+                                                                    <span className="text-sm font-medium text-slate-700">
+                                                                        {formatPriceListLabel(priceList)}
+                                                                    </span>
+                                                                    <span className="text-xs text-slate-500">
+                                                                        ID: {priceList.id}
+                                                                        {priceList.regionName ? ` · Region: ${priceList.regionName}` : ''}
+                                                                        {` · Valid: ${priceList.validFrom} → ${priceList.validTo ?? 'Open-ended'}`}
+                                                                    </span>
+                                                                </button>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500">
+                                                {selectedPriceList
+                                                    ? `${formatPriceListLabel(selectedPriceList)} (ID: ${selectedPriceList.id})`
+                                                    : ruleForm.priceListId
+                                                        ? `Selected price list ID: ${ruleForm.priceListId}`
+                                                        : 'Type to search and select a price list.'}
+                                            </p>
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="rule-priority">Priority</Label>

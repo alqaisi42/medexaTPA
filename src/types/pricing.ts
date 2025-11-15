@@ -1,3 +1,5 @@
+import type { PaginatedResponse } from './api'
+
 export type PricingFactorDataType =
     | 'TEXT'
     | 'NUMBER'
@@ -61,6 +63,19 @@ export interface PricingRuleResponse {
     validFrom: string | number[]
     validTo: string | number[] | null
 }
+
+export interface PriceListSummary {
+    id: number
+    code: string
+    nameEn: string
+    providerType: string
+    isDefault: boolean
+    validFrom: string
+    validTo: string | null
+    regionName?: string | null
+}
+
+export type PriceListResponse = PaginatedResponse<PriceListSummary>
 
 export interface CreatePricingRulePayload {
     procedureId: number
