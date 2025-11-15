@@ -1,694 +1,2248 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Search, Filter, Download, Upload, DollarSign, Calendar, Building2 } from 'lucide-react'
+import React, { DragEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import {
+    BadgeCheck,
+    CircleDot,
+    GripVertical,
+    Info,
+    Loader2,
+    Plus,
+    RefreshCcw,
+    Trash2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { PriceList, PriceListItem } from '@/types'
-import { generateId, formatCurrency } from '@/lib/utils'
-import { useAppStore } from '@/store/app-store'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+    calculatePricing,
+    createPeriodDiscount,
+    createPointRate,
+    createPricingFactor,
+    createPricingRule,
+    fetchPeriodDiscounts,
+    fetchPointRates,
+    fetchPricingFactors,
+    fetchPricingRules,
+    updatePointRate,
+} from '@/lib/api/pricing'
+import {
+    CreatePeriodDiscountPayload,
+    CreatePointRatePayload,
+    CreatePricingRulePayload,
+    PaginatedResponse,
+    PeriodDiscountRecord,
+    PointRateRecord,
+    PricingCalculationRequest,
+    PricingCalculationResponse,
+    PricingFactor,
+    PricingMode,
+    PricingRuleCondition,
+    PricingRuleResponse,
+} from '@/types'
+import { cn, formatCurrency, formatDate, generateId } from '@/lib/utils'
 
-interface ProcedurePriceData {
+type FactorInputKind = 'text' | 'number' | 'select' | 'date' | 'boolean'
+
+interface ConditionDraft {
     id: string
-    procedureCode: string
-    procedureName: string
-    insuranceDegree: string
-    pointMin: number
-    pointMax: number
-    activeDate: Date
-    providerName?: string
-    doctorExperience?: number
-    specialistPercentage?: number
-    generalPercentage?: number
-    discountType?: string
-    discountValue?: number
+    factorKey: string
+    operator: string
+    value: string | number | boolean | string[] | { min?: string; max?: string }
 }
 
+interface AdjustmentCaseDraft {
+    id: string
+    caseValue: string
+    amount: string
+}
+
+interface AdjustmentDraft {
+    id: string
+    type: string
+    factorKey: string
+    percent: string
+    cases: AdjustmentCaseDraft[]
+}
+
+interface FactorEntryDraft {
+    id: string
+    factorKey: string
+    value: string | number | boolean | string[]
+}
+
+interface ContextEntryDraft {
+    id: string
+    key: string
+    value: string
+}
+
+function parseAllowedValues(factor: PricingFactor): string[] {
+    if (!factor.allowedValues) {
+        return []
+    }
+
+    try {
+        const parsed = JSON.parse(factor.allowedValues)
+        if (Array.isArray(parsed)) {
+            return parsed.map(value => String(value))
+        }
+    } catch {
+        // Fall back to comma separated parsing
+    }
+
+    return factor.allowedValues
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean)
+}
+
+function resolveFactorInputKind(factor: PricingFactor, operator?: string): FactorInputKind {
+    const allowedValues = parseAllowedValues(factor)
+
+    if (factor.dataType === 'BOOLEAN') {
+        return 'boolean'
+    }
+
+    if (factor.dataType === 'DATE') {
+        return 'date'
+    }
+
+    if (allowedValues.length > 0 && operator !== 'BETWEEN') {
+        return 'select'
+    }
+
+    if (factor.dataType === 'NUMBER' || factor.dataType === 'DECIMAL' || factor.dataType === 'INTEGER') {
+        return 'number'
+    }
+
+    if (factor.dataType === 'TEXT') {
+        return 'text'
+    }
+
+    if (factor.dataType === 'STRING') {
+        return allowedValues.length > 0 ? 'select' : 'text'
+    }
+
+    if (factor.dataType === 'SELECT') {
+        return 'select'
+    }
+
+    return 'text'
+}
+
+type OperatorOption = {
+    value: string
+    label: string
+    requiresRange?: boolean
+    supportsMultiple?: boolean
+}
+
+function operatorOptionsForFactor(factor: PricingFactor): OperatorOption[] {
+    const inputKind = resolveFactorInputKind(factor)
+
+    if (inputKind === 'number') {
+        return [
+            { value: 'EQUALS', label: 'Equals' },
+            { value: 'NOT_EQUALS', label: 'Not equals' },
+            { value: 'GREATER_THAN', label: 'Greater than' },
+            { value: 'LESS_THAN', label: 'Less than' },
+            { value: 'BETWEEN', label: 'Between', requiresRange: true },
+        ]
+    }
+
+    if (inputKind === 'date') {
+        return [
+            { value: 'ON', label: 'On' },
+            { value: 'BEFORE', label: 'Before' },
+            { value: 'AFTER', label: 'After' },
+            { value: 'BETWEEN', label: 'Between', requiresRange: true },
+        ]
+    }
+
+    if (inputKind === 'boolean') {
+        return [
+            { value: 'IS_TRUE', label: 'Is true' },
+            { value: 'IS_FALSE', label: 'Is false' },
+        ]
+    }
+
+    if (inputKind === 'select') {
+        return [
+            { value: 'EQUALS', label: 'Equals' },
+            { value: 'NOT_EQUALS', label: 'Not equals' },
+            { value: 'IN', label: 'In list', supportsMultiple: true },
+            { value: 'NOT_IN', label: 'Not in list', supportsMultiple: true },
+        ]
+    }
+
+    return [
+        { value: 'EQUALS', label: 'Equals' },
+        { value: 'NOT_EQUALS', label: 'Not equals' },
+        { value: 'CONTAINS', label: 'Contains' },
+        { value: 'STARTS_WITH', label: 'Starts with' },
+        { value: 'ENDS_WITH', label: 'Ends with' },
+    ]
+}
+
+function defaultOperatorForFactor(factor: PricingFactor): string {
+    const options = operatorOptionsForFactor(factor)
+    return options[0]?.value ?? 'EQUALS'
+}
+
+function parseRuleJson(rule: PricingRuleResponse): Record<string, unknown> | null {
+    if (!rule.ruleJson) {
+        return null
+    }
+
+    try {
+        return JSON.parse(rule.ruleJson)
+    } catch {
+        return null
+    }
+}
+
+function extractRuleConditions(ruleJson: Record<string, unknown> | null): string[] {
+    if (!ruleJson) {
+        return []
+    }
+
+    const conditions = ruleJson.conditions
+    if (!conditions || typeof conditions !== 'object') {
+        return []
+    }
+
+    return Object.entries(conditions as Record<string, unknown>).map(([factor, value]) => {
+        if (typeof value === 'object' && value !== null) {
+            if ('between' in (value as Record<string, unknown>)) {
+                const between = (value as Record<string, unknown>).between as unknown[]
+                return `${factor} between ${between?.[0]} and ${between?.[1]}`
+            }
+            if ('min' in (value as Record<string, unknown>) || 'max' in (value as Record<string, unknown>)) {
+                const min = (value as Record<string, unknown>).min
+                const max = (value as Record<string, unknown>).max
+                return `${factor} ${min !== undefined ? `>= ${min}` : ''} ${max !== undefined ? `<= ${max}` : ''}`.trim()
+            }
+            if ('in' in (value as Record<string, unknown>)) {
+                const list = (value as Record<string, unknown>).in as unknown[]
+                return `${factor} in [${list?.join(', ')}]`
+            }
+        }
+
+        return `${factor} = ${String(value)}`
+    })
+}
+
+function formatRulePricing(ruleJson: Record<string, unknown> | null): string {
+    if (!ruleJson) {
+        return '—'
+    }
+
+    const basePrice = ruleJson.base_price as Record<string, unknown> | undefined
+    if (!basePrice) {
+        return '—'
+    }
+
+    const mode = String(basePrice.mode ?? '').toUpperCase()
+    if (mode === 'FIXED') {
+        return `Fixed ${basePrice.value}`
+    }
+    if (mode === 'POINTS') {
+        return `Points × ${basePrice.points}`
+    }
+    if (mode === 'RANGE') {
+        return `Range ${basePrice.min ?? '—'} - ${basePrice.max ?? '—'}`
+    }
+
+    return mode || '—'
+}
+
+function parseContextJson(contextJson?: string | null): ContextEntryDraft[] {
+    if (!contextJson) {
+        return []
+    }
+
+    try {
+        const parsed = JSON.parse(contextJson) as Record<string, unknown>
+        return Object.entries(parsed).map(([key, value]) => ({
+            id: generateId(),
+            key,
+            value: typeof value === 'object' ? JSON.stringify(value) : String(value ?? ''),
+        }))
+    } catch {
+        return []
+    }
+}
+
+function buildContextObject(entries: ContextEntryDraft[]): Record<string, unknown> | undefined {
+    const result: Record<string, unknown> = {}
+    entries.forEach(entry => {
+        if (!entry.key) {
+            return
+        }
+
+        const trimmed = entry.value.trim()
+        if (!trimmed) {
+            return
+        }
+
+        try {
+            result[entry.key] = JSON.parse(trimmed)
+        } catch {
+            result[entry.key] = trimmed
+        }
+    })
+
+    return Object.keys(result).length > 0 ? result : undefined
+}
+
+function buildFactorsObject(entries: FactorEntryDraft[]): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+    entries.forEach(entry => {
+        if (!entry.factorKey) {
+            return
+        }
+
+        if (Array.isArray(entry.value)) {
+            result[entry.factorKey] = entry.value
+        } else if (typeof entry.value === 'string') {
+            const trimmed = entry.value.trim()
+            if (trimmed) {
+                result[entry.factorKey] = trimmed
+            }
+        } else {
+            result[entry.factorKey] = entry.value
+        }
+    })
+
+    return result
+}
+
+function formatEvaluationCondition({ factor, operator, expected, actual }: { factor: string; operator: string; expected: unknown; actual: unknown }): string {
+    return `${factor} ${operator.toLowerCase()} (expected: ${JSON.stringify(expected)}, actual: ${JSON.stringify(actual)})`
+}
+
+const SectionCard: React.FC<React.PropsWithChildren<{ title: string; description?: string; actions?: React.ReactNode }>> = ({ title, description, actions, children }) => (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <header className="flex flex-col gap-2 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+                {description ? <p className="text-sm text-slate-500">{description}</p> : null}
+            </div>
+            {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+        </header>
+        <div className="px-6 py-5">{children}</div>
+    </section>
+)
+
+const infoTextClass = 'text-sm text-slate-500'
+
 export function ProceduresPriceListsPage() {
-    const language = useAppStore(state => state.language)
-    const [priceLists, setPriceLists] = useState<PriceList[]>([])
-    const [selectedPriceList, setSelectedPriceList] = useState<PriceList | null>(null)
-    const [priceListItems, setPriceListItems] = useState<ProcedurePriceData[]>([])
-    const [filteredItems, setFilteredItems] = useState<ProcedurePriceData[]>([])
-    const [isDialogOpen, setIsDialogOpen] = useState(false)
-    const [isPriceDetailOpen, setIsPriceDetailOpen] = useState(false)
-    const [isEditMode, setIsEditMode] = useState(false)
-    const [searchTerm, setSearchTerm] = useState('')
-    const [activeView, setActiveView] = useState<'list' | 'procedures' | 'discount'>('list')
+    const [factors, setFactors] = useState<PricingFactor[]>([])
+    const [factorsLoading, setFactorsLoading] = useState(false)
+    const [factorsError, setFactorsError] = useState<string | null>(null)
 
-    // Form States
-    const [priceListForm, setPriceListForm] = useState<Partial<PriceList>>({
-        name: '',
-        description: '',
-        effectiveDate: new Date(),
-        region: '',
-        providerType: '',
-        active: true
+    const [pointRates, setPointRates] = useState<PointRateRecord[]>([])
+    const [pointRatesLoading, setPointRatesLoading] = useState(false)
+    const [pointRatesError, setPointRatesError] = useState<string | null>(null)
+    const [pointRatesView, setPointRatesView] = useState<'table' | 'card'>('table')
+    const [pointRateFilters, setPointRateFilters] = useState({
+        priceListId: '',
+        insuranceDegreeId: '',
+        validOn: '',
     })
 
-    const [priceForm, setPriceForm] = useState<Partial<ProcedurePriceData>>({
-        procedureCode: '',
-        procedureName: '',
-        insuranceDegree: '',
-        pointMin: 0,
-        pointMax: 0,
-        activeDate: new Date(),
-        doctorExperience: 0,
-        specialistPercentage: 0,
-        generalPercentage: 0
+    const [isPointRateDialogOpen, setIsPointRateDialogOpen] = useState(false)
+    const [editingPointRate, setEditingPointRate] = useState<PointRateRecord | null>(null)
+    const [pointRateForm, setPointRateForm] = useState({
+        insuranceDegreeId: '',
+        pointPrice: '',
+        minPointPrice: '',
+        maxPointPrice: '',
+        resultMin: '',
+        resultMax: '',
+        validFrom: '',
+        validTo: '',
+        createdBy: '',
     })
+    const [pointRateContextEntries, setPointRateContextEntries] = useState<ContextEntryDraft[]>([])
+    const [savingPointRate, setSavingPointRate] = useState(false)
 
-    // Sample data - matching the screenshots
+    const [pricingRules, setPricingRules] = useState<PricingRuleResponse[]>([])
+    const [pricingRulesLoading, setPricingRulesLoading] = useState(false)
+    const [pricingRulesError, setPricingRulesError] = useState<string | null>(null)
+    const [draggedRuleId, setDraggedRuleId] = useState<number | null>(null)
+
+    const [periodDiscounts, setPeriodDiscounts] = useState<PeriodDiscountRecord[]>([])
+    const [periodDiscountsLoading, setPeriodDiscountsLoading] = useState(false)
+    const [periodDiscountsError, setPeriodDiscountsError] = useState<string | null>(null)
+
+    const [simulationEntries, setSimulationEntries] = useState<FactorEntryDraft[]>([])
+    const [simulationForm, setSimulationForm] = useState({
+        procedureId: '',
+        priceListId: '',
+        insuranceDegreeId: '',
+        date: '',
+    })
+    const [simulationLoading, setSimulationLoading] = useState(false)
+    const [simulationError, setSimulationError] = useState<string | null>(null)
+    const [simulationResult, setSimulationResult] = useState<PricingCalculationResponse | null>(null)
+    const [showWhyPrice, setShowWhyPrice] = useState(false)
+
+    const [ruleForm, setRuleForm] = useState({
+        procedureId: '',
+        priceListId: '',
+        priority: '1',
+        validFrom: '',
+        validTo: '',
+        pricingMode: 'FIXED' as PricingMode,
+        fixedPrice: '',
+        points: '',
+        minPrice: '',
+        maxPrice: '',
+        discountApply: false,
+        discountUnit: 'DAY',
+        discountValue: '',
+    })
+    const [ruleConditions, setRuleConditions] = useState<ConditionDraft[]>([])
+    const [ruleAdjustments, setRuleAdjustments] = useState<AdjustmentDraft[]>([])
+    const [savingRule, setSavingRule] = useState(false)
+
+    const [newFactorForm, setNewFactorForm] = useState({
+        key: '',
+        nameEn: '',
+        nameAr: '',
+        dataType: 'TEXT',
+        allowedValues: '',
+    })
+    const [creatingFactor, setCreatingFactor] = useState(false)
+    const [factorCreationError, setFactorCreationError] = useState<string | null>(null)
+
+    const [periodDiscountForm, setPeriodDiscountForm] = useState({
+        procedureId: '',
+        priceListId: '',
+        period: '',
+        periodUnit: 'DAY',
+        discountPct: '',
+        validFrom: '',
+        validTo: '',
+        createdBy: '',
+    })
+    const [savingDiscount, setSavingDiscount] = useState(false)
+
     useEffect(() => {
-        const samplePriceLists: PriceList[] = [
-            {
-                id: '26',
-                name: 'List Price 2024',
-                description: 'Default price list for 2024',
-                effectiveDate: new Date('2024-01-01'),
-                region: '12',
-                active: true
-            },
-            {
-                id: '25',
-                name: 'Deduction List',
-                description: 'Deduction price list',
-                effectiveDate: new Date('2024-01-01'),
-                active: true
-            },
-            {
-                id: '24',
-                name: 'Medical Center Services Price List',
-                description: 'Prices for medical center services',
-                effectiveDate: new Date('2024-01-01'),
-                active: true
-            },
-            {
-                id: '23',
-                name: 'Hospital Service - Tunisia',
-                description: 'Tunisia hospital service prices',
-                effectiveDate: new Date('2024-01-01'),
-                active: true
-            },
-            {
-                id: '22',
-                name: 'Doctor List Price - Tunisia',
-                description: 'Doctor prices in Tunisia',
-                effectiveDate: new Date('2024-01-01'),
-                active: true
-            },
-            {
-                id: '20',
-                name: 'Audiology Services List Price',
-                description: 'Prices for audiology services',
-                effectiveDate: new Date('2024-01-01'),
-                active: true
-            },
-            {
-                id: '19',
-                name: 'Dental Treatment Prices 1999',
-                description: 'Historical dental prices from 1999',
-                effectiveDate: new Date('1999-01-01'),
-                active: false
-            },
-            {
-                id: '18',
-                name: 'Hospital Service - Syria',
-                description: 'Syria hospital service prices',
-                effectiveDate: new Date('2024-01-01'),
-                active: true
-            },
-            {
-                id: '17',
-                name: 'Dental Prices - Syria',
-                description: 'Dental prices in Syria',
-                effectiveDate: new Date('2024-01-01'),
-                active: true
-            }
-        ]
+        let active = true
+        setFactorsLoading(true)
+        setFactorsError(null)
 
-        const samplePriceItems: ProcedurePriceData[] = [
-            {
-                id: '1',
-                procedureCode: '17476',
-                procedureName: 'Short Arm Cast',
-                insuranceDegree: 'Third Degree',
-                pointMin: 2.800,
-                pointMax: 3.500,
-                activeDate: new Date('2025-06-15'),
-                providerName: 'Islamic Hospital - Amman',
-                doctorExperience: 0,
-                specialistPercentage: 0,
-                generalPercentage: 0
-            },
-            {
-                id: '2',
-                procedureCode: '17457',
-                procedureName: 'Metacarpal Fracture Mua And Pinning',
-                insuranceDegree: 'Second Degree',
-                pointMin: 2.800,
-                pointMax: 3.500,
-                activeDate: new Date('2025-06-15'),
-                providerName: 'Shmeisani Hospital',
-                doctorExperience: 0,
-                specialistPercentage: 0,
-                generalPercentage: 0
-            },
-            {
-                id: '3',
-                procedureCode: '17455',
-                procedureName: 'Extensor Tendon 1by Repair',
-                insuranceDegree: 'First Degree',
-                pointMin: 2.800,
-                pointMax: 3.500,
-                activeDate: new Date('2025-06-15'),
-                providerName: 'The Arab Medical Center Hospital',
-                doctorExperience: 0,
-                specialistPercentage: 0,
-                generalPercentage: 0
-            },
-            {
-                id: '4',
-                procedureCode: '2964',
-                procedureName: 'Doctor Examination',
-                insuranceDegree: 'Private Degree',
-                pointMin: 2.800,
-                pointMax: 3.500,
-                activeDate: new Date('2025-06-15'),
-                doctorExperience: 0,
-                specialistPercentage: 0,
-                generalPercentage: 0
-            }
-        ]
+        fetchPricingFactors({ page: 0, size: 200 })
+            .then(response => {
+                if (!active) return
+                setFactors(response.content)
+                setRuleConditions(prev => {
+                    if (response.content.length === 0) {
+                        return []
+                    }
 
-        setPriceLists(samplePriceLists)
-        setSelectedPriceList(samplePriceLists[0])
-        setPriceListItems(samplePriceItems)
-        setFilteredItems(samplePriceItems)
+                    if (prev.length > 0) {
+                        return prev
+                    }
+
+                    const defaultFactor = response.content[0]
+                    return [
+                        {
+                            id: generateId(),
+                            factorKey: defaultFactor.key,
+                            operator: defaultOperatorForFactor(defaultFactor),
+                            value: '',
+                        },
+                    ]
+                })
+            })
+            .catch(error => {
+                if (!active) return
+                setFactorsError(error instanceof Error ? error.message : 'Unable to load factors')
+            })
+            .finally(() => {
+                if (!active) return
+                setFactorsLoading(false)
+            })
+
+        return () => {
+            active = false
+        }
     }, [])
 
-    // Filter items
     useEffect(() => {
-        let filtered = priceListItems
+        refreshPointRates()
+    }, [])
 
-        if (searchTerm) {
-            filtered = filtered.filter(item =>
-                item.procedureCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                item.procedureName.toLowerCase().includes(searchTerm.toLowerCase())
-            )
+    useEffect(() => {
+        refreshPricingRules()
+        refreshPeriodDiscounts()
+    }, [])
+
+    const refreshPointRates = () => {
+        let active = true
+        setPointRatesLoading(true)
+        setPointRatesError(null)
+
+        fetchPointRates({ page: 0, size: 50 })
+            .then(response => {
+                if (!active) return
+                setPointRates(response.content)
+            })
+            .catch(error => {
+                if (!active) return
+                setPointRatesError(error instanceof Error ? error.message : 'Unable to load point rates')
+            })
+            .finally(() => {
+                if (!active) return
+                setPointRatesLoading(false)
+            })
+
+        return () => {
+            active = false
         }
-
-        setFilteredItems(filtered)
-    }, [searchTerm, priceListItems])
-
-    const handleSelectPriceList = (priceList: PriceList) => {
-        setSelectedPriceList(priceList)
-        setActiveView('procedures')
     }
 
-    const handleAddPriceList = () => {
-        setIsEditMode(false)
-        setPriceListForm({
-            name: '',
-            description: '',
-            effectiveDate: new Date(),
-            region: '',
-            providerType: '',
-            active: true
-        })
-        setIsDialogOpen(true)
+    const refreshPricingRules = () => {
+        let active = true
+        setPricingRulesLoading(true)
+        setPricingRulesError(null)
+
+        fetchPricingRules({ page: 0, size: 50 })
+            .then(response => {
+                if (!active) return
+                setPricingRules(response.content)
+            })
+            .catch(error => {
+                if (!active) return
+                setPricingRulesError(error instanceof Error ? error.message : 'Unable to load pricing rules')
+            })
+            .finally(() => {
+                if (!active) return
+                setPricingRulesLoading(false)
+            })
+
+        return () => {
+            active = false
+        }
     }
 
-    const handleEditProcedurePrice = (item: ProcedurePriceData) => {
-        setIsEditMode(true)
-        setPriceForm(item)
-        setIsPriceDetailOpen(true)
+    const refreshPeriodDiscounts = () => {
+        let active = true
+        setPeriodDiscountsLoading(true)
+        setPeriodDiscountsError(null)
+
+        fetchPeriodDiscounts({ page: 0, size: 50 })
+            .then(response => {
+                if (!active) return
+                setPeriodDiscounts(response.content)
+            })
+            .catch(error => {
+                if (!active) return
+                setPeriodDiscountsError(error instanceof Error ? error.message : 'Unable to load period discounts')
+            })
+            .finally(() => {
+                if (!active) return
+                setPeriodDiscountsLoading(false)
+            })
+
+        return () => {
+            active = false
+        }
     }
 
-    const handleSavePriceList = () => {
-        if (!priceListForm.name) {
-            alert('Please enter a name for the price list')
-            return
-        }
-
-        const newPriceList: PriceList = {
-            ...priceListForm as PriceList,
-            id: generateId()
-        }
-
-        setPriceLists(prev => [...prev, newPriceList])
-        setIsDialogOpen(false)
-    }
-
-    const handleSavePrice = () => {
-        if (!priceForm.procedureCode) {
-            alert('Please select a procedure')
-            return
-        }
-
-        if (isEditMode) {
-            setPriceListItems(prev => prev.map(item =>
-                item.id === priceForm.id ? { ...item, ...priceForm } as ProcedurePriceData : item
-            ))
-        } else {
-            const newItem: ProcedurePriceData = {
-                ...priceForm as ProcedurePriceData,
-                id: generateId()
+    const filteredPointRates = useMemo(() => {
+        return pointRates.filter(rate => {
+            if (pointRateFilters.priceListId && String(rate.context ?? '') !== pointRateFilters.priceListId) {
+                return false
             }
-            setPriceListItems(prev => [...prev, newItem])
-        }
+            if (
+                pointRateFilters.insuranceDegreeId &&
+                String(rate.insuranceDegree?.id ?? '') !== pointRateFilters.insuranceDegreeId
+            ) {
+                return false
+            }
+            if (pointRateFilters.validOn) {
+                const validOn = new Date(pointRateFilters.validOn)
+                const from = new Date(rate.validFrom)
+                const to = rate.validTo ? new Date(rate.validTo) : null
+                if (Number.isFinite(validOn.getTime())) {
+                    if (validOn < from) {
+                        return false
+                    }
+                    if (to && validOn > to) {
+                        return false
+                    }
+                }
+            }
+            return true
+        })
+    }, [pointRates, pointRateFilters])
 
-        setIsPriceDetailOpen(false)
+    const handleAddCondition = () => {
+        const firstFactor = factors[0]
+        setRuleConditions(prev => [
+            ...prev,
+            {
+                id: generateId(),
+                factorKey: firstFactor?.key ?? '',
+                operator: firstFactor ? defaultOperatorForFactor(firstFactor) : 'EQUALS',
+                value: '',
+            },
+        ])
     }
 
-    const providers = [
-        'Islamic Hospital - Amman',
-        'Shmeisani Hospital',
-        'The Arab Medical Center Hospital'
-    ]
+    const handleConditionFactorChange = (id: string, factorKey: string) => {
+        setRuleConditions(prev =>
+            prev.map(condition => {
+                if (condition.id !== id) {
+                    return condition
+                }
+                const factor = factors.find(item => item.key === factorKey)
+                const defaultOperator = factor ? defaultOperatorForFactor(factor) : condition.operator
+                return {
+                    ...condition,
+                    factorKey,
+                    operator: defaultOperator,
+                    value: factor && operatorOptionsForFactor(factor)[0]?.requiresRange ? { min: '', max: '' } : '',
+                }
+            }),
+        )
+    }
 
-    const insuranceDegrees = ['Third Degree', 'Second Degree', 'First Degree', 'Private Degree']
+    const handleConditionOperatorChange = (id: string, operator: string) => {
+        setRuleConditions(prev =>
+            prev.map(condition => {
+                if (condition.id !== id) {
+                    return condition
+                }
 
-    const regions = [
-        { value: '12', label: 'Hashemet Kingdom Of Jordan' },
-        { value: '13', label: 'Amman' },
-        { value: '14', label: 'Irbid' },
-        { value: '15', label: 'Zarqa' }
-    ]
+                const factor = factors.find(item => item.key === condition.factorKey)
+                const options = factor ? operatorOptionsForFactor(factor) : []
+                const selectedOption = options.find(option => option.value === operator)
+
+                return {
+                    ...condition,
+                    operator,
+                    value: selectedOption?.requiresRange ? { min: '', max: '' } : selectedOption?.supportsMultiple ? [] : '',
+                }
+            }),
+        )
+    }
+
+    const handleConditionValueChange = (id: string, value: ConditionDraft['value']) => {
+        setRuleConditions(prev => prev.map(condition => (condition.id === id ? { ...condition, value } : condition)))
+    }
+
+    const handleRemoveCondition = (id: string) => {
+        setRuleConditions(prev => prev.filter(condition => condition.id !== id))
+    }
+
+    const handleAddAdjustment = () => {
+        setRuleAdjustments(prev => [
+            ...prev,
+            {
+                id: generateId(),
+                type: 'ADD',
+                factorKey: factors[0]?.key ?? '',
+                percent: '',
+                cases: [
+                    {
+                        id: generateId(),
+                        caseValue: '',
+                        amount: '',
+                    },
+                ],
+            },
+        ])
+    }
+
+    const handleAdjustmentChange = (id: string, patch: Partial<AdjustmentDraft>) => {
+        setRuleAdjustments(prev => prev.map(adjustment => (adjustment.id === id ? { ...adjustment, ...patch } : adjustment)))
+    }
+
+    const handleAdjustmentCaseChange = (adjustmentId: string, caseId: string, patch: Partial<AdjustmentCaseDraft>) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment => {
+                if (adjustment.id !== adjustmentId) {
+                    return adjustment
+                }
+
+                return {
+                    ...adjustment,
+                    cases: adjustment.cases.map(entry => (entry.id === caseId ? { ...entry, ...patch } : entry)),
+                }
+            }),
+        )
+    }
+
+    const handleAddAdjustmentCase = (adjustmentId: string) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment => {
+                if (adjustment.id !== adjustmentId) {
+                    return adjustment
+                }
+
+                return {
+                    ...adjustment,
+                    cases: [
+                        ...adjustment.cases,
+                        {
+                            id: generateId(),
+                            caseValue: '',
+                            amount: '',
+                        },
+                    ],
+                }
+            }),
+        )
+    }
+
+    const handleRemoveAdjustment = (id: string) => {
+        setRuleAdjustments(prev => prev.filter(adjustment => adjustment.id !== id))
+    }
+
+    const handleRemoveAdjustmentCase = (adjustmentId: string, caseId: string) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment => {
+                if (adjustment.id !== adjustmentId) {
+                    return adjustment
+                }
+
+                return {
+                    ...adjustment,
+                    cases: adjustment.cases.filter(entry => entry.id !== caseId),
+                }
+            }),
+        )
+    }
+
+    const handleOpenPointRateDialog = (rate?: PointRateRecord) => {
+        if (rate) {
+            setEditingPointRate(rate)
+            setPointRateForm({
+                insuranceDegreeId: String(rate.insuranceDegree?.id ?? ''),
+                pointPrice: String(rate.pointPrice ?? ''),
+                minPointPrice: rate.minPointPrice !== null && rate.minPointPrice !== undefined ? String(rate.minPointPrice) : '',
+                maxPointPrice: rate.maxPointPrice !== null && rate.maxPointPrice !== undefined ? String(rate.maxPointPrice) : '',
+                resultMin: rate.resultMin !== null && rate.resultMin !== undefined ? String(rate.resultMin) : '',
+                resultMax: rate.resultMax !== null && rate.resultMax !== undefined ? String(rate.resultMax) : '',
+                validFrom: rate.validFrom ?? '',
+                validTo: rate.validTo ?? '',
+                createdBy: rate.createdBy ?? '',
+            })
+            setPointRateContextEntries(parseContextJson(rate.contextJson))
+        } else {
+            setEditingPointRate(null)
+            setPointRateForm({
+                insuranceDegreeId: '',
+                pointPrice: '',
+                minPointPrice: '',
+                maxPointPrice: '',
+                resultMin: '',
+                resultMax: '',
+                validFrom: '',
+                validTo: '',
+                createdBy: '',
+            })
+            setPointRateContextEntries([])
+        }
+
+        setIsPointRateDialogOpen(true)
+    }
+
+    const handleClosePointRateDialog = () => {
+        setIsPointRateDialogOpen(false)
+    }
+
+    const handlePointRateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+
+        const payload: CreatePointRatePayload = {
+            insuranceDegreeId: Number(pointRateForm.insuranceDegreeId),
+            pointPrice: Number(pointRateForm.pointPrice),
+            minPointPrice: pointRateForm.minPointPrice ? Number(pointRateForm.minPointPrice) : undefined,
+            maxPointPrice: pointRateForm.maxPointPrice ? Number(pointRateForm.maxPointPrice) : undefined,
+            resultMin: pointRateForm.resultMin ? Number(pointRateForm.resultMin) : undefined,
+            resultMax: pointRateForm.resultMax ? Number(pointRateForm.resultMax) : undefined,
+            validFrom: pointRateForm.validFrom,
+            validTo: pointRateForm.validTo || undefined,
+            createdBy: pointRateForm.createdBy || undefined,
+            context: buildContextObject(pointRateContextEntries),
+        }
+
+        if (!payload.insuranceDegreeId || !payload.pointPrice || !payload.validFrom) {
+            alert('Insurance degree, point price, and valid from are required')
+            return
+        }
+
+        try {
+            setSavingPointRate(true)
+            if (editingPointRate) {
+                await updatePointRate(editingPointRate.id, payload)
+            } else {
+                await createPointRate(payload)
+            }
+            handleClosePointRateDialog()
+            refreshPointRates()
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to save point rate')
+        } finally {
+            setSavingPointRate(false)
+        }
+    }
+
+    const handleSaveRule = async () => {
+        if (!ruleForm.procedureId || !ruleForm.priceListId || !ruleForm.validFrom) {
+            alert('Procedure, price list, and valid from date are required')
+            return
+        }
+
+        if (ruleConditions.length === 0) {
+            alert('At least one condition is required')
+            return
+        }
+
+        const conditions: PricingRuleCondition[] = ruleConditions
+            .filter(condition => condition.factorKey)
+            .map(condition => {
+                let value: unknown = condition.value
+
+                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    const range = value as { min?: string; max?: string }
+                    value = {
+                        min: range.min ? Number(range.min) : undefined,
+                        max: range.max ? Number(range.max) : undefined,
+                    }
+                } else if (Array.isArray(value)) {
+                    value = value
+                } else if (typeof value === 'string') {
+                    const trimmed = value.trim()
+                    if (trimmed === '') {
+                        value = ''
+                    } else if (!Number.isNaN(Number(trimmed)) && condition.operator !== 'CONTAINS') {
+                        value = Number(trimmed)
+                    } else {
+                        value = trimmed
+                    }
+                }
+
+                return {
+                    factor: condition.factorKey,
+                    operator: condition.operator,
+                    value,
+                }
+            })
+
+        const payload: CreatePricingRulePayload = {
+            procedureId: Number(ruleForm.procedureId),
+            priceListId: Number(ruleForm.priceListId),
+            priority: Number(ruleForm.priority || '0'),
+            validFrom: ruleForm.validFrom,
+            validTo: ruleForm.validTo || null,
+            conditions,
+            pricing: {
+                mode: ruleForm.pricingMode,
+                fixed_price: ruleForm.pricingMode === 'FIXED' ? Number(ruleForm.fixedPrice || 0) : undefined,
+                points: ruleForm.pricingMode === 'POINTS' ? Number(ruleForm.points || 0) : undefined,
+                min_price: ruleForm.pricingMode === 'RANGE' ? Number(ruleForm.minPrice || 0) : undefined,
+                max_price: ruleForm.pricingMode === 'RANGE' ? Number(ruleForm.maxPrice || 0) : undefined,
+            },
+            discount: {
+                apply: ruleForm.discountApply,
+                period_unit: ruleForm.discountApply ? ruleForm.discountUnit : undefined,
+                period_value: ruleForm.discountApply ? Number(ruleForm.discountValue || 0) : undefined,
+            },
+            adjustments: ruleAdjustments.map(adjustment => ({
+                type: adjustment.type,
+                factor_key: adjustment.factorKey,
+                percent: adjustment.percent ? Number(adjustment.percent) : undefined,
+                cases: adjustment.cases.reduce<Record<string, number>>((accumulator, entry) => {
+                    if (entry.caseValue && entry.amount) {
+                        accumulator[entry.caseValue] = Number(entry.amount)
+                    }
+                    return accumulator
+                }, {}),
+            })),
+        }
+
+        try {
+            setSavingRule(true)
+            await createPricingRule(payload)
+            refreshPricingRules()
+            alert('Pricing rule saved successfully')
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to save pricing rule')
+        } finally {
+            setSavingRule(false)
+        }
+    }
+
+    const handleCreateFactor = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (!newFactorForm.key || !newFactorForm.nameEn) {
+            setFactorCreationError('Key and English name are required')
+            return
+        }
+
+        let allowedValuesParsed: unknown
+        if (newFactorForm.allowedValues) {
+            try {
+                allowedValuesParsed = JSON.parse(newFactorForm.allowedValues)
+            } catch {
+                setFactorCreationError('Allowed values must be valid JSON (e.g. ["DAY", "NIGHT"])')
+                return
+            }
+        }
+
+        const payload = {
+            key: newFactorForm.key,
+            nameEn: newFactorForm.nameEn,
+            nameAr: newFactorForm.nameAr || undefined,
+            dataType: newFactorForm.dataType,
+            allowedValues: allowedValuesParsed,
+        }
+
+        try {
+            setFactorCreationError(null)
+            setCreatingFactor(true)
+            await createPricingFactor(payload)
+            setNewFactorForm({ key: '', nameEn: '', nameAr: '', dataType: 'TEXT', allowedValues: '' })
+            refreshFactors()
+        } catch (error) {
+            setFactorCreationError(error instanceof Error ? error.message : 'Unable to create factor')
+        } finally {
+            setCreatingFactor(false)
+        }
+    }
+
+    const refreshFactors = () => {
+        setFactorsLoading(true)
+        setFactorsError(null)
+        fetchPricingFactors({ page: 0, size: 200 })
+            .then((response: PaginatedResponse<PricingFactor>) => {
+                setFactors(response.content)
+            })
+            .catch(error => {
+                setFactorsError(error instanceof Error ? error.message : 'Unable to refresh factors')
+            })
+            .finally(() => setFactorsLoading(false))
+    }
+
+    const handleSimulationSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+
+        if (!simulationForm.procedureId || !simulationForm.priceListId || !simulationForm.insuranceDegreeId || !simulationForm.date) {
+            setSimulationError('Procedure, price list, insurance degree, and date are required for simulation')
+            return
+        }
+
+        const payload: PricingCalculationRequest = {
+            procedureId: Number(simulationForm.procedureId),
+            priceListId: Number(simulationForm.priceListId),
+            insuranceDegreeId: Number(simulationForm.insuranceDegreeId),
+            date: simulationForm.date,
+            factors: buildFactorsObject(simulationEntries),
+        }
+
+        try {
+            setSimulationError(null)
+            setSimulationLoading(true)
+            setShowWhyPrice(false)
+            const result = await calculatePricing(payload)
+            setSimulationResult(result)
+        } catch (error) {
+            setSimulationError(error instanceof Error ? error.message : 'Unable to calculate pricing')
+            setSimulationResult(null)
+        } finally {
+            setSimulationLoading(false)
+        }
+    }
+
+    const handleSavePeriodDiscount = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (!periodDiscountForm.procedureId || !periodDiscountForm.priceListId || !periodDiscountForm.period || !periodDiscountForm.discountPct || !periodDiscountForm.validFrom) {
+            alert('All required fields must be provided to create a period discount')
+            return
+        }
+
+        const payload: CreatePeriodDiscountPayload = {
+            procedureId: Number(periodDiscountForm.procedureId),
+            priceListId: Number(periodDiscountForm.priceListId),
+            period: Number(periodDiscountForm.period),
+            periodUnit: periodDiscountForm.periodUnit,
+            discountPct: Number(periodDiscountForm.discountPct),
+            validFrom: periodDiscountForm.validFrom,
+            validTo: periodDiscountForm.validTo || undefined,
+            createdBy: periodDiscountForm.createdBy || undefined,
+        }
+
+        try {
+            setSavingDiscount(true)
+            await createPeriodDiscount(payload)
+            refreshPeriodDiscounts()
+            alert('Period discount saved successfully')
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to save period discount')
+        } finally {
+            setSavingDiscount(false)
+        }
+    }
+
+    const handleDragStart = (event: DragEvent<HTMLDivElement>, id: number) => {
+        event.dataTransfer.effectAllowed = 'move'
+        setDraggedRuleId(id)
+    }
+
+    const handleDragOver = (event: DragEvent<HTMLDivElement>, id: number) => {
+        event.preventDefault()
+        if (draggedRuleId === null || draggedRuleId === id) {
+            return
+        }
+
+        setPricingRules(prev => {
+            const sourceIndex = prev.findIndex(rule => rule.id === draggedRuleId)
+            const targetIndex = prev.findIndex(rule => rule.id === id)
+            if (sourceIndex === -1 || targetIndex === -1) {
+                return prev
+            }
+
+            const reordered = [...prev]
+            const [moved] = reordered.splice(sourceIndex, 1)
+            reordered.splice(targetIndex, 0, moved)
+            return reordered
+        })
+    }
+
+    const handleDragEnd = () => {
+        setDraggedRuleId(null)
+    }
+
+    const addSimulationEntry = () => {
+        setSimulationEntries(prev => [
+            ...prev,
+            {
+                id: generateId(),
+                factorKey: factors[0]?.key ?? '',
+                value: '',
+            },
+        ])
+    }
+
+    const updateSimulationEntry = (id: string, patch: Partial<FactorEntryDraft>) => {
+        setSimulationEntries(prev => prev.map(entry => (entry.id === id ? { ...entry, ...patch } : entry)))
+    }
+
+    const removeSimulationEntry = (id: string) => {
+        setSimulationEntries(prev => prev.filter(entry => entry.id !== id))
+    }
+
+    const addPointRateContextEntry = () => {
+        setPointRateContextEntries(prev => [...prev, { id: generateId(), key: '', value: '' }])
+    }
+
+    const updatePointRateContextEntry = (id: string, patch: Partial<ContextEntryDraft>) => {
+        setPointRateContextEntries(prev => prev.map(entry => (entry.id === id ? { ...entry, ...patch } : entry)))
+    }
+
+    const removePointRateContextEntry = (id: string) => {
+        setPointRateContextEntries(prev => prev.filter(entry => entry.id !== id))
+    }
 
     return (
-        <div className="h-full flex flex-col">
-            {/* Header Bar */}
-            <div className="bg-tpa-header text-white px-4 py-2 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <span className="font-bold">MEDEXA</span>
-                    <span className="text-sm">System User</span>
-                </div>
-                <h2 className="text-lg font-semibold">Procedures Price Lists</h2>
-                <div className="text-sm">
-                    Health Insurance TPA System
-                    <br />
-                    Tuesday 11-11-2025
-                </div>
+        <div className="space-y-6 pb-12">
+            <div className="flex flex-col gap-2 border-b border-slate-200 pb-6">
+                <h1 className="text-2xl font-semibold text-slate-900">Procedure Pricing Management</h1>
+                <p className="text-sm text-slate-600">
+                    Build dynamic pricing factors and rules, manage point rates, and simulate pricing outcomes with real-time feedback.
+                </p>
             </div>
 
-            {/* Main Content */}
-            <div className="flex-1 flex">
-                {/* Left Panel - Price Lists */}
-                <div className="w-80 bg-white border-r">
-                    <div className="p-2 border-b bg-gray-50">
-                        <div className="flex items-center justify-between mb-2">
-                            <Label>Provider Type</Label>
-                            <Select defaultValue="all">
-                                <SelectTrigger className="w-48">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Providers</SelectItem>
-                                    <SelectItem value="hospital">Hospital</SelectItem>
-                                    <SelectItem value="clinic">Clinic</SelectItem>
-                                    <SelectItem value="lab">Laboratory</SelectItem>
-                                </SelectContent>
-                            </Select>
+            <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
+                <div className="space-y-6">
+                    <SectionCard
+                        title="Pricing Factor Library"
+                        description="Factors power rule conditions and simulation contexts."
+                        actions={
+                            <Button variant="outline" size="sm" onClick={refreshFactors} disabled={factorsLoading}>
+                                {factorsLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                                Refresh
+                            </Button>
+                        }
+                    >
+                        {factorsError ? <p className="text-sm text-red-600">{factorsError}</p> : null}
+                        <div className="flex flex-wrap gap-2">
+                            {factors.map(factor => (
+                                <span
+                                    key={factor.id}
+                                    className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                                >
+                                    {factor.nameEn}
+                                    <span className="ml-2 rounded bg-slate-200 px-1 text-[10px] uppercase text-slate-600">{factor.dataType}</span>
+                                </span>
+                            ))}
                         </div>
-                        <div className="flex items-center justify-between">
-                            <Label>Region</Label>
-                            <Select defaultValue="12">
-                                <SelectTrigger className="w-48">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {regions.map(region => (
-                                        <SelectItem key={region.value} value={region.value}>
-                                            {region.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
 
-                    <div className="p-2">
-                        <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)}>
-                            <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="list">Prices List</TabsTrigger>
-                                <TabsTrigger value="procedures">Procedures</TabsTrigger>
-                            </TabsList>
+                        <form onSubmit={handleCreateFactor} className="mt-6 space-y-4">
+                            <div className="grid gap-3">
+                                <Label htmlFor="factor-key">Key</Label>
+                                <Input
+                                    id="factor-key"
+                                    placeholder="e.g. visit_time"
+                                    value={newFactorForm.key}
+                                    onChange={event => setNewFactorForm(prev => ({ ...prev, key: event.target.value }))}
+                                />
+                            </div>
+                            <div className="grid gap-3">
+                                <Label htmlFor="factor-name-en">Name (English)</Label>
+                                <Input
+                                    id="factor-name-en"
+                                    placeholder="e.g. Visit Time"
+                                    value={newFactorForm.nameEn}
+                                    onChange={event => setNewFactorForm(prev => ({ ...prev, nameEn: event.target.value }))}
+                                />
+                            </div>
+                            <div className="grid gap-3">
+                                <Label htmlFor="factor-name-ar">Name (Arabic)</Label>
+                                <Input
+                                    id="factor-name-ar"
+                                    value={newFactorForm.nameAr}
+                                    onChange={event => setNewFactorForm(prev => ({ ...prev, nameAr: event.target.value }))}
+                                />
+                            </div>
+                            <div className="grid gap-3">
+                                <Label>Data type</Label>
+                                <Select
+                                    value={newFactorForm.dataType}
+                                    onValueChange={value => setNewFactorForm(prev => ({ ...prev, dataType: value }))}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="TEXT">Text</SelectItem>
+                                        <SelectItem value="NUMBER">Number</SelectItem>
+                                        <SelectItem value="SELECT">Select</SelectItem>
+                                        <SelectItem value="DATE">Date</SelectItem>
+                                        <SelectItem value="BOOLEAN">Boolean</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-3">
+                                <Label htmlFor="factor-values">Allowed values (JSON array, optional)</Label>
+                                <Input
+                                    id="factor-values"
+                                    placeholder='["DAY", "NIGHT"]'
+                                    value={newFactorForm.allowedValues}
+                                    onChange={event => setNewFactorForm(prev => ({ ...prev, allowedValues: event.target.value }))}
+                                />
+                            </div>
+                            {factorCreationError ? <p className="text-sm text-red-600">{factorCreationError}</p> : null}
+                            <Button type="submit" className="w-full" disabled={creatingFactor}>
+                                {creatingFactor ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                                Create factor
+                            </Button>
+                        </form>
+                    </SectionCard>
 
-                            <TabsContent value="list" className="mt-2">
-                                <div className="space-y-1">
-                                    <div className="mb-2">
+                    <SectionCard
+                        title="Simulation Context"
+                        description="Prepare factor values before running a pricing simulation."
+                    >
+                        <form onSubmit={handleSimulationSubmit} className="space-y-5">
+                            <div className="grid gap-3">
+                                <Label htmlFor="sim-procedure">Procedure ID</Label>
+                                <Input
+                                    id="sim-procedure"
+                                    type="number"
+                                    value={simulationForm.procedureId}
+                                    onChange={event => setSimulationForm(prev => ({ ...prev, procedureId: event.target.value }))}
+                                />
+                            </div>
+                            <div className="grid gap-3">
+                                <Label htmlFor="sim-price-list">Price list ID</Label>
+                                <Input
+                                    id="sim-price-list"
+                                    type="number"
+                                    value={simulationForm.priceListId}
+                                    onChange={event => setSimulationForm(prev => ({ ...prev, priceListId: event.target.value }))}
+                                />
+                            </div>
+                            <div className="grid gap-3">
+                                <Label htmlFor="sim-insurance-degree">Insurance degree ID</Label>
+                                <Input
+                                    id="sim-insurance-degree"
+                                    type="number"
+                                    value={simulationForm.insuranceDegreeId}
+                                    onChange={event => setSimulationForm(prev => ({ ...prev, insuranceDegreeId: event.target.value }))}
+                                />
+                            </div>
+                            <div className="grid gap-3">
+                                <Label htmlFor="sim-date">Evaluation date</Label>
+                                <Input
+                                    id="sim-date"
+                                    type="date"
+                                    value={simulationForm.date}
+                                    onChange={event => setSimulationForm(prev => ({ ...prev, date: event.target.value }))}
+                                />
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-slate-700">Dynamic factors</h3>
+                                    <Button type="button" variant="outline" size="sm" onClick={addSimulationEntry} disabled={factors.length === 0}>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add factor
+                                    </Button>
+                                </div>
+
+                                {simulationEntries.length === 0 ? (
+                                    <p className={infoTextClass}>No factors selected yet. Add factors to test conditional pricing logic.</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {simulationEntries.map(entry => {
+                                            const factor = factors.find(item => item.key === entry.factorKey) ?? factors[0]
+                                            const factorOptions = factors.map(item => (
+                                                <SelectItem key={item.key} value={item.key}>
+                                                    {item.nameEn}
+                                                </SelectItem>
+                                            ))
+                                            const allowedValues = factor ? parseAllowedValues(factor) : []
+                                            const inputKind = factor ? resolveFactorInputKind(factor) : 'text'
+
+                                            return (
+                                                <div key={entry.id} className="rounded-lg border border-slate-200 p-4">
+                                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+                                                        <div className="flex-1 space-y-2">
+                                                            <Label className="text-xs uppercase text-slate-500">Factor</Label>
+                                                            <Select
+                                                                value={entry.factorKey}
+                                                                onValueChange={value => updateSimulationEntry(entry.id, { factorKey: value })}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select factor" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>{factorOptions}</SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="flex-1 space-y-2">
+                                                            <Label className="text-xs uppercase text-slate-500">Value</Label>
+                                                            {inputKind === 'boolean' ? (
+                                                                <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                                                                    <Switch
+                                                                        checked={Boolean(entry.value)}
+                                                                        onCheckedChange={checked => updateSimulationEntry(entry.id, { value: checked })}
+                                                                    />
+                                                                    <span className="text-sm text-slate-700">{entry.value ? 'True' : 'False'}</span>
+                                                                </div>
+                                                            ) : inputKind === 'select' && allowedValues.length > 0 ? (
+                                                                <select
+                                                                    multiple
+                                                                    value={Array.isArray(entry.value) ? entry.value.map(String) : entry.value ? [String(entry.value)] : []}
+                                                                    onChange={event =>
+                                                                        updateSimulationEntry(entry.id, {
+                                                                            value: Array.from(event.target.selectedOptions).map(option => option.value),
+                                                                        })
+                                                                    }
+                                                                    className="h-28 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                                                >
+                                                                    {allowedValues.map(option => (
+                                                                        <option key={option} value={option}>
+                                                                            {option}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            ) : (
+                                                                <Input
+                                                                    type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
+                                                                    value={Array.isArray(entry.value) ? entry.value.join(', ') : String(entry.value ?? '')}
+                                                                    onChange={event => updateSimulationEntry(entry.id, { value: event.target.value })}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="mt-6 text-slate-500 hover:text-red-600"
+                                                            onClick={() => removeSimulationEntry(entry.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {simulationError ? <p className="text-sm text-red-600">{simulationError}</p> : null}
+
+                            <Button type="submit" className="w-full" disabled={simulationLoading}>
+                                {simulationLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CircleDot className="mr-2 h-4 w-4" />}
+                                Run simulation
+                            </Button>
+                        </form>
+
+                        {simulationResult ? (
+                            <div className="mt-6 space-y-4 rounded-lg border border-slate-200 p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs uppercase text-slate-500">Final price</p>
+                                        <p className="text-2xl font-semibold text-slate-900">{formatCurrency(simulationResult.price)}</p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setShowWhyPrice(prev => !prev)}
+                                    >
+                                        <Info className="mr-2 h-4 w-4" />
+                                        Why this price?
+                                    </Button>
+                                </div>
+
+                                {showWhyPrice ? (
+                                    <div className="space-y-3">
+                                        <details className="rounded-lg border border-slate-200 p-4" open>
+                                            <summary className="cursor-pointer font-medium text-slate-800">Selected Rule</summary>
+                                            {simulationResult.selectedRule ? (
+                                                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                                                    <p>Mode: {simulationResult.selectedRule.pricing.mode}</p>
+                                                    {simulationResult.selectedRule.pricing.fixed_price ? (
+                                                        <p>Fixed price: {formatCurrency(simulationResult.selectedRule.pricing.fixed_price)}</p>
+                                                    ) : null}
+                                                    {simulationResult.selectedRule.pricing.points ? (
+                                                        <p>Points: {simulationResult.selectedRule.pricing.points}</p>
+                                                    ) : null}
+                                                    {simulationResult.selectedRule.pricing.min_price || simulationResult.selectedRule.pricing.max_price ? (
+                                                        <p>
+                                                            Range: {simulationResult.selectedRule.pricing.min_price ?? '—'} - {simulationResult.selectedRule.pricing.max_price ?? '—'}
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+                                            ) : (
+                                                <p className={infoTextClass}>No rule matched.</p>
+                                            )}
+                                        </details>
+
+                                        <details className="rounded-lg border border-slate-200 p-4" open>
+                                            <summary className="cursor-pointer font-medium text-slate-800">Condition Evaluation</summary>
+                                            <div className="mt-3 space-y-2">
+                                                {simulationResult.evaluatedRules.map(rule => (
+                                                    <div key={rule.ruleId} className={cn('rounded-md border p-3 text-sm', rule.matched ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700')}>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-medium">Rule #{rule.ruleId}</span>
+                                                            <span className="text-xs uppercase">Priority {rule.priority}</span>
+                                                        </div>
+                                                        {rule.failedConditions.length ? (
+                                                            <ul className="mt-2 list-disc space-y-1 pl-5">
+                                                                {rule.failedConditions.map(condition => (
+                                                                    <li key={`${condition.factor}-${condition.operator}`}>{formatEvaluationCondition(condition)}</li>
+                                                                ))}
+                                                            </ul>
+                                                        ) : (
+                                                            <p className="mt-2 text-xs">All conditions matched.</p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </details>
+
+                                        <details className="rounded-lg border border-blue-200 bg-blue-50 p-4" open>
+                                            <summary className="cursor-pointer font-medium text-blue-900">Point Rate</summary>
+                                            {simulationResult.pointRateUsed ? (
+                                                <div className="mt-3 text-sm text-blue-900">
+                                                    <p>Point price: {simulationResult.pointRateUsed.pointPrice}</p>
+                                                    <p>Valid: {formatDate(simulationResult.pointRateUsed.validFrom)} → {simulationResult.pointRateUsed.validTo ? formatDate(simulationResult.pointRateUsed.validTo) : 'Open-ended'}</p>
+                                                </div>
+                                            ) : (
+                                                <p className="mt-3 text-sm text-blue-800">No point rate applied.</p>
+                                            )}
+                                        </details>
+
+                                        <details className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                                            <summary className="cursor-pointer font-medium text-blue-900">Discounts</summary>
+                                            {simulationResult.discountApplied ? (
+                                                <div className="mt-3 text-sm text-blue-900">
+                                                    <p>Discount ID: {simulationResult.discountApplied.discountId}</p>
+                                                    <p>Percent: {simulationResult.discountApplied.pct}%</p>
+                                                    <p>
+                                                        Period: {simulationResult.discountApplied.period} {simulationResult.discountApplied.unit}
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <p className="mt-3 text-sm text-blue-800">No discount applied.</p>
+                                            )}
+                                        </details>
+
+                                        <details className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                                            <summary className="cursor-pointer font-medium text-blue-900">Adjustments</summary>
+                                            {simulationResult.adjustmentsApplied && simulationResult.adjustmentsApplied.length > 0 ? (
+                                                <ul className="mt-3 space-y-2 text-sm text-blue-900">
+                                                    {simulationResult.adjustmentsApplied.map((adjustment, index) => (
+                                                        <li key={`${adjustment.factorKey}-${index}`}>
+                                                            {adjustment.type} {adjustment.factorKey} → {adjustment.caseMatched}: {formatCurrency(adjustment.amount)}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <p className="mt-3 text-sm text-blue-800">No adjustments applied.</p>
+                                            )}
+                                        </details>
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
+                    </SectionCard>
+                </div>
+
+                <div className="space-y-6">
+                    <SectionCard
+                        title="Dynamic Rule Builder"
+                        description="Compose pricing rules by combining multiple context-aware conditions."
+                        actions={
+                            <Button variant="outline" size="sm" onClick={refreshPricingRules} disabled={pricingRulesLoading}>
+                                {pricingRulesLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                                Reload rules
+                            </Button>
+                        }
+                    >
+                        {pricingRulesError ? <p className="text-sm text-red-600">{pricingRulesError}</p> : null}
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="rule-procedure">Procedure ID</Label>
+                                    <Input
+                                        id="rule-procedure"
+                                        type="number"
+                                        value={ruleForm.procedureId}
+                                        onChange={event => setRuleForm(prev => ({ ...prev, procedureId: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="rule-price-list">Price list ID</Label>
+                                    <Input
+                                        id="rule-price-list"
+                                        type="number"
+                                        value={ruleForm.priceListId}
+                                        onChange={event => setRuleForm(prev => ({ ...prev, priceListId: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="rule-priority">Priority</Label>
+                                    <Input
+                                        id="rule-priority"
+                                        type="number"
+                                        min={0}
+                                        value={ruleForm.priority}
+                                        onChange={event => setRuleForm(prev => ({ ...prev, priority: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="rule-valid-from">Valid from</Label>
+                                    <Input
+                                        id="rule-valid-from"
+                                        type="date"
+                                        value={ruleForm.validFrom}
+                                        onChange={event => setRuleForm(prev => ({ ...prev, validFrom: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="rule-valid-to">Valid to</Label>
+                                    <Input
+                                        id="rule-valid-to"
+                                        type="date"
+                                        value={ruleForm.validTo}
+                                        onChange={event => setRuleForm(prev => ({ ...prev, validTo: event.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-slate-700">Conditions (AND logic)</h3>
+                                    <Button type="button" variant="outline" size="sm" onClick={handleAddCondition} disabled={factors.length === 0}>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add condition
+                                    </Button>
+                                </div>
+                                {ruleConditions.length === 0 ? (
+                                    <p className={infoTextClass}>No conditions yet. Create at least one factor-driven condition.</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {ruleConditions.map(condition => {
+                                            const factor = factors.find(item => item.key === condition.factorKey) ?? factors[0]
+                                            const options = factor ? operatorOptionsForFactor(factor) : []
+                                            const allowedValues = factor ? parseAllowedValues(factor) : []
+                                            const inputKind = factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
+                                            const selectedOption = options.find(option => option.value === condition.operator)
+
+                                            return (
+                                                <div key={condition.id} className="rounded-lg border border-slate-200 p-4 shadow-sm">
+                                                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                        <div className="space-y-2">
+                                                            <Label className="text-xs uppercase text-slate-500">Factor</Label>
+                                                            <Select
+                                                                value={condition.factorKey}
+                                                                onValueChange={value => handleConditionFactorChange(condition.id, value)}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select factor" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {factors.map(item => (
+                                                                        <SelectItem key={item.key} value={item.key}>
+                                                                            {item.nameEn}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label className="text-xs uppercase text-slate-500">Operator</Label>
+                                                            <Select
+                                                                value={condition.operator}
+                                                                onValueChange={value => handleConditionOperatorChange(condition.id, value)}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select operator" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {options.map(option => (
+                                                                        <SelectItem key={option.value} value={option.value}>
+                                                                            {option.label}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="flex items-start justify-end">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="text-slate-500 hover:text-red-600"
+                                                                onClick={() => handleRemoveCondition(condition.id)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-4 space-y-2">
+                                                        <Label className="text-xs uppercase text-slate-500">Value</Label>
+                                                        {selectedOption?.requiresRange ? (
+                                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                                <Input
+                                                                    type={inputKind === 'date' ? 'date' : 'number'}
+                                                                    placeholder="Min"
+                                                                    value={typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value) ? (condition.value as { min?: string }).min ?? '' : ''}
+                                                                    onChange={event =>
+                                                                        handleConditionValueChange(condition.id, {
+                                                                            min: event.target.value,
+                                                                            max:
+                                                                                typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                    ? (condition.value as { max?: string }).max ?? ''
+                                                                                    : '',
+                                                                        })
+                                                                    }
+                                                                />
+                                                                <Input
+                                                                    type={inputKind === 'date' ? 'date' : 'number'}
+                                                                    placeholder="Max"
+                                                                    value={typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value) ? (condition.value as { max?: string }).max ?? '' : ''}
+                                                                    onChange={event =>
+                                                                        handleConditionValueChange(condition.id, {
+                                                                            min:
+                                                                                typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                    ? (condition.value as { min?: string }).min ?? ''
+                                                                                    : '',
+                                                                            max: event.target.value,
+                                                                        })
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                            <select
+                                                                multiple
+                                                                value={Array.isArray(condition.value) ? condition.value.map(String) : condition.value ? [String(condition.value)] : []}
+                                                                onChange={event =>
+                                                                    handleConditionValueChange(condition.id, Array.from(event.target.selectedOptions).map(option => option.value))
+                                                                }
+                                                                className="h-32 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                                            >
+                                                                {allowedValues.map(option => (
+                                                                    <option key={option} value={option}>
+                                                                        {option}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        ) : inputKind === 'boolean' ? (
+                                                            <div className="flex items-center gap-3">
+                                                                <Switch
+                                                                    checked={Boolean(condition.value)}
+                                                                    onCheckedChange={checked => handleConditionValueChange(condition.id, checked)}
+                                                                />
+                                                                <span className="text-sm text-slate-700">{condition.value ? 'True' : 'False'}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <Input
+                                                                type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
+                                                                value={Array.isArray(condition.value) ? condition.value.join(', ') : String(condition.value ?? '')}
+                                                                onChange={event => handleConditionValueChange(condition.id, event.target.value)}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label>Pricing mode</Label>
+                                    <Select
+                                        value={ruleForm.pricingMode}
+                                        onValueChange={value => setRuleForm(prev => ({ ...prev, pricingMode: value as PricingMode }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select mode" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="FIXED">Fixed</SelectItem>
+                                            <SelectItem value="POINTS">Points</SelectItem>
+                                            <SelectItem value="RANGE">Range</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {ruleForm.pricingMode === 'FIXED' ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="rule-fixed-price">Fixed price</Label>
                                         <Input
-                                            placeholder="Search price lists..."
-                                            className="w-full"
+                                            id="rule-fixed-price"
+                                            type="number"
+                                            value={ruleForm.fixedPrice}
+                                            onChange={event => setRuleForm(prev => ({ ...prev, fixedPrice: event.target.value }))}
                                         />
                                     </div>
-                                    <div className="max-h-96 overflow-y-auto">
-                                        <table className="w-full text-sm">
-                                            <thead className="bg-gray-100 sticky top-0">
-                                            <tr>
-                                                <th className="text-left p-1">ID</th>
-                                                <th className="text-left p-1">Price List</th>
-                                            </tr>
-                                            </thead>
-                                            <tbody>
-                                            {priceLists.map(list => (
-                                                <tr
-                                                    key={list.id}
-                                                    className={`cursor-pointer hover:bg-blue-50 ${selectedPriceList?.id === list.id ? 'bg-blue-100' : ''}`}
-                                                    onClick={() => handleSelectPriceList(list)}
-                                                >
-                                                    <td className="p-1">{list.id}</td>
-                                                    <td className="p-1">{list.name}</td>
-                                                </tr>
-                                            ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </TabsContent>
-
-                            <TabsContent value="procedures" className="mt-2">
-                                <div className="space-y-1">
-                                    <div className="mb-2">
+                                ) : null}
+                                {ruleForm.pricingMode === 'POINTS' ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="rule-points">Points</Label>
                                         <Input
-                                            placeholder="Search procedures..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full"
+                                            id="rule-points"
+                                            type="number"
+                                            value={ruleForm.points}
+                                            onChange={event => setRuleForm(prev => ({ ...prev, points: event.target.value }))}
                                         />
                                     </div>
-                                    <div className="max-h-96 overflow-y-auto">
-                                        <table className="w-full text-sm">
-                                            <thead className="bg-gray-100 sticky top-0">
-                                            <tr>
-                                                <th className="text-left p-1">ID</th>
-                                                <th className="text-left p-1">Procedure</th>
-                                            </tr>
-                                            </thead>
-                                            <tbody>
-                                            {filteredItems.map(item => (
-                                                <tr
-                                                    key={item.id}
-                                                    className="cursor-pointer hover:bg-blue-50"
-                                                    onClick={() => handleEditProcedurePrice(item)}
-                                                >
-                                                    <td className="p-1">{item.procedureCode}</td>
-                                                    <td className="p-1">{item.procedureName}</td>
-                                                </tr>
-                                            ))}
-                                            </tbody>
-                                        </table>
+                                ) : null}
+                                {ruleForm.pricingMode === 'RANGE' ? (
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="rule-min-price">Min price</Label>
+                                            <Input
+                                                id="rule-min-price"
+                                                type="number"
+                                                value={ruleForm.minPrice}
+                                                onChange={event => setRuleForm(prev => ({ ...prev, minPrice: event.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="rule-max-price">Max price</Label>
+                                            <Input
+                                                id="rule-max-price"
+                                                type="number"
+                                                value={ruleForm.maxPrice}
+                                                onChange={event => setRuleForm(prev => ({ ...prev, maxPrice: event.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-slate-700">Adjustments</h3>
+                                    <Button type="button" variant="outline" size="sm" onClick={handleAddAdjustment} disabled={factors.length === 0}>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add adjustment
+                                    </Button>
+                                </div>
+                                {ruleAdjustments.length === 0 ? (
+                                    <p className={infoTextClass}>No adjustments defined.</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {ruleAdjustments.map(adjustment => {
+                                            const allowedValues = parseAllowedValues(factors.find(item => item.key === adjustment.factorKey) ?? factors[0])
+                                            return (
+                                                <div key={adjustment.id} className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                                                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:gap-4">
+                                                        <div className="flex-1 space-y-2">
+                                                            <Label className="text-xs uppercase text-blue-900">Factor</Label>
+                                                            <Select
+                                                                value={adjustment.factorKey}
+                                                                onValueChange={value => handleAdjustmentChange(adjustment.id, { factorKey: value })}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Select factor" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {factors.map(item => (
+                                                                        <SelectItem key={item.key} value={item.key}>
+                                                                            {item.nameEn}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="flex-1 space-y-2">
+                                                            <Label className="text-xs uppercase text-blue-900">Type</Label>
+                                                            <Input
+                                                                value={adjustment.type}
+                                                                onChange={event => handleAdjustmentChange(adjustment.id, { type: event.target.value })}
+                                                                placeholder="e.g. ADD"
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 space-y-2">
+                                                            <Label className="text-xs uppercase text-blue-900">Percent (optional)</Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={adjustment.percent}
+                                                                onChange={event => handleAdjustmentChange(adjustment.id, { percent: event.target.value })}
+                                                            />
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-blue-600 hover:text-red-600"
+                                                            onClick={() => handleRemoveAdjustment(adjustment.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                    <div className="mt-4 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <Label className="text-xs uppercase text-blue-900">Cases</Label>
+                                                            <Button type="button" variant="outline" size="sm" onClick={() => handleAddAdjustmentCase(adjustment.id)}>
+                                                                <Plus className="mr-2 h-4 w-4" />
+                                                                Add case
+                                                            </Button>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {adjustment.cases.map(caseEntry => (
+                                                                <div key={caseEntry.id} className="flex flex-col gap-2 rounded-md border border-blue-100 bg-white p-3 md:flex-row md:items-center md:gap-3">
+                                                                    <div className="flex-1">
+                                                                        <Label className="text-[10px] uppercase text-blue-800">Factor value</Label>
+                                                                        {allowedValues.length > 0 ? (
+                                                                            <select
+                                                                                value={caseEntry.caseValue}
+                                                                                onChange={event => handleAdjustmentCaseChange(adjustment.id, caseEntry.id, { caseValue: event.target.value })}
+                                                                                className="mt-1 w-full rounded-md border border-blue-200 px-3 py-2 text-sm"
+                                                                            >
+                                                                                <option value="">Select value</option>
+                                                                                {allowedValues.map(option => (
+                                                                                    <option key={option} value={option}>
+                                                                                        {option}
+                                                                                    </option>
+                                                                                ))}
+                                                                            </select>
+                                                                        ) : (
+                                                                            <Input
+                                                                                value={caseEntry.caseValue}
+                                                                                onChange={event => handleAdjustmentCaseChange(adjustment.id, caseEntry.id, { caseValue: event.target.value })}
+                                                                                placeholder="Case value"
+                                                                            />
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <Label className="text-[10px] uppercase text-blue-800">Amount</Label>
+                                                                        <Input
+                                                                            type="number"
+                                                                            value={caseEntry.amount}
+                                                                            onChange={event => handleAdjustmentCaseChange(adjustment.id, caseEntry.id, { amount: event.target.value })}
+                                                                        />
+                                                                    </div>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="text-blue-600 hover:text-red-600"
+                                                                        onClick={() => handleRemoveAdjustmentCase(adjustment.id, caseEntry.id)}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-700">Discount configuration</p>
+                                        <p className={infoTextClass}>Enable period-based discounts for the rule.</p>
+                                    </div>
+                                    <Switch
+                                        checked={ruleForm.discountApply}
+                                        onCheckedChange={checked => setRuleForm(prev => ({ ...prev, discountApply: checked }))}
+                                    />
+                                </div>
+                                {ruleForm.discountApply ? (
+                                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="rule-discount-unit">Unit</Label>
+                                            <Input
+                                                id="rule-discount-unit"
+                                                value={ruleForm.discountUnit}
+                                                onChange={event => setRuleForm(prev => ({ ...prev, discountUnit: event.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="rule-discount-value">Value</Label>
+                                            <Input
+                                                id="rule-discount-value"
+                                                type="number"
+                                                value={ruleForm.discountValue}
+                                                onChange={event => setRuleForm(prev => ({ ...prev, discountValue: event.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <div className="flex justify-end">
+                                <Button onClick={handleSaveRule} disabled={savingRule}>
+                                    {savingRule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BadgeCheck className="mr-2 h-4 w-4" />}
+                                    Save rule
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 space-y-4">
+                            <h3 className="text-sm font-semibold text-slate-700">Rule visualization</h3>
+                            <div className="space-y-3">
+                                {pricingRules.map(rule => {
+                                    const parsed = parseRuleJson(rule)
+                                    const conditions = extractRuleConditions(parsed)
+                                    return (
+                                        <div
+                                            key={rule.id}
+                                            draggable
+                                            onDragStart={event => handleDragStart(event, rule.id)}
+                                            onDragOver={event => handleDragOver(event, rule.id)}
+                                            onDragEnd={handleDragEnd}
+                                            className="flex cursor-move flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <GripVertical className="h-4 w-4 text-slate-400" />
+                                                    <span className="text-sm font-semibold text-slate-800">Rule #{rule.id}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">Priority {rule.priority}</span>
+                                                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">{formatRulePricing(parsed)}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {conditions.map(condition => (
+                                                    <span key={condition} className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                                                        {condition}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <div className="text-xs text-slate-500">
+                                                Valid from {Array.isArray(rule.validFrom) ? rule.validFrom.join('/') : rule.validFrom} {rule.validTo ? `→ ${Array.isArray(rule.validTo) ? rule.validTo.join('/') : rule.validTo}` : ''}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                            {pricingRules.length === 0 ? <p className={infoTextClass}>No rules found.</p> : null}
+                        </div>
+                    </SectionCard>
+
+                    <SectionCard
+                        title="Point Rates"
+                        description="Manage point prices with filtering, card view, and inline editing."
+                        actions={
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="sm" onClick={() => setPointRatesView('table')} className={pointRatesView === 'table' ? 'border-blue-500 text-blue-600' : ''}>
+                                    Table view
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => setPointRatesView('card')} className={pointRatesView === 'card' ? 'border-blue-500 text-blue-600' : ''}>
+                                    Card view
+                                </Button>
+                                <Button onClick={() => handleOpenPointRateDialog()}>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Add point rate
+                                </Button>
+                            </div>
+                        }
+                    >
+                        {pointRatesError ? <p className="text-sm text-red-600">{pointRatesError}</p> : null}
+                        <div className="mb-4 grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="point-filter-price-list">Price list (context)</Label>
+                                <Input
+                                    id="point-filter-price-list"
+                                    value={pointRateFilters.priceListId}
+                                    onChange={event => setPointRateFilters(prev => ({ ...prev, priceListId: event.target.value }))}
+                                    placeholder="Context value"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="point-filter-insurance">Insurance degree ID</Label>
+                                <Input
+                                    id="point-filter-insurance"
+                                    value={pointRateFilters.insuranceDegreeId}
+                                    onChange={event => setPointRateFilters(prev => ({ ...prev, insuranceDegreeId: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="point-filter-date">Valid on</Label>
+                                <Input
+                                    id="point-filter-date"
+                                    type="date"
+                                    value={pointRateFilters.validOn}
+                                    onChange={event => setPointRateFilters(prev => ({ ...prev, validOn: event.target.value }))}
+                                />
+                            </div>
+                            <div className="flex items-end">
+                                <Button variant="outline" className="w-full" onClick={refreshPointRates} disabled={pointRatesLoading}>
+                                    {pointRatesLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                                    Refresh
+                                </Button>
+                            </div>
+                        </div>
+
+                        {pointRatesView === 'table' ? (
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>ID</TableHead>
+                                            <TableHead>Insurance degree</TableHead>
+                                            <TableHead>Point price</TableHead>
+                                            <TableHead>Range</TableHead>
+                                            <TableHead>Result range</TableHead>
+                                            <TableHead>Validity</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredPointRates.map(rate => (
+                                            <TableRow key={rate.id}>
+                                                <TableCell>{rate.id}</TableCell>
+                                                <TableCell>{rate.insuranceDegree?.nameEn ?? '—'}</TableCell>
+                                                <TableCell>{rate.pointPrice}</TableCell>
+                                                <TableCell>
+                                                    {rate.minPointPrice ?? '—'} → {rate.maxPointPrice ?? '—'}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {rate.resultMin ?? '—'} → {rate.resultMax ?? '—'}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {formatDate(rate.validFrom)} → {rate.validTo ? formatDate(rate.validTo) : 'Open-ended'}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="ghost" size="sm" onClick={() => handleOpenPointRateDialog(rate)}>
+                                                        Edit
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ) : (
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                {filteredPointRates.map(rate => (
+                                    <div key={rate.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs uppercase text-slate-500">Point rate</p>
+                                                <p className="text-lg font-semibold text-slate-900">{rate.pointPrice}</p>
+                                            </div>
+                                            <Button size="sm" variant="outline" onClick={() => handleOpenPointRateDialog(rate)}>
+                                                Edit
+                                            </Button>
+                                        </div>
+                                        <div className="mt-3 space-y-1 text-sm text-slate-600">
+                                            <p>Insurance degree: {rate.insuranceDegree?.nameEn ?? '—'}</p>
+                                            <p>Point range: {rate.minPointPrice ?? '—'} → {rate.maxPointPrice ?? '—'}</p>
+                                            <p>Result range: {rate.resultMin ?? '—'} → {rate.resultMax ?? '—'}</p>
+                                            <p>Valid: {formatDate(rate.validFrom)} → {rate.validTo ? formatDate(rate.validTo) : 'Open-ended'}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <form
+                            onSubmit={handlePointRateSubmit}
+                            className={cn(
+                                'mt-6 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-lg',
+                                isPointRateDialogOpen ? 'block' : 'hidden',
+                            )}
+                        >
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-semibold text-slate-800">{editingPointRate ? 'Edit point rate' : 'New point rate'}</h3>
+                                <Button type="button" variant="ghost" size="sm" onClick={handleClosePointRateDialog}>
+                                    Close
+                                </Button>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-degree">Insurance degree ID</Label>
+                                    <Input
+                                        id="point-degree"
+                                        type="number"
+                                        value={pointRateForm.insuranceDegreeId}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, insuranceDegreeId: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-price">Point price</Label>
+                                    <Input
+                                        id="point-price"
+                                        type="number"
+                                        value={pointRateForm.pointPrice}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, pointPrice: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-min">Min point price</Label>
+                                    <Input
+                                        id="point-min"
+                                        type="number"
+                                        value={pointRateForm.minPointPrice}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, minPointPrice: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-max">Max point price</Label>
+                                    <Input
+                                        id="point-max"
+                                        type="number"
+                                        value={pointRateForm.maxPointPrice}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, maxPointPrice: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-result-min">Result min</Label>
+                                    <Input
+                                        id="point-result-min"
+                                        type="number"
+                                        value={pointRateForm.resultMin}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, resultMin: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-result-max">Result max</Label>
+                                    <Input
+                                        id="point-result-max"
+                                        type="number"
+                                        value={pointRateForm.resultMax}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, resultMax: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-valid-from">Valid from</Label>
+                                    <Input
+                                        id="point-valid-from"
+                                        type="date"
+                                        value={pointRateForm.validFrom}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, validFrom: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-valid-to">Valid to</Label>
+                                    <Input
+                                        id="point-valid-to"
+                                        type="date"
+                                        value={pointRateForm.validTo}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, validTo: event.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="point-created-by">Created by</Label>
+                                    <Input
+                                        id="point-created-by"
+                                        value={pointRateForm.createdBy}
+                                        onChange={event => setPointRateForm(prev => ({ ...prev, createdBy: event.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-semibold text-slate-700">Context</Label>
+                                    <Button type="button" variant="outline" size="sm" onClick={addPointRateContextEntry}>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add context entry
+                                    </Button>
+                                </div>
+                                {pointRateContextEntries.length === 0 ? (
+                                    <p className={infoTextClass}>Context defines when the point rate applies. Add key/value pairs to target specific scenarios.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {pointRateContextEntries.map(entry => (
+                                            <div key={entry.id} className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 md:flex-row md:items-center md:gap-3">
+                                                <Input
+                                                    placeholder="Key"
+                                                    value={entry.key}
+                                                    onChange={event => updatePointRateContextEntry(entry.id, { key: event.target.value })}
+                                                />
+                                                <Input
+                                                    placeholder="Value or JSON"
+                                                    value={entry.value}
+                                                    onChange={event => updatePointRateContextEntry(entry.id, { value: event.target.value })}
+                                                />
+                                                <Button type="button" variant="ghost" size="icon" onClick={() => removePointRateContextEntry(entry.id)}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end">
+                                <Button type="submit" disabled={savingPointRate}>
+                                    {savingPointRate ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BadgeCheck className="mr-2 h-4 w-4" />}
+                                    Save point rate
+                                </Button>
+                            </div>
+                        </form>
+                    </SectionCard>
+
+                    <SectionCard
+                        title="Period Discounts"
+                        description="Configure recurring discounts for procedures based on time windows."
+                        actions={
+                            <Button variant="outline" size="sm" onClick={refreshPeriodDiscounts} disabled={periodDiscountsLoading}>
+                                {periodDiscountsLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                                Refresh
+                            </Button>
+                        }
+                    >
+                        {periodDiscountsError ? <p className="text-sm text-red-600">{periodDiscountsError}</p> : null}
+                        <div className="space-y-3">
+                            {periodDiscounts.map(discount => (
+                                <div key={discount.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-semibold text-slate-800">Discount #{discount.id}</span>
+                                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
+                                            {discount.discountPct}% for {discount.period} {discount.periodUnit}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 text-xs text-slate-500">
+                                        Valid: {formatDate(discount.validFrom)} → {discount.validTo ? formatDate(discount.validTo) : 'Open-ended'}
                                     </div>
                                 </div>
-                            </TabsContent>
-                        </Tabs>
-                    </div>
-                </div>
-
-                {/* Right Panel - Details */}
-                <div className="flex-1 bg-gray-50 p-4">
-                    {selectedPriceList ? (
-                        <div className="bg-white rounded shadow p-4">
-                            {/* Tab Bar */}
-                            <Tabs defaultValue="info" className="w-full">
-                                <TabsList className="mb-4">
-                                    <TabsTrigger value="info">Prices List Info</TabsTrigger>
-                                    <TabsTrigger value="level">Price List Level</TabsTrigger>
-                                    <TabsTrigger value="prices">Procedure's Prices</TabsTrigger>
-                                    <TabsTrigger value="percentage">Procedure Price Percentage</TabsTrigger>
-                                    <TabsTrigger value="discount">Procedure Price Discount</TabsTrigger>
-                                </TabsList>
-
-                                <TabsContent value="info">
-                                    <div className="space-y-4">
-                                        <div className="bg-blue-50 p-2 text-sm">
-                                            <div>Price List ID: <strong>{selectedPriceList.id}</strong></div>
-                                            <div>Description - English: <strong>{selectedPriceList.name}</strong></div>
-                                            <div>Description - Arabic: <strong>قائمة الأسعار {selectedPriceList.id}</strong></div>
-                                            <div>Region: <strong>{regions.find(r => r.value === selectedPriceList.region)?.label}</strong></div>
-                                            <div>Medical Provider Type: <strong>Clinic</strong></div>
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-                                            <input type="checkbox" checked={true} readOnly />
-                                            <Label>Default Price List</Label>
-                                        </div>
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="level">
-                                    <div className="space-y-4">
-                                        <div className="bg-blue-50 p-2 text-sm">
-                                            <div>Default Price List Level</div>
-                                            <div className="mt-2">
-                                                <strong>Medical Provider: Islamic Hospital - Amman, Start Date: 01/11/2018 00:00:00, Doctor Experience: 0, Specialist Physician Percentage: 0</strong>
-                                            </div>
-                                            <div>Medical Provider: Shmeisani Hospital</div>
-                                            <div>Medical Provider: The Arab Medical Center Hospital</div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="id">Id</Label>
-                                                <Input id="id" value="677" readOnly />
-                                            </div>
-                                            <div className="col-span-2">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>Insurance Degree</TableHead>
-                                                            <TableHead>Point Min. Price</TableHead>
-                                                            <TableHead>Point Max. Price</TableHead>
-                                                            <TableHead>Active Date</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        <TableRow>
-                                                            <TableCell>Third Degree</TableCell>
-                                                            <TableCell>2.800</TableCell>
-                                                            <TableCell>3.500</TableCell>
-                                                            <TableCell>15/06/2025</TableCell>
-                                                        </TableRow>
-                                                        <TableRow>
-                                                            <TableCell>Second Degree</TableCell>
-                                                            <TableCell>2.800</TableCell>
-                                                            <TableCell>3.500</TableCell>
-                                                            <TableCell>15/06/2025</TableCell>
-                                                        </TableRow>
-                                                        <TableRow>
-                                                            <TableCell>First Degree</TableCell>
-                                                            <TableCell>2.800</TableCell>
-                                                            <TableCell>3.500</TableCell>
-                                                            <TableCell>15/06/2025</TableCell>
-                                                        </TableRow>
-                                                        <TableRow>
-                                                            <TableCell>Private Degree</TableCell>
-                                                            <TableCell>2.800</TableCell>
-                                                            <TableCell>3.500</TableCell>
-                                                            <TableCell>15/06/2025</TableCell>
-                                                        </TableRow>
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="prices">
-                                    <div className="space-y-4">
-                                        <div className="bg-blue-50 p-2 text-sm">
-                                            <div>Procedure: <strong>Doctor Examination</strong></div>
-                                            <div>Price Level: Default Price List Level</div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label>Price Type</Label>
-                                                <Select defaultValue="fixed">
-                                                    <SelectTrigger>
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="fixed">Fixed</SelectItem>
-                                                        <SelectItem value="percentage">Percentage</SelectItem>
-                                                        <SelectItem value="points">Points</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Start Date</Label>
-                                                <Input type="date" defaultValue="2025-06-15" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>End Date</Label>
-                                                <Input type="date" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Min. Price</Label>
-                                                <Input type="number" defaultValue="30.000" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Max. Price</Label>
-                                                <Input type="number" defaultValue="15.000" />
-                                            </div>
-                                        </div>
-
-                                        <div className="flex gap-2">
-                                            <Button className="bg-tpa-primary hover:bg-tpa-accent">
-                                                Update Price
-                                            </Button>
-                                            <Button variant="outline">
-                                                History
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="percentage">
-                                    <div className="space-y-4">
-                                        <div className="bg-blue-50 p-2 text-sm">
-                                            <div>Procedure's Price Specialty Type: Specialist Doctor, Specialty Id: Internist Doctor, Doctor Experience: 0, Specialist Physician Percentage: 0</div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label>Specialty Type</Label>
-                                                <Select defaultValue="general">
-                                                    <SelectTrigger>
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="general">General Doctor</SelectItem>
-                                                        <SelectItem value="specialist">Specialist Doctor</SelectItem>
-                                                        <SelectItem value="consultant">Consultant</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Doctor Experience</Label>
-                                                <Input type="number" defaultValue="0" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Specialist Physician Percentage</Label>
-                                                <div className="relative">
-                                                    <Input type="number" defaultValue="0" className="pr-8" />
-                                                    <span className="absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <Label>General Physician Percentage</Label>
-                                                <div className="relative">
-                                                    <Input type="number" defaultValue="0" className="pr-8" />
-                                                    <span className="absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
-                                                </div>
-                                            </div>
-
-                                        </div>
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="discount">
-                                    <div className="space-y-4">
-                                        <div className="bg-blue-50 p-2 text-sm">
-                                            <div>Procedure's Price Specialty Type: Specialist Doctor, Specialty Id: Internist Doctor, Doctor Experience: 0, Specialist Physician Percentage: 0</div>
-                                        </div>
-
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Id</TableHead>
-                                                    <TableHead>Period</TableHead>
-                                                    <TableHead>Period Type</TableHead>
-                                                    <TableHead>Discount</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                <TableRow>
-                                                    <TableCell>730</TableCell>
-                                                    <TableCell>10</TableCell>
-                                                    <TableCell>Day</TableCell>
-                                                    <TableCell>50</TableCell>
-                                                </TableRow>
-                                                <TableRow>
-                                                    <TableCell>729</TableCell>
-                                                    <TableCell>5</TableCell>
-                                                    <TableCell>Day</TableCell>
-                                                    <TableCell>100</TableCell>
-                                                </TableRow>
-                                            </TableBody>
-                                        </Table>
-
-                                        <div className="border-t pt-4">
-                                            <div className="grid grid-cols-4 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label>Id</Label>
-                                                    <Input type="number" defaultValue="730" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Period</Label>
-                                                    <Input type="number" defaultValue="10" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Period Type</Label>
-                                                    <Select defaultValue="day">
-                                                        <SelectTrigger>
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="day">Day</SelectItem>
-                                                            <SelectItem value="week">Week</SelectItem>
-                                                            <SelectItem value="month">Month</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Discount %</Label>
-                                                    <Input type="number" defaultValue="50.000" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </TabsContent>
-                            </Tabs>
+                            ))}
+                            {periodDiscounts.length === 0 ? <p className={infoTextClass}>No discounts found.</p> : null}
                         </div>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                            Select a price list to view details
-                        </div>
-                    )}
-                </div>
-            </div>
 
-            {/* Bottom Toolbar */}
-            <div className="bg-gray-200 border-t px-4 py-2 flex items-center justify-between">
-                <div className="flex gap-2">
-                    <Button size="sm" variant="outline">Add</Button>
-                    <Button size="sm" variant="outline">Edit</Button>
-                    <Button size="sm" variant="outline">Delete</Button>
-                    <Button size="sm" variant="outline">Save</Button>
-                    <Button size="sm" variant="outline">Print</Button>
-                    <Button size="sm" variant="outline">Search</Button>
-                    <Button size="sm" variant="outline">Exe Search</Button>
-                    <Button size="sm" variant="outline">Cancel</Button>
-                    <Button size="sm" variant="outline">Exit</Button>
-                </div>
-
-                <div className="flex items-center gap-4 text-sm">
-                    <span>Record: 1/7</span>
+                        <form onSubmit={handleSavePeriodDiscount} className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-procedure">Procedure ID</Label>
+                                <Input
+                                    id="discount-procedure"
+                                    type="number"
+                                    value={periodDiscountForm.procedureId}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, procedureId: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-price-list">Price list ID</Label>
+                                <Input
+                                    id="discount-price-list"
+                                    type="number"
+                                    value={periodDiscountForm.priceListId}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, priceListId: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-period">Period</Label>
+                                <Input
+                                    id="discount-period"
+                                    type="number"
+                                    value={periodDiscountForm.period}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, period: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-unit">Period unit</Label>
+                                <Input
+                                    id="discount-unit"
+                                    value={periodDiscountForm.periodUnit}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, periodUnit: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-pct">Discount %</Label>
+                                <Input
+                                    id="discount-pct"
+                                    type="number"
+                                    value={periodDiscountForm.discountPct}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, discountPct: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-from">Valid from</Label>
+                                <Input
+                                    id="discount-from"
+                                    type="date"
+                                    value={periodDiscountForm.validFrom}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, validFrom: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-to">Valid to</Label>
+                                <Input
+                                    id="discount-to"
+                                    type="date"
+                                    value={periodDiscountForm.validTo}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, validTo: event.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="discount-created-by">Created by</Label>
+                                <Input
+                                    id="discount-created-by"
+                                    value={periodDiscountForm.createdBy}
+                                    onChange={event => setPeriodDiscountForm(prev => ({ ...prev, createdBy: event.target.value }))}
+                                />
+                            </div>
+                            <div className="flex items-end justify-end">
+                                <Button type="submit" disabled={savingDiscount} className="w-full md:w-auto">
+                                    {savingDiscount ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BadgeCheck className="mr-2 h-4 w-4" />}
+                                    Save discount
+                                </Button>
+                            </div>
+                        </form>
+                    </SectionCard>
                 </div>
             </div>
         </div>
     )
 }
 
-function cn(...classes: string[]) {
-    return classes.filter(Boolean).join(' ')
-}
+
