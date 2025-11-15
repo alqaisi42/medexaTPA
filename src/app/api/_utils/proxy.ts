@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const BACKEND_BASE_URL = [
-    process.env.PRICING_SERVICE_URL,
-    process.env.PRICING_API_BASE_URL,
-    process.env.NEXT_PUBLIC_PRICING_API_BASE_URL,
-    process.env.NEXT_PUBLIC_API_BASE_URL,
+    process.env.API_BASE_URL,
 ]
     .find((value) => typeof value === 'string' && value.trim().length > 0)
     ?.replace(/\/$/, '')

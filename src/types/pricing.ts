@@ -53,6 +53,8 @@ export interface PricingRuleAdjustment {
 export interface PricingRuleResponse {
     id: number
     procedureId: number
+    procedureName: string
+    priceListName: string
     priceListId: number
     priority: number
     ruleJson: string

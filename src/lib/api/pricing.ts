@@ -77,7 +77,17 @@ export async function fetchPricingFactors({
     return requestJson<PaginatedResponse<PricingFactor>>(url, { method: 'GET' }, 'Failed to load pricing factors')
 }
 
-export async function createPricingFactor(payload: Omit<PricingFactor, 'id' | 'allowedValues'> & { allowedValues?: unknown }): Promise<PricingFactor> {
+export interface CreatePricingFactorPayload {
+    key: string
+    nameEn: string
+    nameAr?: string
+    dataType: string
+    allowedValues?: unknown
+}
+
+export async function createPricingFactor(
+    payload: CreatePricingFactorPayload
+): Promise<PricingFactor> {
     const url = buildUrl('/api/pricing/pricing-factors')
     return requestJson<PricingFactor>(
         url,
@@ -85,9 +95,10 @@ export async function createPricingFactor(payload: Omit<PricingFactor, 'id' | 'a
             method: 'POST',
             body: JSON.stringify(payload),
         },
-        'Failed to create pricing factor',
+        'Failed to create pricing factor'
     )
 }
+
 
 export interface FetchPointRatesParams {
     page?: number
