@@ -25,31 +25,67 @@ export interface PricingRuleCondition {
     value: unknown
 }
 
-export type PricingMode = 'FIXED' | 'POINTS' | 'RANGE'
+export type PricingMode = 'FIXED' | 'POINTS' | 'RANGE' | (string & {})
+
+export interface PricingRulePricingTier {
+    points?: number | null
+    condition?: PricingRuleCondition | null
+}
+
+export interface PricingRuleConditionalFixedPrice {
+    price: number
+    conditions?: PricingRuleCondition[]
+}
 
 export interface PricingRulePricing {
     mode: PricingMode
-    fixed_price?: number | null
+    fixedPrice?: number | null
+    basePoints?: number | null
+    minPoints?: number | null
+    maxPoints?: number | null
+    pointStrategy?: string | null
     points?: number | null
-    min_price?: number | null
-    max_price?: number | null
+    tiers?: PricingRulePricingTier[]
+    minPrice?: number | null
+    maxPrice?: number | null
+    conditionalFixed?: PricingRuleConditionalFixedPrice[]
+}
+
+export interface PricingRuleDiscountLogicBlock {
+    percent?: number | null
+    whenConditions?: PricingRuleCondition[]
 }
 
 export interface PricingRuleDiscount {
     apply: boolean
     period_unit?: string | null
     period_value?: number | null
+    logicBlocks?: PricingRuleDiscountLogicBlock[]
 }
 
 export interface PricingRuleAdjustmentCaseMap {
-    [caseValue: string]: number
+    [caseValue: string]: unknown
+}
+
+export interface PricingRuleAdjustmentTier {
+    value?: string | null
+    add?: number | null
+    percent?: number | null
+}
+
+export interface PricingRuleAdjustmentLogicBlock {
+    whenConditions?: PricingRuleCondition[]
+    add?: number | null
+    addPercent?: number | null
 }
 
 export interface PricingRuleAdjustment {
     type: string
-    factor_key: string
+    factorKey: string
     cases: PricingRuleAdjustmentCaseMap
     percent?: number | null
+    tiers?: PricingRuleAdjustmentTier[]
+    logicBlocks?: PricingRuleAdjustmentLogicBlock[]
 }
 
 export interface PricingRuleResponse {

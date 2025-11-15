@@ -64,12 +64,46 @@ interface AdjustmentCaseDraft {
     amount: string
 }
 
+interface PricingTierDraft {
+    id: string
+    points: string
+    condition: ConditionDraft | null
+}
+
+interface ConditionalFixedDraft {
+    id: string
+    price: string
+    conditions: ConditionDraft[]
+}
+
+interface DiscountLogicBlockDraft {
+    id: string
+    percent: string
+    conditions: ConditionDraft[]
+}
+
+interface AdjustmentTierDraft {
+    id: string
+    value: string
+    add: string
+    percent: string
+}
+
+interface AdjustmentLogicBlockDraft {
+    id: string
+    add: string
+    addPercent: string
+    conditions: ConditionDraft[]
+}
+
 interface AdjustmentDraft {
     id: string
     type: string
     factorKey: string
     percent: string
     cases: AdjustmentCaseDraft[]
+    tiers: AdjustmentTierDraft[]
+    logicBlocks: AdjustmentLogicBlockDraft[]
 }
 
 interface FactorEntryDraft {
@@ -447,20 +481,35 @@ function formatRulePricing(ruleJson: Record<string, unknown> | null): string {
     }
 
     const mode = String(pricing.mode ?? '').toUpperCase()
+    const tiers = Array.isArray(pricing.tiers) ? pricing.tiers : []
+    const conditionalFixed = Array.isArray(pricing.conditionalFixed ?? pricing.conditional_fixed)
+        ? (pricing.conditionalFixed ?? pricing.conditional_fixed)
+        : []
+
+    let summary: string
     if (mode === 'FIXED') {
         const fixedPrice = pricing.fixedPrice ?? pricing.fixed_price
-        return `Fixed $${fixedPrice || 0}`
-    }
-    if (mode === 'POINTS') {
-        return `Points × ${pricing.points || 0}`
-    }
-    if (mode === 'RANGE') {
+        summary = `Fixed $${fixedPrice || 0}`
+    } else if (mode === 'POINTS') {
+        const points = pricing.points ?? pricing.basePoints ?? pricing.base_points ?? 0
+        summary = `Points × ${points}`
+    } else if (mode === 'RANGE') {
         const minPrice = pricing.minPrice ?? pricing.min_price
         const maxPrice = pricing.maxPrice ?? pricing.max_price
-        return `Range $${minPrice || 0} - $${maxPrice || '∞'}`
+        summary = `Range $${minPrice || 0} - $${maxPrice || '∞'}`
+    } else {
+        summary = mode || '—'
     }
 
-    return mode || '—'
+    const extras: string[] = []
+    if (tiers.length > 0) {
+        extras.push(`${tiers.length} tier${tiers.length > 1 ? 's' : ''}`)
+    }
+    if (conditionalFixed.length > 0) {
+        extras.push(`${conditionalFixed.length} conditional`)
+    }
+
+    return extras.length > 0 ? `${summary} (${extras.join(' · ')})` : summary
 }
 
 function formatConditionValueDisplay(condition: ConditionDraft, factor?: PricingFactor): string {
@@ -501,6 +550,47 @@ function formatConditionValueDisplay(condition: ConditionDraft, factor?: Pricing
     }
 
     return String(value)
+}
+
+function serializeConditionDraft(condition: ConditionDraft): PricingRuleCondition {
+    let value: unknown = condition.value
+
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const range = value as { min?: string; max?: string }
+        const normalized: { min?: number; max?: number } = {}
+        if (range.min !== undefined && range.min !== '') {
+            normalized.min = Number(range.min)
+        }
+        if (range.max !== undefined && range.max !== '') {
+            normalized.max = Number(range.max)
+        }
+        value = normalized
+    } else if (Array.isArray(value)) {
+        value = value
+    } else if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (trimmed === '') {
+            value = ''
+        } else if ((trimmed.startsWith('{') || trimmed.startsWith('['))) {
+            try {
+                value = JSON.parse(trimmed)
+            } catch {
+                value = trimmed
+            }
+        } else if (!Number.isNaN(Number(trimmed)) && condition.operator !== 'CONTAINS') {
+            value = Number(trimmed)
+        } else if (trimmed.toLowerCase() === 'true' || trimmed.toLowerCase() === 'false') {
+            value = trimmed.toLowerCase() === 'true'
+        } else {
+            value = trimmed
+        }
+    }
+
+    return {
+        factor: condition.factorKey,
+        operator: condition.operator,
+        value,
+    }
 }
 
 function parseContextJson(contextJson?: string | null): ContextEntryDraft[] {
@@ -666,6 +756,10 @@ export function ProceduresPriceListsPage() {
         pricingMode: 'FIXED' as PricingMode,
         fixedPrice: '',
         points: '',
+        basePoints: '',
+        minPoints: '',
+        maxPoints: '',
+        pointStrategy: '',
         minPrice: '',
         maxPrice: '',
         discountApply: false,
@@ -673,6 +767,9 @@ export function ProceduresPriceListsPage() {
         discountValue: '',
     })
     const [ruleConditions, setRuleConditions] = useState<ConditionDraft[]>([])
+    const [pricingTiers, setPricingTiers] = useState<PricingTierDraft[]>([])
+    const [conditionalFixed, setConditionalFixed] = useState<ConditionalFixedDraft[]>([])
+    const [discountLogicBlocks, setDiscountLogicBlocks] = useState<DiscountLogicBlockDraft[]>([])
     const [ruleAdjustments, setRuleAdjustments] = useState<AdjustmentDraft[]>([])
     const [savingRule, setSavingRule] = useState(false)
 
@@ -704,6 +801,27 @@ export function ProceduresPriceListsPage() {
     const [periodDiscountsView, setPeriodDiscountsView] = useState<'listing' | 'form'>('listing')
     const [factorsView, setFactorsView] = useState<'listing' | 'create'>('listing')
     const [simulationView, setSimulationView] = useState<'setup' | 'insights'>('setup')
+
+    const buildDefaultCondition = (factor?: PricingFactor): ConditionDraft => {
+        const resolvedFactor = factor ?? factors[0]
+        const operator = resolvedFactor ? defaultOperatorForFactor(resolvedFactor) : 'EQUALS'
+        const operatorOptions = resolvedFactor ? operatorOptionsForFactor(resolvedFactor) : []
+        const operatorConfig = operatorOptions.find(option => option.value === operator) ?? operatorOptions[0]
+
+        let value: ConditionDraft['value'] = ''
+        if (operatorConfig?.requiresRange) {
+            value = {min: '', max: ''}
+        } else if (operatorConfig?.supportsMultiple) {
+            value = []
+        }
+
+        return {
+            id: generateId(),
+            factorKey: resolvedFactor?.key ?? '',
+            operator,
+            value,
+        }
+    }
 
     useEffect(() => {
         if (!procedureDropdownOpen) {
@@ -1027,6 +1145,386 @@ export function ProceduresPriceListsPage() {
         setRuleConditions(prev => prev.filter(condition => condition.id !== id))
     }
 
+    const handleAddPricingTier = () => {
+        setPricingTiers(prev => [
+            ...prev,
+            {
+                id: generateId(),
+                points: '',
+                condition: factors.length > 0 ? buildDefaultCondition() : null,
+            },
+        ])
+    }
+
+    const handlePricingTierPointsChange = (id: string, value: string) => {
+        setPricingTiers(prev => prev.map(tier => (tier.id === id ? {...tier, points: value} : tier)))
+    }
+
+    const handleRemovePricingTier = (id: string) => {
+        setPricingTiers(prev => prev.filter(tier => tier.id !== id))
+    }
+
+    const handleEnsurePricingTierCondition = (id: string) => {
+        setPricingTiers(prev =>
+            prev.map(tier =>
+                tier.id === id && !tier.condition
+                    ? {
+                        ...tier,
+                        condition: buildDefaultCondition(),
+                    }
+                    : tier,
+            ),
+        )
+    }
+
+    const handlePricingTierConditionFactorChange = (tierId: string, factorKey: string) => {
+        setPricingTiers(prev =>
+            prev.map(tier => {
+                if (tier.id !== tierId) {
+                    return tier
+                }
+
+                const nextCondition = tier.condition ?? buildDefaultCondition()
+                const factor = factors.find(item => item.key === factorKey)
+                const defaultOperator = factor ? defaultOperatorForFactor(factor) : nextCondition.operator
+                const operatorOptions = factor ? operatorOptionsForFactor(factor) : []
+                const operatorConfig = operatorOptions.find(option => option.value === defaultOperator)
+
+                return {
+                    ...tier,
+                    condition: {
+                        ...nextCondition,
+                        factorKey,
+                        operator: defaultOperator,
+                        value: operatorConfig?.requiresRange ? {min: '', max: ''} : operatorConfig?.supportsMultiple ? [] : '',
+                    },
+                }
+            }),
+        )
+    }
+
+    const handlePricingTierConditionOperatorChange = (tierId: string, operator: string) => {
+        setPricingTiers(prev =>
+            prev.map(tier => {
+                if (tier.id !== tierId || !tier.condition) {
+                    return tier
+                }
+
+                const factor = factors.find(item => item.key === tier.condition?.factorKey)
+                const options = factor ? operatorOptionsForFactor(factor) : []
+                const selectedOption = options.find(option => option.value === operator)
+
+                return {
+                    ...tier,
+                    condition: {
+                        ...tier.condition,
+                        operator,
+                        value: selectedOption?.requiresRange ? {min: '', max: ''} : selectedOption?.supportsMultiple ? [] : '',
+                    },
+                }
+            }),
+        )
+    }
+
+    const handlePricingTierConditionValueChange = (tierId: string, value: ConditionDraft['value']) => {
+        setPricingTiers(prev =>
+            prev.map(tier =>
+                tier.id === tierId && tier.condition
+                    ? {
+                        ...tier,
+                        condition: {
+                            ...tier.condition,
+                            value,
+                        },
+                    }
+                    : tier,
+            ),
+        )
+    }
+
+    const handleRemovePricingTierCondition = (tierId: string) => {
+        setPricingTiers(prev =>
+            prev.map(tier =>
+                tier.id === tierId
+                    ? {
+                        ...tier,
+                        condition: null,
+                    }
+                    : tier,
+            ),
+        )
+    }
+
+    const handleAddConditionalFixed = () => {
+        setConditionalFixed(prev => [
+            ...prev,
+            {
+                id: generateId(),
+                price: '',
+                conditions: [],
+            },
+        ])
+    }
+
+    const handleConditionalFixedPriceChange = (id: string, value: string) => {
+        setConditionalFixed(prev => prev.map(entry => (entry.id === id ? {...entry, price: value} : entry)))
+    }
+
+    const handleRemoveConditionalFixed = (id: string) => {
+        setConditionalFixed(prev => prev.filter(entry => entry.id !== id))
+    }
+
+    const handleAddConditionalFixedCondition = (id: string) => {
+        setConditionalFixed(prev =>
+            prev.map(entry =>
+                entry.id === id
+                    ? {
+                        ...entry,
+                        conditions: [...entry.conditions, buildDefaultCondition()],
+                    }
+                    : entry,
+            ),
+        )
+    }
+
+    const handleConditionalFixedConditionFactorChange = (entryId: string, conditionId: string, factorKey: string) => {
+        setConditionalFixed(prev =>
+            prev.map(entry => {
+                if (entry.id !== entryId) {
+                    return entry
+                }
+
+                return {
+                    ...entry,
+                    conditions: entry.conditions.map(condition => {
+                        if (condition.id !== conditionId) {
+                            return condition
+                        }
+
+                        const factor = factors.find(item => item.key === factorKey)
+                        const defaultOperator = factor ? defaultOperatorForFactor(factor) : condition.operator
+                        const options = factor ? operatorOptionsForFactor(factor) : []
+                        const operatorConfig = options.find(option => option.value === defaultOperator)
+
+                        return {
+                            ...condition,
+                            factorKey,
+                            operator: defaultOperator,
+                            value: operatorConfig?.requiresRange
+                                ? {min: '', max: ''}
+                                : operatorConfig?.supportsMultiple
+                                    ? []
+                                    : '',
+                        }
+                    }),
+                }
+            }),
+        )
+    }
+
+    const handleConditionalFixedConditionOperatorChange = (entryId: string, conditionId: string, operator: string) => {
+        setConditionalFixed(prev =>
+            prev.map(entry => {
+                if (entry.id !== entryId) {
+                    return entry
+                }
+
+                return {
+                    ...entry,
+                    conditions: entry.conditions.map(condition => {
+                        if (condition.id !== conditionId) {
+                            return condition
+                        }
+
+                        const factor = factors.find(item => item.key === condition.factorKey)
+                        const options = factor ? operatorOptionsForFactor(factor) : []
+                        const selected = options.find(option => option.value === operator)
+
+                        return {
+                            ...condition,
+                            operator,
+                            value: selected?.requiresRange ? {min: '', max: ''} : selected?.supportsMultiple ? [] : '',
+                        }
+                    }),
+                }
+            }),
+        )
+    }
+
+    const handleConditionalFixedConditionValueChange = (
+        entryId: string,
+        conditionId: string,
+        value: ConditionDraft['value'],
+    ) => {
+        setConditionalFixed(prev =>
+            prev.map(entry =>
+                entry.id === entryId
+                    ? {
+                        ...entry,
+                        conditions: entry.conditions.map(condition =>
+                            condition.id === conditionId
+                                ? {
+                                    ...condition,
+                                    value,
+                                }
+                                : condition,
+                        ),
+                    }
+                    : entry,
+            ),
+        )
+    }
+
+    const handleRemoveConditionalFixedCondition = (entryId: string, conditionId: string) => {
+        setConditionalFixed(prev =>
+            prev.map(entry =>
+                entry.id === entryId
+                    ? {
+                        ...entry,
+                        conditions: entry.conditions.filter(condition => condition.id !== conditionId),
+                    }
+                    : entry,
+            ),
+        )
+    }
+
+    const handleAddDiscountLogicBlock = () => {
+        setDiscountLogicBlocks(prev => [
+            ...prev,
+            {
+                id: generateId(),
+                percent: '',
+                conditions: [],
+            },
+        ])
+    }
+
+    const handleDiscountLogicBlockPercentChange = (id: string, value: string) => {
+        setDiscountLogicBlocks(prev => prev.map(block => (block.id === id ? {...block, percent: value} : block)))
+    }
+
+    const handleRemoveDiscountLogicBlock = (id: string) => {
+        setDiscountLogicBlocks(prev => prev.filter(block => block.id !== id))
+    }
+
+    const handleAddDiscountLogicBlockCondition = (id: string) => {
+        setDiscountLogicBlocks(prev =>
+            prev.map(block =>
+                block.id === id
+                    ? {
+                        ...block,
+                        conditions: [...block.conditions, buildDefaultCondition()],
+                    }
+                    : block,
+            ),
+        )
+    }
+
+    const handleDiscountLogicBlockConditionFactorChange = (blockId: string, conditionId: string, factorKey: string) => {
+        setDiscountLogicBlocks(prev =>
+            prev.map(block => {
+                if (block.id !== blockId) {
+                    return block
+                }
+
+                return {
+                    ...block,
+                    conditions: block.conditions.map(condition => {
+                        if (condition.id !== conditionId) {
+                            return condition
+                        }
+
+                        const factor = factors.find(item => item.key === factorKey)
+                        const defaultOperator = factor ? defaultOperatorForFactor(factor) : condition.operator
+                        const options = factor ? operatorOptionsForFactor(factor) : []
+                        const operatorConfig = options.find(option => option.value === defaultOperator)
+
+                        return {
+                            ...condition,
+                            factorKey,
+                            operator: defaultOperator,
+                            value: operatorConfig?.requiresRange
+                                ? {min: '', max: ''}
+                                : operatorConfig?.supportsMultiple
+                                    ? []
+                                    : '',
+                        }
+                    }),
+                }
+            }),
+        )
+    }
+
+    const handleDiscountLogicBlockConditionOperatorChange = (
+        blockId: string,
+        conditionId: string,
+        operator: string,
+    ) => {
+        setDiscountLogicBlocks(prev =>
+            prev.map(block => {
+                if (block.id !== blockId) {
+                    return block
+                }
+
+                return {
+                    ...block,
+                    conditions: block.conditions.map(condition => {
+                        if (condition.id !== conditionId) {
+                            return condition
+                        }
+
+                        const factor = factors.find(item => item.key === condition.factorKey)
+                        const options = factor ? operatorOptionsForFactor(factor) : []
+                        const selected = options.find(option => option.value === operator)
+
+                        return {
+                            ...condition,
+                            operator,
+                            value: selected?.requiresRange ? {min: '', max: ''} : selected?.supportsMultiple ? [] : '',
+                        }
+                    }),
+                }
+            }),
+        )
+    }
+
+    const handleDiscountLogicBlockConditionValueChange = (
+        blockId: string,
+        conditionId: string,
+        value: ConditionDraft['value'],
+    ) => {
+        setDiscountLogicBlocks(prev =>
+            prev.map(block =>
+                block.id === blockId
+                    ? {
+                        ...block,
+                        conditions: block.conditions.map(condition =>
+                            condition.id === conditionId
+                                ? {
+                                    ...condition,
+                                    value,
+                                }
+                                : condition,
+                        ),
+                    }
+                    : block,
+            ),
+        )
+    }
+
+    const handleRemoveDiscountLogicBlockCondition = (blockId: string, conditionId: string) => {
+        setDiscountLogicBlocks(prev =>
+            prev.map(block =>
+                block.id === blockId
+                    ? {
+                        ...block,
+                        conditions: block.conditions.filter(condition => condition.id !== conditionId),
+                    }
+                    : block,
+            ),
+        )
+    }
+
     const handleAddAdjustment = () => {
         setRuleAdjustments(prev => [
             ...prev,
@@ -1042,6 +1540,8 @@ export function ProceduresPriceListsPage() {
                         amount: '',
                     },
                 ],
+                tiers: [],
+                logicBlocks: [],
             },
         ])
     }
@@ -1103,6 +1603,283 @@ export function ProceduresPriceListsPage() {
                     cases: adjustment.cases.filter(entry => entry.id !== caseId),
                 }
             }),
+        )
+    }
+
+    const handleAddAdjustmentTier = (adjustmentId: string) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        tiers: [
+                            ...adjustment.tiers,
+                            {
+                                id: generateId(),
+                                value: '',
+                                add: '',
+                                percent: '',
+                            },
+                        ],
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleAdjustmentTierChange = (adjustmentId: string, tierId: string, patch: Partial<AdjustmentTierDraft>) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        tiers: adjustment.tiers.map(tier => (tier.id === tierId ? {...tier, ...patch} : tier)),
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleRemoveAdjustmentTier = (adjustmentId: string, tierId: string) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        tiers: adjustment.tiers.filter(tier => tier.id !== tierId),
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleAddAdjustmentLogicBlock = (adjustmentId: string) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        logicBlocks: [
+                            ...adjustment.logicBlocks,
+                            {
+                                id: generateId(),
+                                add: '',
+                                addPercent: '',
+                                conditions: [],
+                            },
+                        ],
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleAdjustmentLogicBlockChange = (
+        adjustmentId: string,
+        blockId: string,
+        patch: Partial<AdjustmentLogicBlockDraft>,
+    ) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        logicBlocks: adjustment.logicBlocks.map(block =>
+                            block.id === blockId
+                                ? {
+                                    ...block,
+                                    ...patch,
+                                }
+                                : block,
+                        ),
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleRemoveAdjustmentLogicBlock = (adjustmentId: string, blockId: string) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        logicBlocks: adjustment.logicBlocks.filter(block => block.id !== blockId),
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleAddAdjustmentLogicBlockCondition = (adjustmentId: string, blockId: string) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        logicBlocks: adjustment.logicBlocks.map(block =>
+                            block.id === blockId
+                                ? {
+                                    ...block,
+                                    conditions: [...block.conditions, buildDefaultCondition()],
+                                }
+                                : block,
+                        ),
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleAdjustmentLogicBlockConditionFactorChange = (
+        adjustmentId: string,
+        blockId: string,
+        conditionId: string,
+        factorKey: string,
+    ) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment => {
+                if (adjustment.id !== adjustmentId) {
+                    return adjustment
+                }
+
+                return {
+                    ...adjustment,
+                    logicBlocks: adjustment.logicBlocks.map(block => {
+                        if (block.id !== blockId) {
+                            return block
+                        }
+
+                        return {
+                            ...block,
+                            conditions: block.conditions.map(condition => {
+                                if (condition.id !== conditionId) {
+                                    return condition
+                                }
+
+                                const factor = factors.find(item => item.key === factorKey)
+                                const defaultOperator = factor ? defaultOperatorForFactor(factor) : condition.operator
+                                const options = factor ? operatorOptionsForFactor(factor) : []
+                                const operatorConfig = options.find(option => option.value === defaultOperator)
+
+                                return {
+                                    ...condition,
+                                    factorKey,
+                                    operator: defaultOperator,
+                                    value: operatorConfig?.requiresRange
+                                        ? {min: '', max: ''}
+                                        : operatorConfig?.supportsMultiple
+                                            ? []
+                                            : '',
+                                }
+                            }),
+                        }
+                    }),
+                }
+            }),
+        )
+    }
+
+    const handleAdjustmentLogicBlockConditionOperatorChange = (
+        adjustmentId: string,
+        blockId: string,
+        conditionId: string,
+        operator: string,
+    ) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment => {
+                if (adjustment.id !== adjustmentId) {
+                    return adjustment
+                }
+
+                return {
+                    ...adjustment,
+                    logicBlocks: adjustment.logicBlocks.map(block => {
+                        if (block.id !== blockId) {
+                            return block
+                        }
+
+                        return {
+                            ...block,
+                            conditions: block.conditions.map(condition => {
+                                if (condition.id !== conditionId) {
+                                    return condition
+                                }
+
+                                const factor = factors.find(item => item.key === condition.factorKey)
+                                const options = factor ? operatorOptionsForFactor(factor) : []
+                                const selected = options.find(option => option.value === operator)
+
+                                return {
+                                    ...condition,
+                                    operator,
+                                    value: selected?.requiresRange
+                                        ? {min: '', max: ''}
+                                        : selected?.supportsMultiple
+                                            ? []
+                                            : '',
+                                }
+                            }),
+                        }
+                    }),
+                }
+            }),
+        )
+    }
+
+    const handleAdjustmentLogicBlockConditionValueChange = (
+        adjustmentId: string,
+        blockId: string,
+        conditionId: string,
+        value: ConditionDraft['value'],
+    ) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        logicBlocks: adjustment.logicBlocks.map(block =>
+                            block.id === blockId
+                                ? {
+                                    ...block,
+                                    conditions: block.conditions.map(condition =>
+                                        condition.id === conditionId
+                                            ? {
+                                                ...condition,
+                                                value,
+                                            }
+                                            : condition,
+                                    ),
+                                }
+                                : block,
+                        ),
+                    }
+                    : adjustment,
+            ),
+        )
+    }
+
+    const handleRemoveAdjustmentLogicBlockCondition = (
+        adjustmentId: string,
+        blockId: string,
+        conditionId: string,
+    ) => {
+        setRuleAdjustments(prev =>
+            prev.map(adjustment =>
+                adjustment.id === adjustmentId
+                    ? {
+                        ...adjustment,
+                        logicBlocks: adjustment.logicBlocks.map(block =>
+                            block.id === blockId
+                                ? {
+                                    ...block,
+                                    conditions: block.conditions.filter(condition => condition.id !== conditionId),
+                                }
+                                : block,
+                        ),
+                    }
+                    : adjustment,
+            ),
         )
     }
 
@@ -1194,34 +1971,28 @@ export function ProceduresPriceListsPage() {
 
         const conditions: PricingRuleCondition[] = ruleConditions
             .filter(condition => condition.factorKey)
-            .map(condition => {
-                let value: unknown = condition.value
+            .map(condition => serializeConditionDraft(condition))
 
-                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                    const range = value as { min?: string; max?: string }
-                    value = {
-                        min: range.min ? Number(range.min) : undefined,
-                        max: range.max ? Number(range.max) : undefined,
-                    }
-                } else if (Array.isArray(value)) {
-                    value = value
-                } else if (typeof value === 'string') {
-                    const trimmed = value.trim()
-                    if (trimmed === '') {
-                        value = ''
-                    } else if (!Number.isNaN(Number(trimmed)) && condition.operator !== 'CONTAINS') {
-                        value = Number(trimmed)
-                    } else {
-                        value = trimmed
-                    }
-                }
+        const pricingTierPayload = pricingTiers
+            .filter(tier => tier.points.trim() !== '')
+            .map(tier => ({
+                points: Number(tier.points),
+                condition: tier.condition ? serializeConditionDraft(tier.condition) : undefined,
+            }))
 
-                return {
-                    factor: condition.factorKey,
-                    operator: condition.operator,
-                    value,
-                }
-            })
+        const conditionalFixedPayload = conditionalFixed
+            .filter(entry => entry.price.trim() !== '')
+            .map(entry => ({
+                price: Number(entry.price),
+                conditions: entry.conditions.map(serializeConditionDraft),
+            }))
+
+        const discountLogicBlocksPayload = discountLogicBlocks
+            .filter(block => block.percent.trim() !== '' || block.conditions.length > 0)
+            .map(block => ({
+                percent: block.percent !== '' ? Number(block.percent) : undefined,
+                whenConditions: block.conditions.map(serializeConditionDraft),
+            }))
 
         const payload: CreatePricingRulePayload = {
             procedureId: Number(ruleForm.procedureId),
@@ -1232,27 +2003,86 @@ export function ProceduresPriceListsPage() {
             conditions,
             pricing: {
                 mode: ruleForm.pricingMode,
-                fixed_price: ruleForm.pricingMode === 'FIXED' ? Number(ruleForm.fixedPrice || 0) : undefined,
-                points: ruleForm.pricingMode === 'POINTS' ? Number(ruleForm.points || 0) : undefined,
-                min_price: ruleForm.pricingMode === 'RANGE' ? Number(ruleForm.minPrice || 0) : undefined,
-                max_price: ruleForm.pricingMode === 'RANGE' ? Number(ruleForm.maxPrice || 0) : undefined,
+                fixedPrice: ruleForm.fixedPrice !== '' ? Number(ruleForm.fixedPrice) : undefined,
+                points: ruleForm.points !== '' ? Number(ruleForm.points) : undefined,
+                basePoints: ruleForm.basePoints !== '' ? Number(ruleForm.basePoints) : undefined,
+                minPoints: ruleForm.minPoints !== '' ? Number(ruleForm.minPoints) : undefined,
+                maxPoints: ruleForm.maxPoints !== '' ? Number(ruleForm.maxPoints) : undefined,
+                pointStrategy: ruleForm.pointStrategy || undefined,
+                minPrice: ruleForm.minPrice !== '' ? Number(ruleForm.minPrice) : undefined,
+                maxPrice: ruleForm.maxPrice !== '' ? Number(ruleForm.maxPrice) : undefined,
+                tiers: pricingTierPayload.length > 0 ? pricingTierPayload : undefined,
+                conditionalFixed: conditionalFixedPayload.length > 0 ? conditionalFixedPayload : undefined,
             },
             discount: {
                 apply: ruleForm.discountApply,
                 period_unit: ruleForm.discountApply ? ruleForm.discountUnit : undefined,
-                period_value: ruleForm.discountApply ? Number(ruleForm.discountValue || 0) : undefined,
+                period_value:
+                    ruleForm.discountApply && ruleForm.discountValue !== ''
+                        ? Number(ruleForm.discountValue)
+                        : undefined,
+                logicBlocks:
+                    ruleForm.discountApply && discountLogicBlocksPayload.length > 0
+                        ? discountLogicBlocksPayload
+                        : undefined,
             },
-            adjustments: ruleAdjustments.map(adjustment => ({
-                type: adjustment.type,
-                factor_key: adjustment.factorKey,
-                percent: adjustment.percent ? Number(adjustment.percent) : undefined,
-                cases: adjustment.cases.reduce<Record<string, number>>((accumulator, entry) => {
-                    if (entry.caseValue && entry.amount) {
-                        accumulator[entry.caseValue] = Number(entry.amount)
+            adjustments: ruleAdjustments.map(adjustment => {
+                const cases = adjustment.cases.reduce<Record<string, unknown>>((accumulator, entry) => {
+                    const caseKey = entry.caseValue.trim()
+                    const rawAmount = entry.amount.trim()
+
+                    if (!caseKey || rawAmount === '') {
+                        return accumulator
                     }
+
+                    if (rawAmount.startsWith('{') || rawAmount.startsWith('[')) {
+                        try {
+                            accumulator[caseKey] = JSON.parse(rawAmount)
+                            return accumulator
+                        } catch {
+                            // fall back to generic parsing
+                        }
+                    }
+
+                    if (!Number.isNaN(Number(rawAmount))) {
+                        accumulator[caseKey] = Number(rawAmount)
+                        return accumulator
+                    }
+
+                    if (rawAmount.toLowerCase() === 'true' || rawAmount.toLowerCase() === 'false') {
+                        accumulator[caseKey] = rawAmount.toLowerCase() === 'true'
+                        return accumulator
+                    }
+
+                    accumulator[caseKey] = rawAmount
                     return accumulator
-                }, {}),
-            })),
+                }, {})
+
+                const tiers = adjustment.tiers
+                    .filter(tier => tier.value.trim() !== '' || tier.add.trim() !== '' || tier.percent.trim() !== '')
+                    .map(tier => ({
+                        value: tier.value.trim() || undefined,
+                        add: tier.add.trim() !== '' ? Number(tier.add) : undefined,
+                        percent: tier.percent.trim() !== '' ? Number(tier.percent) : undefined,
+                    }))
+
+                const logicBlocks = adjustment.logicBlocks
+                    .filter(block => block.add.trim() !== '' || block.addPercent.trim() !== '' || block.conditions.length > 0)
+                    .map(block => ({
+                        add: block.add.trim() !== '' ? Number(block.add) : undefined,
+                        addPercent: block.addPercent.trim() !== '' ? Number(block.addPercent) : undefined,
+                        whenConditions: block.conditions.map(serializeConditionDraft),
+                    }))
+
+                return {
+                    type: adjustment.type,
+                    factorKey: adjustment.factorKey,
+                    percent: adjustment.percent ? Number(adjustment.percent) : undefined,
+                    cases,
+                    tiers: tiers.length > 0 ? tiers : undefined,
+                    logicBlocks: logicBlocks.length > 0 ? logicBlocks : undefined,
+                }
+            }),
         }
 
         try {
@@ -1468,24 +2298,46 @@ export function ProceduresPriceListsPage() {
     )
 
     const pricingStrategySummary = useMemo(() => {
+        let summary: string
+
         if (ruleForm.pricingMode === 'FIXED') {
             const hasValue = ruleForm.fixedPrice !== ''
-            return hasValue ? formatCurrency(Number(ruleForm.fixedPrice)) : 'Awaiting fixed price'
-        }
-
-        if (ruleForm.pricingMode === 'POINTS') {
+            summary = hasValue ? formatCurrency(Number(ruleForm.fixedPrice)) : 'Awaiting fixed price'
+        } else if (ruleForm.pricingMode === 'POINTS') {
             const hasValue = ruleForm.points !== ''
-            return hasValue ? `${ruleForm.points} pts × point price` : 'Awaiting points value'
+            summary = hasValue ? `${ruleForm.points} pts × point price` : 'Awaiting points value'
+        } else {
+            const hasMin = ruleForm.minPrice !== ''
+            const hasMax = ruleForm.maxPrice !== ''
+            summary = hasMin || hasMax
+                ? `${hasMin ? formatCurrency(Number(ruleForm.minPrice)) : '—'} → ${hasMax ? formatCurrency(Number(ruleForm.maxPrice)) : '—'}`
+                : 'Awaiting range values'
         }
 
-        const hasMin = ruleForm.minPrice !== ''
-        const hasMax = ruleForm.maxPrice !== ''
-        if (hasMin || hasMax) {
-            return `${hasMin ? formatCurrency(Number(ruleForm.minPrice)) : '—'} → ${hasMax ? formatCurrency(Number(ruleForm.maxPrice)) : '—'}`
+        const tierCount = pricingTiers.length
+        const conditionalCount = conditionalFixed.length
+
+        if (tierCount > 0 || conditionalCount > 0) {
+            const badges: string[] = []
+            if (tierCount > 0) {
+                badges.push(`${tierCount} tier${tierCount > 1 ? 's' : ''}`)
+            }
+            if (conditionalCount > 0) {
+                badges.push(`${conditionalCount} conditional price${conditionalCount > 1 ? 's' : ''}`)
+            }
+            summary = `${summary} · ${badges.join(' + ')}`
         }
 
-        return 'Awaiting range values'
-    }, [ruleForm.pricingMode, ruleForm.fixedPrice, ruleForm.points, ruleForm.minPrice, ruleForm.maxPrice])
+        return summary
+    }, [
+        ruleForm.pricingMode,
+        ruleForm.fixedPrice,
+        ruleForm.points,
+        ruleForm.minPrice,
+        ruleForm.maxPrice,
+        pricingTiers.length,
+        conditionalFixed.length,
+    ])
 
     const discountSummary = useMemo(() => {
         if (!ruleForm.discountApply) {
@@ -1494,8 +2346,10 @@ export function ProceduresPriceListsPage() {
 
         const value = ruleForm.discountValue !== '' ? ruleForm.discountValue : '—'
         const unit = ruleForm.discountUnit || 'Unit'
-        return `${value} ${unit}`
-    }, [ruleForm.discountApply, ruleForm.discountUnit, ruleForm.discountValue])
+        const logicCount = discountLogicBlocks.length
+        const suffix = logicCount > 0 ? ` · ${logicCount} conditional block${logicCount > 1 ? 's' : ''}` : ''
+        return `${value} ${unit}${suffix}`
+    }, [ruleForm.discountApply, ruleForm.discountUnit, ruleForm.discountValue, discountLogicBlocks.length])
 
     const adjustmentMatrix = useMemo(
         () =>
@@ -1511,6 +2365,8 @@ export function ProceduresPriceListsPage() {
                         caseValue: entry.caseValue || '—',
                         amount: entry.amount || '—',
                     })),
+                    tiers: adjustment.tiers,
+                    logicBlocks: adjustment.logicBlocks,
                 }
             }),
         [ruleAdjustments, factors],
@@ -1966,13 +2822,241 @@ export function ProceduresPriceListsPage() {
                                                                         />
                                                                     )}
                                                                 </div>
+                                                                <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <Label className="text-xs uppercase text-blue-800">Tiers</Label>
+                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddAdjustmentTier(adjustment.id)}>
+                                                                            <Plus className="mr-2 h-4 w-4"/>
+                                                                            Add tier
+                                                                        </Button>
+                                                                    </div>
+                                                                    {adjustment.tiers.length === 0 ? (
+                                                                        <p className="text-xs text-blue-700">No tiers defined.</p>
+                                                                    ) : (
+                                                                        <div className="space-y-2">
+                                                                            {adjustment.tiers.map(tier => (
+                                                                                <div key={tier.id} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                    <div className="space-y-1">
+                                                                                        <Label className="text-[10px] uppercase text-blue-800">Value</Label>
+                                                                                        <Input
+                                                                                            value={tier.value}
+                                                                                            onChange={event => handleAdjustmentTierChange(adjustment.id, tier.id, {value: event.target.value})}
+                                                                                            placeholder="Match value"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div className="space-y-1">
+                                                                                        <Label className="text-[10px] uppercase text-blue-800">Add (amount)</Label>
+                                                                                        <Input
+                                                                                            type="number"
+                                                                                            value={tier.add}
+                                                                                            onChange={event => handleAdjustmentTierChange(adjustment.id, tier.id, {add: event.target.value})}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div className="space-y-1">
+                                                                                        <Label className="text-[10px] uppercase text-blue-800">Add (%)</Label>
+                                                                                        <Input
+                                                                                            type="number"
+                                                                                            value={tier.percent}
+                                                                                            onChange={event => handleAdjustmentTierChange(adjustment.id, tier.id, {percent: event.target.value})}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-end">
+                                                                                        <Button type="button" variant="ghost" size="icon" className="text-blue-600 hover:text-red-600" onClick={() => handleRemoveAdjustmentTier(adjustment.id, tier.id)}>
+                                                                                            <Trash2 className="h-4 w-4"/>
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <Label className="text-xs uppercase text-indigo-800">Logic blocks</Label>
+                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddAdjustmentLogicBlock(adjustment.id)}>
+                                                                            <Plus className="mr-2 h-4 w-4"/>
+                                                                            Add block
+                                                                        </Button>
+                                                                    </div>
+                                                                    {adjustment.logicBlocks.length === 0 ? (
+                                                                        <p className="text-xs text-indigo-700">No conditional logic configured.</p>
+                                                                    ) : (
+                                                                        <div className="space-y-3">
+                                                                            {adjustment.logicBlocks.map(block => (
+                                                                                <div key={block.id} className="space-y-3 rounded-lg border border-indigo-200 bg-white p-3">
+                                                                                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                        <div className="space-y-1">
+                                                                                            <Label className="text-[10px] uppercase text-indigo-800">Add amount</Label>
+                                                                                            <Input
+                                                                                                type="number"
+                                                                                                value={block.add}
+                                                                                                onChange={event => handleAdjustmentLogicBlockChange(adjustment.id, block.id, {add: event.target.value})}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div className="space-y-1">
+                                                                                            <Label className="text-[10px] uppercase text-indigo-800">Add percent</Label>
+                                                                                            <Input
+                                                                                                type="number"
+                                                                                                value={block.addPercent}
+                                                                                                onChange={event => handleAdjustmentLogicBlockChange(adjustment.id, block.id, {addPercent: event.target.value})}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div className="flex items-center justify-end">
+                                                                                            <Button type="button" variant="ghost" size="icon" className="text-indigo-700 hover:text-red-600" onClick={() => handleRemoveAdjustmentLogicBlock(adjustment.id, block.id)}>
+                                                                                                <Trash2 className="h-4 w-4"/>
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between">
+                                                                                        <p className="text-[11px] uppercase text-indigo-700">Conditions</p>
+                                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddAdjustmentLogicBlockCondition(adjustment.id, block.id)}>
+                                                                                            Add condition
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                    {block.conditions.length === 0 ? (
+                                                                                        <p className="text-xs text-indigo-600">No conditions specified.</p>
+                                                                                    ) : (
+                                                                                        <div className="space-y-3">
+                                                                                            {block.conditions.map(condition => {
+                                                                                                const factor = factors.find(item => item.key === condition.factorKey)
+                                                                                                const allowedValues = factor ? parseAllowedValues(factor) : []
+                                                                                                const inputKind = factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
+                                                                                                const options = factor ? operatorOptionsForFactor(factor) : []
+                                                                                                const selectedOption = options.find(option => option.value === condition.operator)
+
+                                                                                                return (
+                                                                                                    <div key={condition.id} className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
+                                                                                                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                                            <div className="space-y-1">
+                                                                                                                <Label className="text-[10px] uppercase text-indigo-800">Factor</Label>
+                                                                                                                <Select
+                                                                                                                    value={condition.factorKey}
+                                                                                                                    onValueChange={value => handleAdjustmentLogicBlockConditionFactorChange(adjustment.id, block.id, condition.id, value)}
+                                                                                                                >
+                                                                                                                    <SelectTrigger>
+                                                                                                                        <SelectValue placeholder="Select factor"/>
+                                                                                                                    </SelectTrigger>
+                                                                                                                    <SelectContent>
+                                                                                                                        {factors.map(item => (
+                                                                                                                            <SelectItem key={item.key} value={item.key}>
+                                                                                                                                {item.nameEn}
+                                                                                                                            </SelectItem>
+                                                                                                                        ))}
+                                                                                                                    </SelectContent>
+                                                                                                                </Select>
+                                                                                                            </div>
+                                                                                                            <div className="space-y-1">
+                                                                                                                <Label className="text-[10px] uppercase text-indigo-800">Operator</Label>
+                                                                                                                <Select
+                                                                                                                    value={condition.operator}
+                                                                                                                    onValueChange={value => handleAdjustmentLogicBlockConditionOperatorChange(adjustment.id, block.id, condition.id, value)}
+                                                                                                                >
+                                                                                                                    <SelectTrigger>
+                                                                                                                        <SelectValue placeholder="Select operator"/>
+                                                                                                                    </SelectTrigger>
+                                                                                                                    <SelectContent>
+                                                                                                                        {options.map(option => (
+                                                                                                                            <SelectItem key={option.value} value={option.value}>
+                                                                                                                                {option.label}
+                                                                                                                            </SelectItem>
+                                                                                                                        ))}
+                                                                                                                    </SelectContent>
+                                                                                                                </Select>
+                                                                                                            </div>
+                                                                                                            <div className="flex items-start justify-end">
+                                                                                                                <Button type="button" variant="ghost" size="icon" className="text-indigo-700 hover:text-red-600" onClick={() => handleRemoveAdjustmentLogicBlockCondition(adjustment.id, block.id, condition.id)}>
+                                                                                                                    <Trash2 className="h-4 w-4"/>
+                                                                                                                </Button>
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                        <div className="space-y-1">
+                                                                                                            <Label className="text-[10px] uppercase text-indigo-800">Value</Label>
+                                                                                                            {selectedOption?.requiresRange ? (
+                                                                                                                <div className="grid grid-cols-2 gap-2">
+                                                                                                                    <Input
+                                                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                                        placeholder="Min"
+                                                                                                                        value={
+                                                                                                                            typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                                ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                                : ''
+                                                                                                                        }
+                                                                                                                        onChange={event => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, {
+                                                                                                                            min: event.target.value,
+                                                                                                                            max:
+                                                                                                                                typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                                    ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                                    : '',
+                                                                                                                        })}
+                                                                                                                    />
+                                                                                                                    <Input
+                                                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                                        placeholder="Max"
+                                                                                                                        value={
+                                                                                                                            typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                                ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                                : ''
+                                                                                                                        }
+                                                                                                                        onChange={event => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, {
+                                                                                                                            min:
+                                                                                                                                typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                                    ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                                    : '',
+                                                                                                                            max: event.target.value,
+                                                                                                                        })}
+                                                                                                                    />
+                                                                                                                </div>
+                                                                                                            ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                                                                                <select
+                                                                                                                    multiple
+                                                                                                                    value={Array.isArray(condition.value) ? condition.value.map(String) : condition.value ? [String(condition.value)] : []}
+                                                                                                                    onChange={event => handleAdjustmentLogicBlockConditionValueChange(
+                                                                                                                        adjustment.id,
+                                                                                                                        block.id,
+                                                                                                                        condition.id,
+                                                                                                                        Array.from(event.target.selectedOptions).map(option => option.value),
+                                                                                                                    )}
+                                                                                                                    className="h-24 w-full rounded-md border border-indigo-200 px-3 py-2 text-sm"
+                                                                                                                >
+                                                                                                                    {allowedValues.map(option => (
+                                                                                                                        <option key={option} value={option}>
+                                                                                                                            {option}
+                                                                                                                        </option>
+                                                                                                                    ))}
+                                                                                                                </select>
+                                                                                                            ) : inputKind === 'boolean' ? (
+                                                                                                                <div className="flex items-center gap-2">
+                                                                                                                    <Switch
+                                                                                                                        checked={Boolean(condition.value)}
+                                                                                                                        onCheckedChange={checked => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, checked)}
+                                                                                                                    />
+                                                                                                                    <span className="text-xs text-indigo-800">{condition.value ? 'True' : 'False'}</span>
+                                                                                                                </div>
+                                                                                                            ) : (
+                                                                                                                <Input
+                                                                                                                    type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
+                                                                                                                    value={Array.isArray(condition.value) ? condition.value.join(',') : String(condition.value ?? '')}
+                                                                                                                    onChange={event => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, event.target.value)}
+                                                                                                                />
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                )
+                                                                                            })}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         )
                                                     })}
                                                 </div>
                                             )}
                                         </TabsContent>
-                                        <TabsContent value="pricing" className="space-y-4">
+                                        <TabsContent value="pricing" className="space-y-6">
                                             <div className="grid gap-4 md:grid-cols-2">
                                                 <div className="space-y-2">
                                                     <Label>Pricing mode</Label>
@@ -2049,6 +3133,405 @@ export function ProceduresPriceListsPage() {
                                                         </div>
                                                     </>
                                                 ) : null}
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="rule-base-points">Base points (optional)</Label>
+                                                    <Input
+                                                        id="rule-base-points"
+                                                        type="number"
+                                                        value={ruleForm.basePoints}
+                                                        onChange={event => setRuleForm(prev => ({
+                                                            ...prev,
+                                                            basePoints: event.target.value
+                                                        }))}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="rule-min-points">Minimum points (optional)</Label>
+                                                    <Input
+                                                        id="rule-min-points"
+                                                        type="number"
+                                                        value={ruleForm.minPoints}
+                                                        onChange={event => setRuleForm(prev => ({
+                                                            ...prev,
+                                                            minPoints: event.target.value
+                                                        }))}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="rule-max-points">Maximum points (optional)</Label>
+                                                    <Input
+                                                        id="rule-max-points"
+                                                        type="number"
+                                                        value={ruleForm.maxPoints}
+                                                        onChange={event => setRuleForm(prev => ({
+                                                            ...prev,
+                                                            maxPoints: event.target.value
+                                                        }))}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="rule-point-strategy">Point strategy key (optional)</Label>
+                                                    <Input
+                                                        id="rule-point-strategy"
+                                                        value={ruleForm.pointStrategy}
+                                                        onChange={event => setRuleForm(prev => ({
+                                                            ...prev,
+                                                            pointStrategy: event.target.value
+                                                        }))}
+                                                        placeholder="e.g. seasonal-tier"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <h3 className="text-sm font-semibold text-amber-800">Tiered point logic</h3>
+                                                        <p className="text-xs text-amber-700">
+                                                            Add conditional tiers that override the base points when criteria match.
+                                                        </p>
+                                                    </div>
+                                                    <Button type="button" size="sm" variant="outline" onClick={handleAddPricingTier}>
+                                                        <Plus className="mr-2 h-4 w-4"/>
+                                                        Add tier
+                                                    </Button>
+                                                </div>
+                                                {pricingTiers.length === 0 ? (
+                                                    <p className="text-xs text-amber-700">No tiers defined. The rule will use the base configuration.</p>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {pricingTiers.map(tier => {
+                                                            const condition = tier.condition
+                                                            const factor = condition ? factors.find(item => item.key === condition.factorKey) : undefined
+                                                            const allowedValues = factor ? parseAllowedValues(factor) : []
+                                                            const inputKind = condition && factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
+                                                            const options = factor ? operatorOptionsForFactor(factor) : []
+                                                            const selectedOption = condition ? options.find(option => option.value === condition.operator) ?? options[0] : undefined
+
+                                                            return (
+                                                                <div key={tier.id} className="space-y-3 rounded-lg border border-amber-300 bg-white p-4">
+                                                                    <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                                        <div className="flex-1 space-y-1">
+                                                                            <Label className="text-xs uppercase text-amber-800">Points override</Label>
+                                                                            <Input
+                                                                                type="number"
+                                                                                value={tier.points}
+                                                                                onChange={event => handlePricingTierPointsChange(tier.id, event.target.value)}
+                                                                                placeholder="Enter tier points"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 self-start">
+                                                                            {condition ? (
+                                                                                <Button type="button" variant="outline" size="sm" onClick={() => handleRemovePricingTierCondition(tier.id)}>
+                                                                                    Remove condition
+                                                                                </Button>
+                                                                            ) : (
+                                                                                <Button type="button" variant="outline" size="sm" onClick={() => handleEnsurePricingTierCondition(tier.id)}>
+                                                                                    Add condition
+                                                                                </Button>
+                                                                            )}
+                                                                            <Button type="button" variant="ghost" size="icon" className="text-amber-700 hover:text-red-600" onClick={() => handleRemovePricingTier(tier.id)}>
+                                                                                <Trash2 className="h-4 w-4"/>
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                    {condition ? (
+                                                                        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                                                            <div className="grid gap-3 md:grid-cols-3">
+                                                                                <div className="space-y-1">
+                                                                                    <Label className="text-[11px] uppercase text-amber-800">Factor</Label>
+                                                                                    <Select
+                                                                                        value={condition.factorKey}
+                                                                                        onValueChange={value => handlePricingTierConditionFactorChange(tier.id, value)}
+                                                                                    >
+                                                                                        <SelectTrigger>
+                                                                                            <SelectValue placeholder="Select factor"/>
+                                                                                        </SelectTrigger>
+                                                                                        <SelectContent>
+                                                                                            {factors.map(item => (
+                                                                                                <SelectItem key={item.key} value={item.key}>
+                                                                                                    {item.nameEn}
+                                                                                                </SelectItem>
+                                                                                            ))}
+                                                                                        </SelectContent>
+                                                                                    </Select>
+                                                                                </div>
+                                                                                <div className="space-y-1">
+                                                                                    <Label className="text-[11px] uppercase text-amber-800">Operator</Label>
+                                                                                    <Select
+                                                                                        value={condition.operator}
+                                                                                        onValueChange={value => handlePricingTierConditionOperatorChange(tier.id, value)}
+                                                                                    >
+                                                                                        <SelectTrigger>
+                                                                                            <SelectValue placeholder="Select operator"/>
+                                                                                        </SelectTrigger>
+                                                                                        <SelectContent>
+                                                                                            {options.map(option => (
+                                                                                                <SelectItem key={option.value} value={option.value}>
+                                                                                                    {option.label}
+                                                                                                </SelectItem>
+                                                                                            ))}
+                                                                                        </SelectContent>
+                                                                                    </Select>
+                                                                                </div>
+                                                                                <div className="space-y-1">
+                                                                                    <Label className="text-[11px] uppercase text-amber-800">Value</Label>
+                                                                                    {selectedOption?.requiresRange ? (
+                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                            <Input
+                                                                                                type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                placeholder="Min"
+                                                                                                value={
+                                                                                                    typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                        ? (condition.value as { min?: string }).min ?? ''
+                                                                                                        : ''
+                                                                                                }
+                                                                                                onChange={event => handlePricingTierConditionValueChange(tier.id, {
+                                                                                                    min: event.target.value,
+                                                                                                    max:
+                                                                                                        typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                            ? (condition.value as { max?: string }).max ?? ''
+                                                                                                            : '',
+                                                                                                })}
+                                                                                            />
+                                                                                            <Input
+                                                                                                type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                placeholder="Max"
+                                                                                                value={
+                                                                                                    typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                        ? (condition.value as { max?: string }).max ?? ''
+                                                                                                        : ''
+                                                                                                }
+                                                                                                onChange={event => handlePricingTierConditionValueChange(tier.id, {
+                                                                                                    min:
+                                                                                                        typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                            ? (condition.value as { min?: string }).min ?? ''
+                                                                                                            : '',
+                                                                                                    max: event.target.value,
+                                                                                                })}
+                                                                                            />
+                                                                                        </div>
+                                                                                    ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                                                        <select
+                                                                                            multiple
+                                                                                            value={Array.isArray(condition.value) ? condition.value.map(String) : condition.value ? [String(condition.value)] : []}
+                                                                                            onChange={event => handlePricingTierConditionValueChange(
+                                                                                                tier.id,
+                                                                                                Array.from(event.target.selectedOptions).map(option => option.value),
+                                                                                            )}
+                                                                                            className="h-28 w-full rounded-md border border-amber-200 px-3 py-2 text-sm"
+                                                                                        >
+                                                                                            {allowedValues.map(option => (
+                                                                                                <option key={option} value={option}>
+                                                                                                    {option}
+                                                                                                </option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                    ) : inputKind === 'boolean' ? (
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <Switch
+                                                                                                checked={Boolean(condition.value)}
+                                                                                                onCheckedChange={checked => handlePricingTierConditionValueChange(tier.id, checked)}
+                                                                                            />
+                                                                                            <span className="text-xs text-amber-800">{condition.value ? 'True' : 'False'}</span>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <Input
+                                                                                            type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
+                                                                                            value={Array.isArray(condition.value) ? condition.value.join(',') : String(condition.value ?? '')}
+                                                                                            onChange={event => handlePricingTierConditionValueChange(tier.id, event.target.value)}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <h3 className="text-sm font-semibold text-slate-800">Conditional fixed pricing</h3>
+                                                        <p className="text-xs text-slate-600">
+                                                            Define fixed prices that activate only when all nested conditions pass.
+                                                        </p>
+                                                    </div>
+                                                    <Button type="button" size="sm" variant="outline" onClick={handleAddConditionalFixed}>
+                                                        <Plus className="mr-2 h-4 w-4"/>
+                                                        Add conditional price
+                                                    </Button>
+                                                </div>
+                                                {conditionalFixed.length === 0 ? (
+                                                    <p className="text-xs text-slate-500">No conditional overrides added.</p>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {conditionalFixed.map(entry => (
+                                                            <div key={entry.id} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                                                <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                                    <div className="flex-1 space-y-1">
+                                                                        <Label className="text-xs uppercase text-slate-700">Fixed price</Label>
+                                                                        <Input
+                                                                            type="number"
+                                                                            value={entry.price}
+                                                                            onChange={event => handleConditionalFixedPriceChange(entry.id, event.target.value)}
+                                                                            placeholder="Enter price"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 self-start">
+                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddConditionalFixedCondition(entry.id)}>
+                                                                            Add condition
+                                                                        </Button>
+                                                                        <Button type="button" variant="ghost" size="icon" className="text-slate-600 hover:text-red-600" onClick={() => handleRemoveConditionalFixed(entry.id)}>
+                                                                            <Trash2 className="h-4 w-4"/>
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                                {entry.conditions.length === 0 ? (
+                                                                    <p className="text-xs text-slate-500">No conditions attached. Override will always apply.</p>
+                                                                ) : (
+                                                                    <div className="space-y-3">
+                                                                        {entry.conditions.map(condition => {
+                                                                            const factor = factors.find(item => item.key === condition.factorKey)
+                                                                            const allowedValues = factor ? parseAllowedValues(factor) : []
+                                                                            const inputKind = factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
+                                                                            const options = factor ? operatorOptionsForFactor(factor) : []
+                                                                            const selectedOption = options.find(option => option.value === condition.operator)
+
+                                                                            return (
+                                                                                <div key={condition.id} className="space-y-3 rounded-lg border border-white bg-white p-3 shadow-sm">
+                                                                                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                        <div className="space-y-1">
+                                                                                            <Label className="text-[11px] uppercase text-slate-700">Factor</Label>
+                                                                                            <Select
+                                                                                                value={condition.factorKey}
+                                                                                                onValueChange={value => handleConditionalFixedConditionFactorChange(entry.id, condition.id, value)}
+                                                                                            >
+                                                                                                <SelectTrigger>
+                                                                                                    <SelectValue placeholder="Select factor"/>
+                                                                                                </SelectTrigger>
+                                                                                                <SelectContent>
+                                                                                                    {factors.map(item => (
+                                                                                                        <SelectItem key={item.key} value={item.key}>
+                                                                                                            {item.nameEn}
+                                                                                                        </SelectItem>
+                                                                                                    ))}
+                                                                                                </SelectContent>
+                                                                                            </Select>
+                                                                                        </div>
+                                                                                        <div className="space-y-1">
+                                                                                            <Label className="text-[11px] uppercase text-slate-700">Operator</Label>
+                                                                                            <Select
+                                                                                                value={condition.operator}
+                                                                                                onValueChange={value => handleConditionalFixedConditionOperatorChange(entry.id, condition.id, value)}
+                                                                                            >
+                                                                                                <SelectTrigger>
+                                                                                                    <SelectValue placeholder="Select operator"/>
+                                                                                                </SelectTrigger>
+                                                                                                <SelectContent>
+                                                                                                    {options.map(option => (
+                                                                                                        <SelectItem key={option.value} value={option.value}>
+                                                                                                            {option.label}
+                                                                                                        </SelectItem>
+                                                                                                    ))}
+                                                                                                </SelectContent>
+                                                                                            </Select>
+                                                                                        </div>
+                                                                                        <div className="flex items-start justify-end">
+                                                                                            <Button
+                                                                                                type="button"
+                                                                                                variant="ghost"
+                                                                                                size="icon"
+                                                                                                className="text-slate-600 hover:text-red-600"
+                                                                                                onClick={() => handleRemoveConditionalFixedCondition(entry.id, condition.id)}
+                                                                                            >
+                                                                                                <Trash2 className="h-4 w-4"/>
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="space-y-1">
+                                                                                        <Label className="text-[11px] uppercase text-slate-700">Value</Label>
+                                                                                        {selectedOption?.requiresRange ? (
+                                                                                            <div className="grid grid-cols-2 gap-2">
+                                                                                                <Input
+                                                                                                    type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                    placeholder="Min"
+                                                                                                    value={
+                                                                                                        typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                            ? (condition.value as { min?: string }).min ?? ''
+                                                                                                            : ''
+                                                                                                    }
+                                                                                                    onChange={event => handleConditionalFixedConditionValueChange(entry.id, condition.id, {
+                                                                                                        min: event.target.value,
+                                                                                                        max:
+                                                                                                            typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                : '',
+                                                                                                    })}
+                                                                                                />
+                                                                                                <Input
+                                                                                                    type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                    placeholder="Max"
+                                                                                                    value={
+                                                                                                        typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                            ? (condition.value as { max?: string }).max ?? ''
+                                                                                                            : ''
+                                                                                                    }
+                                                                                                    onChange={event => handleConditionalFixedConditionValueChange(entry.id, condition.id, {
+                                                                                                        min:
+                                                                                                            typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                : '',
+                                                                                                        max: event.target.value,
+                                                                                                    })}
+                                                                                                />
+                                                                                            </div>
+                                                                                        ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                                                            <select
+                                                                                                multiple
+                                                                                                value={Array.isArray(condition.value) ? condition.value.map(String) : condition.value ? [String(condition.value)] : []}
+                                                                                                onChange={event => handleConditionalFixedConditionValueChange(
+                                                                                                    entry.id,
+                                                                                                    condition.id,
+                                                                                                    Array.from(event.target.selectedOptions).map(option => option.value),
+                                                                                                )}
+                                                                                                className="h-28 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                                                                            >
+                                                                                                {allowedValues.map(option => (
+                                                                                                    <option key={option} value={option}>
+                                                                                                        {option}
+                                                                                                    </option>
+                                                                                                ))}
+                                                                                            </select>
+                                                                                        ) : inputKind === 'boolean' ? (
+                                                                                            <div className="flex items-center gap-2">
+                                                                                                <Switch
+                                                                                                    checked={Boolean(condition.value)}
+                                                                                                    onCheckedChange={checked => handleConditionalFixedConditionValueChange(entry.id, condition.id, checked)}
+                                                                                                />
+                                                                                                <span className="text-xs text-slate-700">{condition.value ? 'True' : 'False'}</span>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <Input
+                                                                                                type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
+                                                                                                value={Array.isArray(condition.value) ? condition.value.join(',') : String(condition.value ?? '')}
+                                                                                                onChange={event => handleConditionalFixedConditionValueChange(entry.id, condition.id, event.target.value)}
+                                                                                            />
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )
+                                                                        })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         </TabsContent>
 
@@ -2182,11 +3665,12 @@ export function ProceduresPriceListsPage() {
                                                                                 </div>
                                                                                 <div className="flex-1">
                                                                                     <Label
-                                                                                        className="text-[10px] uppercase text-blue-800">Amount</Label>
+                                                                                        className="text-[10px] uppercase text-blue-800">Value / Amount</Label>
                                                                                     <Input
-                                                                                        type="number"
+                                                                                        type="text"
                                                                                         value={caseEntry.amount}
                                                                                         onChange={event => handleAdjustmentCaseChange(adjustment.id, caseEntry.id, {amount: event.target.value})}
+                                                                                        placeholder="Number, boolean, or JSON"
                                                                                     />
                                                                                 </div>
                                                                                 <Button
@@ -2227,29 +3711,212 @@ export function ProceduresPriceListsPage() {
                                                     />
                                                 </div>
                                                 {ruleForm.discountApply ? (
-                                                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="rule-discount-unit">Unit</Label>
-                                                            <Input
-                                                                id="rule-discount-unit"
-                                                                value={ruleForm.discountUnit}
-                                                                onChange={event => setRuleForm(prev => ({
-                                                                    ...prev,
-                                                                    discountUnit: event.target.value
-                                                                }))}
-                                                            />
+                                                    <div className="mt-4 space-y-4">
+                                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                                            <div className="space-y-2">
+                                                                <Label htmlFor="rule-discount-unit">Unit</Label>
+                                                                <Input
+                                                                    id="rule-discount-unit"
+                                                                    value={ruleForm.discountUnit}
+                                                                    onChange={event => setRuleForm(prev => ({
+                                                                        ...prev,
+                                                                        discountUnit: event.target.value
+                                                                    }))}
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label htmlFor="rule-discount-value">Value</Label>
+                                                                <Input
+                                                                    id="rule-discount-value"
+                                                                    type="number"
+                                                                    value={ruleForm.discountValue}
+                                                                    onChange={event => setRuleForm(prev => ({
+                                                                        ...prev,
+                                                                        discountValue: event.target.value
+                                                                    }))}
+                                                                />
+                                                            </div>
                                                         </div>
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="rule-discount-value">Value</Label>
-                                                            <Input
-                                                                id="rule-discount-value"
-                                                                type="number"
-                                                                value={ruleForm.discountValue}
-                                                                onChange={event => setRuleForm(prev => ({
-                                                                    ...prev,
-                                                                    discountValue: event.target.value
-                                                                }))}
-                                                            />
+
+                                                        <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-emerald-800">Conditional logic blocks</p>
+                                                                    <p className="text-xs text-emerald-700">
+                                                                        Configure conditional percentages that stack on top of the base discount.
+                                                                    </p>
+                                                                </div>
+                                                                <Button type="button" variant="outline" size="sm" onClick={handleAddDiscountLogicBlock}>
+                                                                    <Plus className="mr-2 h-4 w-4"/>
+                                                                    Add block
+                                                                </Button>
+                                                            </div>
+                                                            {discountLogicBlocks.length === 0 ? (
+                                                                <p className="text-xs text-emerald-700">No conditional blocks defined.</p>
+                                                            ) : (
+                                                                <div className="space-y-3">
+                                                                    {discountLogicBlocks.map(block => (
+                                                                        <div key={block.id} className="space-y-3 rounded-lg border border-emerald-200 bg-white p-4">
+                                                                            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                                                <div className="flex-1 space-y-1">
+                                                                                    <Label className="text-xs uppercase text-emerald-800">Percent</Label>
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        value={block.percent}
+                                                                                        onChange={event => handleDiscountLogicBlockPercentChange(block.id, event.target.value)}
+                                                                                        placeholder="e.g. 5"
+                                                                                    />
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 self-start">
+                                                                                    <Button type="button" variant="outline" size="sm" onClick={() => handleAddDiscountLogicBlockCondition(block.id)}>
+                                                                                        Add condition
+                                                                                    </Button>
+                                                                                    <Button type="button" variant="ghost" size="icon" className="text-emerald-700 hover:text-red-600" onClick={() => handleRemoveDiscountLogicBlock(block.id)}>
+                                                                                        <Trash2 className="h-4 w-4"/>
+                                                                                    </Button>
+                                                                                </div>
+                                                                            </div>
+                                                                            {block.conditions.length === 0 ? (
+                                                                                <p className="text-xs text-emerald-600">Applies whenever discount is enabled.</p>
+                                                                            ) : (
+                                                                                <div className="space-y-3">
+                                                                                    {block.conditions.map(condition => {
+                                                                                        const factor = factors.find(item => item.key === condition.factorKey)
+                                                                                        const allowedValues = factor ? parseAllowedValues(factor) : []
+                                                                                        const inputKind = factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
+                                                                                        const options = factor ? operatorOptionsForFactor(factor) : []
+                                                                                        const selectedOption = options.find(option => option.value === condition.operator)
+
+                                                                                        return (
+                                                                                            <div key={condition.id} className="space-y-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+                                                                                                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                                    <div className="space-y-1">
+                                                                                                        <Label className="text-[11px] uppercase text-emerald-800">Factor</Label>
+                                                                                                        <Select
+                                                                                                            value={condition.factorKey}
+                                                                                                            onValueChange={value => handleDiscountLogicBlockConditionFactorChange(block.id, condition.id, value)}
+                                                                                                        >
+                                                                                                            <SelectTrigger>
+                                                                                                                <SelectValue placeholder="Select factor"/>
+                                                                                                            </SelectTrigger>
+                                                                                                            <SelectContent>
+                                                                                                                {factors.map(item => (
+                                                                                                                    <SelectItem key={item.key} value={item.key}>
+                                                                                                                        {item.nameEn}
+                                                                                                                    </SelectItem>
+                                                                                                                ))}
+                                                                                                            </SelectContent>
+                                                                                                        </Select>
+                                                                                                    </div>
+                                                                                                    <div className="space-y-1">
+                                                                                                        <Label className="text-[11px] uppercase text-emerald-800">Operator</Label>
+                                                                                                        <Select
+                                                                                                            value={condition.operator}
+                                                                                                            onValueChange={value => handleDiscountLogicBlockConditionOperatorChange(block.id, condition.id, value)}
+                                                                                                        >
+                                                                                                            <SelectTrigger>
+                                                                                                                <SelectValue placeholder="Select operator"/>
+                                                                                                            </SelectTrigger>
+                                                                                                            <SelectContent>
+                                                                                                                {options.map(option => (
+                                                                                                                    <SelectItem key={option.value} value={option.value}>
+                                                                                                                        {option.label}
+                                                                                                                    </SelectItem>
+                                                                                                                ))}
+                                                                                                            </SelectContent>
+                                                                                                        </Select>
+                                                                                                    </div>
+                                                                                                    <div className="flex items-start justify-end">
+                                                                                                        <Button
+                                                                                                            type="button"
+                                                                                                            variant="ghost"
+                                                                                                            size="icon"
+                                                                                                            className="text-emerald-700 hover:text-red-600"
+                                                                                                            onClick={() => handleRemoveDiscountLogicBlockCondition(block.id, condition.id)}
+                                                                                                        >
+                                                                                                            <Trash2 className="h-4 w-4"/>
+                                                                                                        </Button>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div className="space-y-1">
+                                                                                                    <Label className="text-[11px] uppercase text-emerald-800">Value</Label>
+                                                                                                    {selectedOption?.requiresRange ? (
+                                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                                            <Input
+                                                                                                                type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                                placeholder="Min"
+                                                                                                                value={
+                                                                                                                    typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                        ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                        : ''
+                                                                                                                }
+                                                                                                                onChange={event => handleDiscountLogicBlockConditionValueChange(block.id, condition.id, {
+                                                                                                                    min: event.target.value,
+                                                                                                                    max:
+                                                                                                                        typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                            ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                            : '',
+                                                                                                                })}
+                                                                                                            />
+                                                                                                            <Input
+                                                                                                                type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                                placeholder="Max"
+                                                                                                                value={
+                                                                                                                    typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                        ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                        : ''
+                                                                                                                }
+                                                                                                                onChange={event => handleDiscountLogicBlockConditionValueChange(block.id, condition.id, {
+                                                                                                                    min:
+                                                                                                                        typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
+                                                                                                                            ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                            : '',
+                                                                                                                    max: event.target.value,
+                                                                                                                })}
+                                                                                                            />
+                                                                                                        </div>
+                                                                                                    ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                                                                        <select
+                                                                                                            multiple
+                                                                                                            value={Array.isArray(condition.value) ? condition.value.map(String) : condition.value ? [String(condition.value)] : []}
+                                                                                                            onChange={event => handleDiscountLogicBlockConditionValueChange(
+                                                                                                                block.id,
+                                                                                                                condition.id,
+                                                                                                                Array.from(event.target.selectedOptions).map(option => option.value),
+                                                                                                            )}
+                                                                                                            className="h-24 w-full rounded-md border border-emerald-200 px-3 py-2 text-sm"
+                                                                                                        >
+                                                                                                            {allowedValues.map(option => (
+                                                                                                                <option key={option} value={option}>
+                                                                                                                    {option}
+                                                                                                                </option>
+                                                                                                            ))}
+                                                                                                        </select>
+                                                                                                    ) : inputKind === 'boolean' ? (
+                                                                                                        <div className="flex items-center gap-2">
+                                                                                                            <Switch
+                                                                                                                checked={Boolean(condition.value)}
+                                                                                                                onCheckedChange={checked => handleDiscountLogicBlockConditionValueChange(block.id, condition.id, checked)}
+                                                                                                            />
+                                                                                                            <span className="text-xs text-emerald-800">{condition.value ? 'True' : 'False'}</span>
+                                                                                                        </div>
+                                                                                                    ) : (
+                                                                                                        <Input
+                                                                                                            type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
+                                                                                                            value={Array.isArray(condition.value) ? condition.value.join(',') : String(condition.value ?? '')}
+                                                                                                            onChange={event => handleDiscountLogicBlockConditionValueChange(block.id, condition.id, event.target.value)}
+                                                                                                        />
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        )
+                                                                                    })}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 ) : null}
@@ -2407,6 +4074,41 @@ export function ProceduresPriceListsPage() {
                                                             <p className={infoTextClass}>Add case rows to define
                                                                 factor-specific adjustments.</p>
                                                         )}
+                                                        {adjustment.tiers.length > 0 ? (
+                                                            <div className="mt-3">
+                                                                <p className="text-xs font-semibold uppercase text-blue-700">Tiers</p>
+                                                                <div className="mt-1 flex flex-wrap gap-2">
+                                                                    {adjustment.tiers.map(tier => (
+                                                                        <span key={tier.id} className="rounded bg-white px-2 py-1 text-[11px] text-blue-700">
+                                                                            {tier.value || '—'} → +{tier.add || 0}{tier.percent ? ` / ${tier.percent}%` : ''}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ) : null}
+                                                        {adjustment.logicBlocks.length > 0 ? (
+                                                            <div className="mt-3 space-y-2">
+                                                                <p className="text-xs font-semibold uppercase text-blue-700">Logic blocks</p>
+                                                                {adjustment.logicBlocks.map(block => (
+                                                                    <div key={block.id} className="rounded border border-blue-100 bg-white p-3">
+                                                                        <div className="text-[11px] text-blue-700">
+                                                                            +{block.add || 0}{block.addPercent ? ` / ${block.addPercent}%` : ''}
+                                                                        </div>
+                                                                        {block.conditions.length > 0 ? (
+                                                                            <div className="mt-1 flex flex-wrap gap-1">
+                                                                                {block.conditions.map(condition => (
+                                                                                    <span key={condition.id} className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                                                                                        {condition.factorKey}: {formatConditionValueDisplay(condition)}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <p className="text-[10px] text-blue-500">Always applies</p>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                 ))}
                                             </div>
@@ -2537,18 +4239,23 @@ export function ProceduresPriceListsPage() {
                                                         <TableCell>
                                                             <div className="space-y-2">
                                                                 {parsed?.adjustments && parsed.adjustments.length > 0 ? (
-                                                                    parsed.adjustments.map((adj: any, idx: number) => (
-                                                                        <div
-                                                                            key={idx}
-                                                                            className="rounded-md border border-purple-300 bg-purple-50 px-2 py-1 text-xs text-purple-700"
-                                                                        >
-                                                                            <div className="font-semibold">
-                                                                                {adj.factorKey} → {adj.type}
-                                                                            </div>
+                                                                    parsed.adjustments.map((adj: any, idx: number) => {
+                                                                        const factorKey = adj.factorKey ?? adj.factor_key
+                                                                        const tiers = Array.isArray(adj.tiers) ? adj.tiers : []
+                                                                        const logicBlocks = Array.isArray(adj.logicBlocks) ? adj.logicBlocks : []
 
-                                                                            {/* CASES */}
-                                                                            {adj.cases && (
-                                                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                                        return (
+                                                                            <div
+                                                                                key={idx}
+                                                                                className="rounded-md border border-purple-300 bg-purple-50 px-2 py-1 text-xs text-purple-700"
+                                                                            >
+                                                                                <div className="font-semibold">
+                                                                                {factorKey} → {adj.type}
+                                                                                </div>
+
+                                                                                {/* CASES */}
+                                                                                {adj.cases && (
+                                                                                    <div className="mt-1 flex flex-wrap gap-1">
                                                                                     {Object.entries(adj.cases).map(([key, val]) => {
                                                                                         let displayValue
 
@@ -2572,16 +4279,65 @@ export function ProceduresPriceListsPage() {
                                                                                     })}
 
                                                                                 </div>
-                                                                            )}
+                                                                                )}
 
-                                                                            {/* PERCENT */}
-                                                                            {adj.percent !== null && adj.percent !== undefined && (
-                                                                                <div className="mt-1 text-[10px]">
-                                                                                    Percent: <span className="font-bold">{adj.percent}%</span>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    ))
+                                                                                {/* PERCENT */}
+                                                                                {adj.percent !== null && adj.percent !== undefined && (
+                                                                                    <div className="mt-1 text-[10px]">
+                                                                                        Percent: <span className="font-bold">{adj.percent}%</span>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {/* TIERS */}
+                                                                                {tiers.length > 0 && (
+                                                                                    <div className="mt-1 space-y-1">
+                                                                                        <div className="text-[10px] font-semibold uppercase text-purple-700">Tiers</div>
+                                                                                        <div className="flex flex-wrap gap-1">
+                                                                                            {tiers.map((tier: any, tierIndex: number) => (
+                                                                                                <span
+                                                                                                    key={`${factorKey}-tier-${tierIndex}`}
+                                                                                                    className="rounded bg-white px-1.5 py-0.5 text-[10px] text-purple-700"
+                                                                                                >
+                                                                                                    {tier.value ?? '—'} → +{tier.add ?? 0}{tier.percent ? ` / ${tier.percent}%` : ''}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {/* LOGIC BLOCKS */}
+                                                                                {logicBlocks.length > 0 && (
+                                                                                    <div className="mt-1 space-y-1">
+                                                                                        <div className="text-[10px] font-semibold uppercase text-purple-700">Logic blocks</div>
+                                                                                        <div className="space-y-1">
+                                                                                            {logicBlocks.map((block: any, blockIndex: number) => (
+                                                                                                <div key={`${factorKey}-logic-${blockIndex}`} className="rounded border border-purple-200 bg-white px-1.5 py-1">
+                                                                                                    <div className="text-[10px] text-purple-700">
+                                                                                                        +{block.add ?? 0}{block.addPercent ? ` / ${block.addPercent}%` : ''}
+                                                                                                    </div>
+                                                                                                    {Array.isArray(block.whenConditions) && block.whenConditions.length > 0 ? (
+                                                                                                        <div className="mt-1 flex flex-wrap gap-1">
+                                                                                                            {block.whenConditions.map((condition: any, conditionIndex: number) => (
+                                                                                                                <span
+                                                                                                                    key={`${factorKey}-logic-${blockIndex}-${conditionIndex}`}
+                                                                                                                    className="rounded bg-purple-50 px-1 py-0.5 text-[9px] text-purple-700"
+                                                                                                                >
+                                                                                                                    {condition.factor}:{' '}
+                                                                                                                    {formatConditionValue(condition.factor, condition.value)}
+                                                                                                                </span>
+                                                                                                            ))}
+                                                                                                        </div>
+                                                                                                    ) : (
+                                                                                                        <p className="text-[9px] text-purple-500">Always applies</p>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )
+                                                                    })
                                                                 ) : (
                                                                     <span className="text-xs text-slate-400 italic">No adjustments</span>
                                                                 )}
