@@ -216,6 +216,15 @@ const lookupCategoryConfigs: LookupCategoryConfig[] = [
         columns: ageGroupColumns,
         createInitialFormState: createAgeGroupFormState,
     },
+    {
+        value: 'benefit',
+        label: 'Benefit Category',
+        singularLabel: 'Benefit Category',
+        description: 'Defined benefit category used in manage limits and rules',
+        searchableFields: ['code', 'nameEn', 'nameAr'],
+        columns: baseLookupColumns,
+        createInitialFormState: createDefaultFormState,
+    },
 ]
 
 export function LookupManagementPage() {

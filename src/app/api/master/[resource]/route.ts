@@ -10,6 +10,7 @@ const allowedResources = new Set([
     "currencies",
     "countries",
     "age-groups",
+    "benefit",
 ])
 
 const apiBaseUrl = process.env.API_BASE_URL

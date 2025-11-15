@@ -1278,7 +1278,7 @@ export function ProceduresManagementPage() {
     }, [containers, linkContainerQuery])
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 px-4 py-6 md:px-8 lg:px-8">
             <div className="flex flex-col gap-2">
                 <h1 className="text-2xl font-bold">Procedures Management</h1>
                 <p className="text-gray-600">Manage procedures master data, pricing, and availability.</p>
@@ -1361,37 +1361,54 @@ export function ProceduresManagementPage() {
                                 </Select>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setActiveTab('categories')}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <Library className="h-4 w-4" />
+                                        Categories
+                                    </Button>
+
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setActiveTab('containers')}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <Boxes className="h-4 w-4" />
+                                        Containers
+                                    </Button>
+
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleFilterToggle}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <Filter className="h-4 w-4" />
+                                        Filters
+                                    </Button>
+
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleRefresh}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <RefreshCcw className="h-4 w-4" />
+                                        Refresh
+                                    </Button>
+                                </div>
+
                                 <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => setActiveTab('categories')}
-                                    className="flex items-center gap-2"
+                                    onClick={handleAdd}
+                                    className="ml-auto bg-tpa-primary hover:bg-tpa-accent text-white shadow-sm px-4"
                                 >
-                                    <Library className="h-4 w-4"/>
-                                    Manage Categories
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => setActiveTab('containers')}
-                                    className="flex items-center gap-2"
-                                >
-                                    <Boxes className="h-4 w-4"/>
-                                    Manage Containers
-                                </Button>
-                                <Button type="button" variant="outline" onClick={handleFilterToggle}
-                                        className="flex items-center gap-2">
-                                    <Filter className="h-4 w-4"/>
-                                    {showFilters ? 'Hide Filters' : 'Show Filters'}
-                                </Button>
-                                <Button type="button" variant="outline" onClick={handleRefresh}
-                                        className="flex items-center gap-2">
-                                    <RefreshCcw className="h-4 w-4"/>
-                                    Refresh
-                                </Button>
-                                <Button onClick={handleAdd} className="bg-tpa-primary hover:bg-tpa-accent text-white">
-                                    <Plus className="h-4 w-4 mr-2"/>
+                                    <Plus className="h-4 w-4 mr-1" />
                                     Add Procedure
                                 </Button>
                             </div>

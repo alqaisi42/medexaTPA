@@ -8,6 +8,7 @@ export type LookupCategory =
     | 'currencies'
     | 'countries'
     | 'age-groups'
+    | 'benefit'
 
 export interface BaseLookupRecord {
     id: string
