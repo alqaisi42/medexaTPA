@@ -138,7 +138,7 @@ function resolveFactorInputKind(factor: PricingFactor, operator?: string): Facto
     return 'text'
 }
 
-function RuleConditionsDisplay({ ruleJson }: { ruleJson: string }) {
+function RuleConditionsDisplay({ruleJson}: { ruleJson: string }) {
     // Parse the rule JSON to extract conditions
     let conditions: any[] = []
     try {
@@ -187,7 +187,7 @@ function RuleConditionsDisplay({ ruleJson }: { ruleJson: string }) {
                         condition.operator === 'MAX' ? ' ≤' :
                             ` ${condition.operator}`
 
-        return { factor, operator, value: String(value) }
+        return {factor, operator, value: String(value)}
     }
 
     // Color mapping for different condition types
@@ -208,7 +208,7 @@ function RuleConditionsDisplay({ ruleJson }: { ruleJson: string }) {
     return (
         <div className="flex flex-wrap gap-1">
             {conditions.map((condition, idx) => {
-                const { factor, operator, value } = formatCondition(condition)
+                const {factor, operator, value} = formatCondition(condition)
                 const colorClass = getColorClass(condition.factor)
 
                 return (
@@ -251,7 +251,6 @@ function formatConditionOperator(operator: string): string {
     }
     return operatorMap[operator] || operator.toLowerCase()
 }
-
 
 
 type OperatorOption = {
@@ -718,9 +717,9 @@ export function ProceduresPriceListsPage() {
         let cancelled = false
         const handler = setTimeout(() => {
             const term = procedureSearchTerm.trim()
-            const filters = term ? { keyword: term } : {}
+            const filters = term ? {keyword: term} : {}
 
-            searchProcedures({ filters, page: 0, size: 10 })
+            searchProcedures({filters, page: 0, size: 10})
                 .then(response => {
                     if (cancelled) {
                         return
@@ -1592,9 +1591,9 @@ export function ProceduresPriceListsPage() {
                                                             prev.procedureId === ''
                                                                 ? prev
                                                                 : {
-                                                                      ...prev,
-                                                                      procedureId: '',
-                                                                  },
+                                                                    ...prev,
+                                                                    procedureId: '',
+                                                                },
                                                         )
                                                     }}
                                                     onFocus={() => {
@@ -1610,16 +1609,21 @@ export function ProceduresPriceListsPage() {
                                                     }}
                                                 />
                                                 {procedureSearchLoading ? (
-                                                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                                                    <Loader2
+                                                        className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400"/>
                                                 ) : null}
                                                 {procedureDropdownOpen && (
-                                                    <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                                                    <div
+                                                        className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
                                                         {procedureSearchLoading ? (
-                                                            <div className="px-3 py-2 text-sm text-slate-500">Searching procedures…</div>
+                                                            <div className="px-3 py-2 text-sm text-slate-500">Searching
+                                                                procedures…</div>
                                                         ) : procedureSearchError ? (
-                                                            <div className="px-3 py-2 text-sm text-red-600">{procedureSearchError}</div>
+                                                            <div
+                                                                className="px-3 py-2 text-sm text-red-600">{procedureSearchError}</div>
                                                         ) : procedureOptions.length === 0 ? (
-                                                            <div className="px-3 py-2 text-sm text-slate-500">No procedures found.</div>
+                                                            <div className="px-3 py-2 text-sm text-slate-500">No
+                                                                procedures found.</div>
                                                         ) : (
                                                             procedureOptions.map(procedure => (
                                                                 <button
@@ -1629,7 +1633,8 @@ export function ProceduresPriceListsPage() {
                                                                     onMouseDown={event => event.preventDefault()}
                                                                     onClick={() => handleProcedureSelect(procedure)}
                                                                 >
-                                                                    <span className="text-sm font-medium text-slate-700">
+                                                                    <span
+                                                                        className="text-sm font-medium text-slate-700">
                                                                         {formatProcedureLabel(procedure)}
                                                                     </span>
                                                                     <span className="text-xs text-slate-500">
@@ -1673,9 +1678,9 @@ export function ProceduresPriceListsPage() {
                                                             prev.priceListId === ''
                                                                 ? prev
                                                                 : {
-                                                                      ...prev,
-                                                                      priceListId: '',
-                                                                  },
+                                                                    ...prev,
+                                                                    priceListId: '',
+                                                                },
                                                         )
                                                     }}
                                                     onFocus={() => {
@@ -1691,16 +1696,21 @@ export function ProceduresPriceListsPage() {
                                                     }}
                                                 />
                                                 {priceListSearchLoading ? (
-                                                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                                                    <Loader2
+                                                        className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400"/>
                                                 ) : null}
                                                 {priceListDropdownOpen && (
-                                                    <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                                                    <div
+                                                        className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
                                                         {priceListSearchLoading ? (
-                                                            <div className="px-3 py-2 text-sm text-slate-500">Searching price lists…</div>
+                                                            <div className="px-3 py-2 text-sm text-slate-500">Searching
+                                                                price lists…</div>
                                                         ) : priceListSearchError ? (
-                                                            <div className="px-3 py-2 text-sm text-red-600">{priceListSearchError}</div>
+                                                            <div
+                                                                className="px-3 py-2 text-sm text-red-600">{priceListSearchError}</div>
                                                         ) : priceListOptions.length === 0 ? (
-                                                            <div className="px-3 py-2 text-sm text-slate-500">No price lists found.</div>
+                                                            <div className="px-3 py-2 text-sm text-slate-500">No price
+                                                                lists found.</div>
                                                         ) : (
                                                             priceListOptions.map(priceList => (
                                                                 <button
@@ -1710,7 +1720,8 @@ export function ProceduresPriceListsPage() {
                                                                     onMouseDown={event => event.preventDefault()}
                                                                     onClick={() => handlePriceListSelect(priceList)}
                                                                 >
-                                                                    <span className="text-sm font-medium text-slate-700">
+                                                                    <span
+                                                                        className="text-sm font-medium text-slate-700">
                                                                         {formatPriceListLabel(priceList)}
                                                                     </span>
                                                                     <span className="text-xs text-slate-500">
@@ -2434,6 +2445,7 @@ export function ProceduresPriceListsPage() {
                                                 <TableHead>Rule</TableHead>
                                                 <TableHead>Pricing</TableHead>
                                                 <TableHead>Conditions</TableHead>
+                                                <TableHead>Adjustments</TableHead>
                                                 <TableHead>Validity</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -2460,14 +2472,19 @@ export function ProceduresPriceListsPage() {
                                                                 </div>
                                                                 <div className="space-y-0.5 text-sm">
                                                                     <div className="flex items-center gap-1.5">
-                                                                        <span className="text-slate-500 min-w-[70px]">Procedure:</span>
-                                                                        <span className="font-medium text-slate-700">{rule.procedureName}</span>
-                                                                        <span className="text-xs text-slate-400">(#{rule.procedureId})</span>
+                                                                        <span
+                                                                            className="text-slate-500 min-w-[70px]">Procedure:</span>
+                                                                        <span
+                                                                            className="font-medium text-slate-700">{rule.procedureName}</span>
+                                                                        <span
+                                                                            className="text-xs text-slate-400">(#{rule.procedureId})</span>
                                                                     </div>
                                                                     <div className="flex items-center gap-1.5">
                                                                         <span className="text-slate-500 min-w-[70px]">Price List:</span>
-                                                                        <span className="font-medium text-slate-700">{rule.priceListName}</span>
-                                                                        <span className="text-xs text-slate-400">(#{rule.priceListId})</span>
+                                                                        <span
+                                                                            className="font-medium text-slate-700">{rule.priceListName}</span>
+                                                                        <span
+                                                                            className="text-xs text-slate-400">(#{rule.priceListId})</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -2475,12 +2492,14 @@ export function ProceduresPriceListsPage() {
                                                         <TableCell>
                                                             <div className="flex flex-wrap items-center gap-2">
                                                                 {/* Pricing mode badge */}
-                                                                <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
+                                                                <span
+                                                                    className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
         {formatRulePricing(parsed).split(" ")[0]}
     </span>
 
                                                                 {/* Price badge */}
-                                                                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-100">
+                                                                <span
+                                                                    className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-100">
         {formatRulePricing(parsed).split(" ")[1]}
     </span>
                                                             </div>
@@ -2502,8 +2521,10 @@ export function ProceduresPriceListsPage() {
                                                                                 title={`${label} ${operator} ${value}`}
                                                                             >
                                                         <span>{label}</span>
-                                                                                {operator !== '=' && <span className="opacity-60">{operator}</span>}
-                                                                                <span className="font-bold">{value}</span>
+                                                                                {operator !== '=' && <span
+                                                                                    className="opacity-60">{operator}</span>}
+                                                                                <span
+                                                                                    className="font-bold">{value}</span>
                                                     </span>
                                                                         );
                                                                     })}
@@ -2513,6 +2534,60 @@ export function ProceduresPriceListsPage() {
                                                                 )}
                                                             </div>
                                                         </TableCell>
+                                                        <TableCell>
+                                                            <div className="space-y-2">
+                                                                {parsed?.adjustments && parsed.adjustments.length > 0 ? (
+                                                                    parsed.adjustments.map((adj: any, idx: number) => (
+                                                                        <div
+                                                                            key={idx}
+                                                                            className="rounded-md border border-purple-300 bg-purple-50 px-2 py-1 text-xs text-purple-700"
+                                                                        >
+                                                                            <div className="font-semibold">
+                                                                                {adj.factorKey} → {adj.type}
+                                                                            </div>
+
+                                                                            {/* CASES */}
+                                                                            {adj.cases && (
+                                                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                                                    {Object.entries(adj.cases).map(([key, val]) => {
+                                                                                        let displayValue
+
+                                                                                        if (val && typeof val === 'object' && !Array.isArray(val)) {
+                                                                                            // format nested object -> "min: 10, max: 20, percent: 5"
+                                                                                            displayValue = Object.entries(val)
+                                                                                                .map(([k, v]) => `${k}: ${v}`)
+                                                                                                .join(', ')
+                                                                                        } else {
+                                                                                            displayValue = String(val)
+                                                                                        }
+
+                                                                                        return (
+                                                                                            <span
+                                                                                                key={key}
+                                                                                                className="rounded bg-white px-1.5 py-0.5 text-[10px] border border-purple-300 font-medium"
+                                                                                            >
+            {key}: {displayValue}
+        </span>
+                                                                                        )
+                                                                                    })}
+
+                                                                                </div>
+                                                                            )}
+
+                                                                            {/* PERCENT */}
+                                                                            {adj.percent !== null && adj.percent !== undefined && (
+                                                                                <div className="mt-1 text-[10px]">
+                                                                                    Percent: <span className="font-bold">{adj.percent}%</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))
+                                                                ) : (
+                                                                    <span className="text-xs text-slate-400 italic">No adjustments</span>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+
                                                         <TableCell className="text-sm text-slate-600">
                                                             {Array.isArray(rule.validFrom) ? rule.validFrom.join('/') : rule.validFrom}
                                                             {rule.validTo ? ` → ${Array.isArray(rule.validTo) ? rule.validTo.join('/') : rule.validTo}` : ''}
@@ -2545,18 +2620,24 @@ export function ProceduresPriceListsPage() {
                                                 {/* Header with Priority and Rule ID */}
                                                 <div className="flex items-start justify-between mb-3">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-slate-100">
-                                                            <span className="text-lg font-bold text-slate-700">{rule.priority}</span>
+                                                        <div
+                                                            className="flex items-center justify-center w-12 h-12 rounded-full bg-slate-100">
+                                                            <span
+                                                                className="text-lg font-bold text-slate-700">{rule.priority}</span>
                                                         </div>
                                                         <div>
-                                                            <h3 className="font-semibold text-slate-800">Rule #{rule.id}</h3>
-                                                            <span className="inline-block mt-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
+                                                            <h3 className="font-semibold text-slate-800">Rule
+                                                                #{rule.id}</h3>
+                                                            <span
+                                                                className="inline-block mt-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
                                         {formatRulePricing(parsed)}
                                     </span>
                                                         </div>
                                                     </div>
-                                                    <svg className="w-5 h-5 text-slate-400 cursor-move md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                                                    <svg className="w-5 h-5 text-slate-400 cursor-move md:hidden"
+                                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round"
+                                                              strokeWidth={2} d="M4 8h16M4 16h16"/>
                                                     </svg>
                                                 </div>
 
@@ -2565,21 +2646,28 @@ export function ProceduresPriceListsPage() {
                                                     {/* Procedure and Price List */}
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <div className="bg-slate-50 rounded-md p-2">
-                                                            <div className="text-xs text-slate-500 mb-0.5">Procedure</div>
-                                                            <div className="font-medium text-sm text-slate-800">{rule.procedureName}</div>
-                                                            <div className="text-xs text-slate-400">ID: {rule.procedureId}</div>
+                                                            <div className="text-xs text-slate-500 mb-0.5">Procedure
+                                                            </div>
+                                                            <div
+                                                                className="font-medium text-sm text-slate-800">{rule.procedureName}</div>
+                                                            <div
+                                                                className="text-xs text-slate-400">ID: {rule.procedureId}</div>
                                                         </div>
                                                         <div className="bg-slate-50 rounded-md p-2">
-                                                            <div className="text-xs text-slate-500 mb-0.5">Price List</div>
-                                                            <div className="font-medium text-sm text-slate-800">{rule.priceListName}</div>
-                                                            <div className="text-xs text-slate-400">ID: {rule.priceListId}</div>
+                                                            <div className="text-xs text-slate-500 mb-0.5">Price List
+                                                            </div>
+                                                            <div
+                                                                className="font-medium text-sm text-slate-800">{rule.priceListName}</div>
+                                                            <div
+                                                                className="text-xs text-slate-400">ID: {rule.priceListId}</div>
                                                         </div>
                                                     </div>
 
                                                     {/* Conditions */}
                                                     {conditions.length > 0 && (
                                                         <div>
-                                                            <div className="text-xs text-slate-500 mb-1.5">Conditions</div>
+                                                            <div className="text-xs text-slate-500 mb-1.5">Conditions
+                                                            </div>
                                                             <div className="flex flex-wrap gap-1">
                                                                 {conditions.map((condition: any, idx: number) => {
                                                                     const label = FACTOR_LABELS[condition.factor] || condition.factor;
@@ -2594,7 +2682,8 @@ export function ProceduresPriceListsPage() {
                                                                             title={`${label} ${operator} ${value}`}
                                                                         >
                                                     <span>{label}</span>
-                                                                            {operator !== '=' && <span className="opacity-60">{operator}</span>}
+                                                                            {operator !== '=' && <span
+                                                                                className="opacity-60">{operator}</span>}
                                                                             <span className="font-bold">{value}</span>
                                                 </span>
                                                                     );
@@ -2605,9 +2694,13 @@ export function ProceduresPriceListsPage() {
 
                                                     {/* Validity */}
                                                     {(rule.validFrom || rule.validTo) && (
-                                                        <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                                                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                        <div
+                                                            className="flex items-center gap-1.5 text-sm text-slate-600">
+                                                            <svg className="w-4 h-4 text-slate-400" fill="none"
+                                                                 stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round"
+                                                                      strokeWidth={2}
+                                                                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                                                             </svg>
                                                             <span>
                                         {Array.isArray(rule.validFrom) ? rule.validFrom.join('/') : rule.validFrom}
@@ -3564,21 +3657,25 @@ export function ProceduresPriceListsPage() {
                                                             {/* Show matched conditions with badges */}
                                                             {rule.matched && conditions.length > 0 ? (
                                                                 <div className="space-y-2">
-                                                                    <p className="text-xs text-slate-600 mb-1">Matched Conditions:</p>
+                                                                    <p className="text-xs text-slate-600 mb-1">Matched
+                                                                        Conditions:</p>
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {conditions.map((condition: any, idx: number) => {
                                                                             const label = FACTOR_LABELS[condition.factor] || condition.factor;
                                                                             const value = formatConditionValue(condition.factor, condition.value);
 
                                                                             return (
-                                                                                <div key={idx} className="inline-flex items-center">
+                                                                                <div key={idx}
+                                                                                     className="inline-flex items-center">
                                                                                     {/* Factor badge */}
-                                                                                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-l text-xs font-medium">
+                                                                                    <span
+                                                                                        className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-l text-xs font-medium">
                                                                                         {label}
                                                                                     </span>
 
                                                                                     {/* Operator badge */}
-                                                                                    <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 text-xs">
+                                                                                    <span
+                                                                                        className="bg-slate-100 text-slate-600 px-1.5 py-0.5 text-xs">
                                                                                         {condition.operator === '=' ? '=' :
                                                                                             condition.operator === 'EQUALS' ? '=' :
                                                                                                 condition.operator === '!=' ? '≠' :
@@ -3595,7 +3692,8 @@ export function ProceduresPriceListsPage() {
                                                                                     </span>
 
                                                                                     {/* Value badge */}
-                                                                                    <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-r text-xs font-medium">
+                                                                                    <span
+                                                                                        className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-r text-xs font-medium">
                                                                                         {value}
                                                                                     </span>
                                                                                 </div>
@@ -3604,7 +3702,8 @@ export function ProceduresPriceListsPage() {
                                                                     </div>
                                                                 </div>
                                                             ) : rule.matched ? (
-                                                                <p className="text-xs text-emerald-600">All conditions matched.</p>
+                                                                <p className="text-xs text-emerald-600">All conditions
+                                                                    matched.</p>
                                                             ) : null}
 
                                                             {/* Show failed conditions */}
