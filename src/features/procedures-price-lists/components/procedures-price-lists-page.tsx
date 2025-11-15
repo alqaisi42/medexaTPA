@@ -471,22 +471,31 @@ function extractRuleConditions(ruleJson: Record<string, unknown> | null): any[] 
 }
 
 function formatRulePricing(ruleJson: Record<string, unknown> | null): string {
-    if (!ruleJson) {
-        return '—'
-    }
+    if (!ruleJson) return '—'
 
     const pricing = ruleJson.pricing as Record<string, unknown> | undefined
-    if (!pricing) {
-        return '—'
-    }
+    if (!pricing) return '—'
 
     const mode = String(pricing.mode ?? '').toUpperCase()
-    const tiers = Array.isArray(pricing.tiers) ? pricing.tiers : []
-    const conditionalFixed = Array.isArray(pricing.conditionalFixed ?? pricing.conditional_fixed)
-        ? (pricing.conditionalFixed ?? pricing.conditional_fixed)
+
+    // SAFE PARSING FOR ARRAYS
+    const tiers = Array.isArray(pricing.tiers)
+        ? pricing.tiers as Array<Record<string, unknown>>
         : []
 
+    const conditionalFixedRaw =
+        pricing.conditionalFixed ??
+        pricing.conditional_fixed ??
+        []
+
+    const conditionalFixed = Array.isArray(conditionalFixedRaw)
+        ? conditionalFixedRaw as Array<Record<string, unknown>>
+        : []
+
+    // ========== SUMMARY ==========
+
     let summary: string
+
     if (mode === 'FIXED') {
         const fixedPrice = pricing.fixedPrice ?? pricing.fixed_price
         summary = `Fixed $${fixedPrice || 0}`
@@ -502,6 +511,7 @@ function formatRulePricing(ruleJson: Record<string, unknown> | null): string {
     }
 
     const extras: string[] = []
+
     if (tiers.length > 0) {
         extras.push(`${tiers.length} tier${tiers.length > 1 ? 's' : ''}`)
     }
@@ -1196,7 +1206,10 @@ export function ProceduresPriceListsPage() {
                         ...nextCondition,
                         factorKey,
                         operator: defaultOperator,
-                        value: operatorConfig?.requiresRange ? {min: '', max: ''} : operatorConfig?.supportsMultiple ? [] : '',
+                        value: operatorConfig?.requiresRange ? {
+                            min: '',
+                            max: ''
+                        } : operatorConfig?.supportsMultiple ? [] : '',
                     },
                 }
             }),
@@ -1219,7 +1232,10 @@ export function ProceduresPriceListsPage() {
                     condition: {
                         ...tier.condition,
                         operator,
-                        value: selectedOption?.requiresRange ? {min: '', max: ''} : selectedOption?.supportsMultiple ? [] : '',
+                        value: selectedOption?.requiresRange ? {
+                            min: '',
+                            max: ''
+                        } : selectedOption?.supportsMultiple ? [] : '',
                     },
                 }
             }),
@@ -2649,405 +2665,166 @@ export function ProceduresPriceListsPage() {
 
                                         <TabsContent value="conditions" className="space-y-4">
                                             <div className="flex items-center justify-between">
-                                                <h3 className="text-sm font-semibold text-slate-700">Conditions (AND
-                                                    logic)</h3>
+                                                <h3 className="text-sm font-semibold text-slate-700">Conditions (AND logic)</h3>
                                                 <Button type="button" variant="outline" size="sm"
                                                         onClick={handleAddCondition} disabled={factors.length === 0}>
                                                     <Plus className="mr-2 h-4 w-4"/>
                                                     Add condition
                                                 </Button>
                                             </div>
+
                                             {ruleConditions.length === 0 ? (
-                                                <p className={infoTextClass}>No conditions yet. Create at least one
-                                                    factor-driven condition.</p>
+                                                <p className={infoTextClass}>No conditions yet. Create at least one factor-driven condition.</p>
                                             ) : (
                                                 <div className="space-y-4">
                                                     {ruleConditions.map(condition => {
-                                                        const factor = factors.find(item => item.key === condition.factorKey) ?? factors[0]
+                                                        const factor = factors.find(f => f.key === condition.factorKey) ?? factors[0]
                                                         const options = factor ? operatorOptionsForFactor(factor) : []
                                                         const allowedValues = factor ? parseAllowedValues(factor) : []
                                                         const inputKind = factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
-                                                        const selectedOption = options.find(option => option.value === condition.operator)
+                                                        const selectedOption = options.find(o => o.value === condition.operator)
 
                                                         return (
                                                             <div key={condition.id}
                                                                  className="rounded-lg border border-slate-200 p-4 shadow-sm">
-                                                                <div
-                                                                    className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+
+                                                                {/* Factor + Operator + Delete */}
+                                                                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                    {/* Factor */}
                                                                     <div className="space-y-2">
-                                                                        <Label
-                                                                            className="text-xs uppercase text-slate-500">Factor</Label>
+                                                                        <Label className="text-xs uppercase text-slate-500">Factor</Label>
                                                                         <Select
                                                                             value={condition.factorKey}
                                                                             onValueChange={value => handleConditionFactorChange(condition.id, value)}
                                                                         >
-                                                                            <SelectTrigger>
-                                                                                <SelectValue
-                                                                                    placeholder="Select factor"/>
-                                                                            </SelectTrigger>
+                                                                            <SelectTrigger><SelectValue placeholder="Select factor"/></SelectTrigger>
                                                                             <SelectContent>
                                                                                 {factors.map(item => (
-                                                                                    <SelectItem key={item.key}
-                                                                                                value={item.key}>
-                                                                                        {item.nameEn}
-                                                                                    </SelectItem>
+                                                                                    <SelectItem key={item.key} value={item.key}>{item.nameEn}</SelectItem>
                                                                                 ))}
                                                                             </SelectContent>
                                                                         </Select>
                                                                     </div>
+
+                                                                    {/* Operator */}
                                                                     <div className="space-y-2">
-                                                                        <Label
-                                                                            className="text-xs uppercase text-slate-500">Operator</Label>
+                                                                        <Label className="text-xs uppercase text-slate-500">Operator</Label>
                                                                         <Select
                                                                             value={condition.operator}
                                                                             onValueChange={value => handleConditionOperatorChange(condition.id, value)}
                                                                         >
-                                                                            <SelectTrigger>
-                                                                                <SelectValue
-                                                                                    placeholder="Select operator"/>
-                                                                            </SelectTrigger>
+                                                                            <SelectTrigger><SelectValue placeholder="Select operator"/></SelectTrigger>
                                                                             <SelectContent>
                                                                                 {options.map(option => (
-                                                                                    <SelectItem key={option.value}
-                                                                                                value={option.value}>
+                                                                                    <SelectItem key={option.value} value={option.value}>
                                                                                         {option.label}
                                                                                     </SelectItem>
                                                                                 ))}
                                                                             </SelectContent>
                                                                         </Select>
                                                                     </div>
+
+                                                                    {/* Delete */}
                                                                     <div className="flex items-start justify-end">
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="text-slate-500 hover:text-red-600"
-                                                                            onClick={() => handleRemoveCondition(condition.id)}
-                                                                        >
+                                                                        <Button type="button" variant="ghost" size="icon"
+                                                                                className="text-slate-500 hover:text-red-600"
+                                                                                onClick={() => handleRemoveCondition(condition.id)}>
                                                                             <Trash2 className="h-4 w-4"/>
                                                                         </Button>
                                                                     </div>
                                                                 </div>
+
+                                                                {/* Value */}
                                                                 <div className="mt-4 space-y-2">
-                                                                    <Label
-                                                                        className="text-xs uppercase text-slate-500">Value</Label>
+                                                                    <Label className="text-xs uppercase text-slate-500">Value</Label>
+
                                                                     {selectedOption?.requiresRange ? (
-                                                                        <div
-                                                                            className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                                                            <Input
-                                                                                type={inputKind === 'date' ? 'date' : 'number'}
-                                                                                placeholder="Min"
-                                                                                value={
-                                                                                    typeof condition.value === 'object' &&
-                                                                                    condition.value !== null &&
-                                                                                    !Array.isArray(condition.value)
-                                                                                        ? (condition.value as {
-                                                                                        min?: string
-                                                                                    }).min ?? ''
-                                                                                        : ''
-                                                                                }
-                                                                                onChange={event =>
-                                                                                    handleConditionValueChange(condition.id, {
-                                                                                        min: event.target.value,
-                                                                                        max:
-                                                                                            typeof condition.value === 'object' &&
-                                                                                            condition.value !== null &&
-                                                                                            !Array.isArray(condition.value)
-                                                                                                ? (condition.value as {
-                                                                                                max?: string
-                                                                                            }).max ?? ''
-                                                                                                : '',
-                                                                                    })
-                                                                                }
-                                                                            />
-                                                                            <Input
-                                                                                type={inputKind === 'date' ? 'date' : 'number'}
-                                                                                placeholder="Max"
-                                                                                value={
-                                                                                    typeof condition.value === 'object' &&
-                                                                                    condition.value !== null &&
-                                                                                    !Array.isArray(condition.value)
-                                                                                        ? (condition.value as {
-                                                                                        max?: string
-                                                                                    }).max ?? ''
-                                                                                        : ''
-                                                                                }
-                                                                                onChange={event =>
-                                                                                    handleConditionValueChange(condition.id, {
-                                                                                        min:
-                                                                                            typeof condition.value === 'object' &&
-                                                                                            condition.value !== null &&
-                                                                                            !Array.isArray(condition.value)
-                                                                                                ? (condition.value as {
-                                                                                                min?: string
-                                                                                            }).min ?? ''
-                                                                                                : '',
-                                                                                        max: event.target.value,
-                                                                                    })
-                                                                                }
-                                                                            />
-                                                                        </div>
-                                                                    ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                                        (() => {
+                                                                            const isRange = isRangeValue(condition.value);
+                                                                            const minVal = isRange ? condition.value.min ?? "" : "";
+                                                                            const maxVal = isRange ? condition.value.max ?? "" : "";
+
+                                                                            return (
+                                                                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                                                    <Input
+                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                        placeholder="Min"
+                                                                                        value={minVal}
+                                                                                        onChange={(event) =>
+                                                                                            handleConditionValueChange(condition.id, {
+                                                                                                min: event.target.value,
+                                                                                                max: maxVal,
+                                                                                            })
+                                                                                        }
+                                                                                    />
+
+                                                                                    <Input
+                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                        placeholder="Max"
+                                                                                        value={maxVal}
+                                                                                        onChange={(event) =>
+                                                                                            handleConditionValueChange(condition.id, {
+                                                                                                min: minVal,
+                                                                                                max: event.target.value,
+                                                                                            })
+                                                                                        }
+                                                                                    />
+                                                                                </div>
+                                                                            );
+                                                                        })()
+                                                                    )  : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                                        // MULTI
                                                                         <select
                                                                             multiple
-                                                                            value={Array.isArray(condition.value) ? condition.value.map(String) : condition.value ? [String(condition.value)] : []}
+                                                                            className="h-32 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                                                            value={Array.isArray(condition.value)
+                                                                                ? condition.value.map(String)
+                                                                                : condition.value
+                                                                                    ? [String(condition.value)]
+                                                                                    : []}
                                                                             onChange={event =>
                                                                                 handleConditionValueChange(
                                                                                     condition.id,
-                                                                                    Array.from(event.target.selectedOptions).map(option => option.value),
+                                                                                    Array.from(event.target.selectedOptions).map(o => o.value)
                                                                                 )
                                                                             }
-                                                                            className="h-32 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
                                                                         >
-                                                                            {allowedValues.map(option => (
-                                                                                <option key={option} value={option}>
-                                                                                    {option}
-                                                                                </option>
+                                                                            {allowedValues.map(val => (
+                                                                                <option key={val} value={val}>{val}</option>
                                                                             ))}
                                                                         </select>
                                                                     ) : inputKind === 'boolean' ? (
+                                                                        // BOOLEAN
                                                                         <div className="flex items-center gap-3">
                                                                             <Switch
                                                                                 checked={Boolean(condition.value)}
-                                                                                onCheckedChange={checked => handleConditionValueChange(condition.id, checked)}
+                                                                                onCheckedChange={checked =>
+                                                                                    handleConditionValueChange(condition.id, checked)
+                                                                                }
                                                                             />
-                                                                            <span
-                                                                                className="text-sm text-slate-700">{condition.value ? 'True' : 'False'}</span>
+                                                                            <span className="text-sm text-slate-700">
+                                        {condition.value ? 'True' : 'False'}
+                                    </span>
                                                                         </div>
                                                                     ) : (
+                                                                        // TEXT / NUMBER / DATE
                                                                         <Input
-                                                                            type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
-                                                                            value={Array.isArray(condition.value) ? condition.value.join(',') : String(condition.value ?? '')}
-                                                                            onChange={event => handleConditionValueChange(condition.id, event.target.value)}
+                                                                            type={
+                                                                                inputKind === 'number'
+                                                                                    ? 'number'
+                                                                                    : inputKind === 'date'
+                                                                                        ? 'date'
+                                                                                        : 'text'
+                                                                            }
+                                                                            value={
+                                                                                Array.isArray(condition.value)
+                                                                                    ? condition.value.join(',')
+                                                                                    : String(condition.value ?? '')
+                                                                            }
+                                                                            onChange={event =>
+                                                                                handleConditionValueChange(condition.id, event.target.value)
+                                                                            }
                                                                         />
-                                                                    )}
-                                                                </div>
-                                                                <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <Label className="text-xs uppercase text-blue-800">Tiers</Label>
-                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddAdjustmentTier(adjustment.id)}>
-                                                                            <Plus className="mr-2 h-4 w-4"/>
-                                                                            Add tier
-                                                                        </Button>
-                                                                    </div>
-                                                                    {adjustment.tiers.length === 0 ? (
-                                                                        <p className="text-xs text-blue-700">No tiers defined.</p>
-                                                                    ) : (
-                                                                        <div className="space-y-2">
-                                                                            {adjustment.tiers.map(tier => (
-                                                                                <div key={tier.id} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_40px]">
-                                                                                    <div className="space-y-1">
-                                                                                        <Label className="text-[10px] uppercase text-blue-800">Value</Label>
-                                                                                        <Input
-                                                                                            value={tier.value}
-                                                                                            onChange={event => handleAdjustmentTierChange(adjustment.id, tier.id, {value: event.target.value})}
-                                                                                            placeholder="Match value"
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div className="space-y-1">
-                                                                                        <Label className="text-[10px] uppercase text-blue-800">Add (amount)</Label>
-                                                                                        <Input
-                                                                                            type="number"
-                                                                                            value={tier.add}
-                                                                                            onChange={event => handleAdjustmentTierChange(adjustment.id, tier.id, {add: event.target.value})}
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div className="space-y-1">
-                                                                                        <Label className="text-[10px] uppercase text-blue-800">Add (%)</Label>
-                                                                                        <Input
-                                                                                            type="number"
-                                                                                            value={tier.percent}
-                                                                                            onChange={event => handleAdjustmentTierChange(adjustment.id, tier.id, {percent: event.target.value})}
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div className="flex items-center justify-end">
-                                                                                        <Button type="button" variant="ghost" size="icon" className="text-blue-600 hover:text-red-600" onClick={() => handleRemoveAdjustmentTier(adjustment.id, tier.id)}>
-                                                                                            <Trash2 className="h-4 w-4"/>
-                                                                                        </Button>
-                                                                                    </div>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                                <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <Label className="text-xs uppercase text-indigo-800">Logic blocks</Label>
-                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddAdjustmentLogicBlock(adjustment.id)}>
-                                                                            <Plus className="mr-2 h-4 w-4"/>
-                                                                            Add block
-                                                                        </Button>
-                                                                    </div>
-                                                                    {adjustment.logicBlocks.length === 0 ? (
-                                                                        <p className="text-xs text-indigo-700">No conditional logic configured.</p>
-                                                                    ) : (
-                                                                        <div className="space-y-3">
-                                                                            {adjustment.logicBlocks.map(block => (
-                                                                                <div key={block.id} className="space-y-3 rounded-lg border border-indigo-200 bg-white p-3">
-                                                                                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
-                                                                                        <div className="space-y-1">
-                                                                                            <Label className="text-[10px] uppercase text-indigo-800">Add amount</Label>
-                                                                                            <Input
-                                                                                                type="number"
-                                                                                                value={block.add}
-                                                                                                onChange={event => handleAdjustmentLogicBlockChange(adjustment.id, block.id, {add: event.target.value})}
-                                                                                            />
-                                                                                        </div>
-                                                                                        <div className="space-y-1">
-                                                                                            <Label className="text-[10px] uppercase text-indigo-800">Add percent</Label>
-                                                                                            <Input
-                                                                                                type="number"
-                                                                                                value={block.addPercent}
-                                                                                                onChange={event => handleAdjustmentLogicBlockChange(adjustment.id, block.id, {addPercent: event.target.value})}
-                                                                                            />
-                                                                                        </div>
-                                                                                        <div className="flex items-center justify-end">
-                                                                                            <Button type="button" variant="ghost" size="icon" className="text-indigo-700 hover:text-red-600" onClick={() => handleRemoveAdjustmentLogicBlock(adjustment.id, block.id)}>
-                                                                                                <Trash2 className="h-4 w-4"/>
-                                                                                            </Button>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div className="flex items-center justify-between">
-                                                                                        <p className="text-[11px] uppercase text-indigo-700">Conditions</p>
-                                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddAdjustmentLogicBlockCondition(adjustment.id, block.id)}>
-                                                                                            Add condition
-                                                                                        </Button>
-                                                                                    </div>
-                                                                                    {block.conditions.length === 0 ? (
-                                                                                        <p className="text-xs text-indigo-600">No conditions specified.</p>
-                                                                                    ) : (
-                                                                                        <div className="space-y-3">
-                                                                                            {block.conditions.map(condition => {
-                                                                                                const factor = factors.find(item => item.key === condition.factorKey)
-                                                                                                const allowedValues = factor ? parseAllowedValues(factor) : []
-                                                                                                const inputKind = factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
-                                                                                                const options = factor ? operatorOptionsForFactor(factor) : []
-                                                                                                const selectedOption = options.find(option => option.value === condition.operator)
-
-                                                                                                return (
-                                                                                                    <div key={condition.id} className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
-                                                                                                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
-                                                                                                            <div className="space-y-1">
-                                                                                                                <Label className="text-[10px] uppercase text-indigo-800">Factor</Label>
-                                                                                                                <Select
-                                                                                                                    value={condition.factorKey}
-                                                                                                                    onValueChange={value => handleAdjustmentLogicBlockConditionFactorChange(adjustment.id, block.id, condition.id, value)}
-                                                                                                                >
-                                                                                                                    <SelectTrigger>
-                                                                                                                        <SelectValue placeholder="Select factor"/>
-                                                                                                                    </SelectTrigger>
-                                                                                                                    <SelectContent>
-                                                                                                                        {factors.map(item => (
-                                                                                                                            <SelectItem key={item.key} value={item.key}>
-                                                                                                                                {item.nameEn}
-                                                                                                                            </SelectItem>
-                                                                                                                        ))}
-                                                                                                                    </SelectContent>
-                                                                                                                </Select>
-                                                                                                            </div>
-                                                                                                            <div className="space-y-1">
-                                                                                                                <Label className="text-[10px] uppercase text-indigo-800">Operator</Label>
-                                                                                                                <Select
-                                                                                                                    value={condition.operator}
-                                                                                                                    onValueChange={value => handleAdjustmentLogicBlockConditionOperatorChange(adjustment.id, block.id, condition.id, value)}
-                                                                                                                >
-                                                                                                                    <SelectTrigger>
-                                                                                                                        <SelectValue placeholder="Select operator"/>
-                                                                                                                    </SelectTrigger>
-                                                                                                                    <SelectContent>
-                                                                                                                        {options.map(option => (
-                                                                                                                            <SelectItem key={option.value} value={option.value}>
-                                                                                                                                {option.label}
-                                                                                                                            </SelectItem>
-                                                                                                                        ))}
-                                                                                                                    </SelectContent>
-                                                                                                                </Select>
-                                                                                                            </div>
-                                                                                                            <div className="flex items-start justify-end">
-                                                                                                                <Button type="button" variant="ghost" size="icon" className="text-indigo-700 hover:text-red-600" onClick={() => handleRemoveAdjustmentLogicBlockCondition(adjustment.id, block.id, condition.id)}>
-                                                                                                                    <Trash2 className="h-4 w-4"/>
-                                                                                                                </Button>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                        <div className="space-y-1">
-                                                                                                            <Label className="text-[10px] uppercase text-indigo-800">Value</Label>
-                                                                                                            {selectedOption?.requiresRange ? (
-                                                                                                                <div className="grid grid-cols-2 gap-2">
-                                                                                                                    <Input
-                                                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
-                                                                                                                        placeholder="Min"
-                                                                                                                        value={
-                                                                                                                            typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                                ? (condition.value as { min?: string }).min ?? ''
-                                                                                                                                : ''
-                                                                                                                        }
-                                                                                                                        onChange={event => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, {
-                                                                                                                            min: event.target.value,
-                                                                                                                            max:
-                                                                                                                                typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                                    ? (condition.value as { max?: string }).max ?? ''
-                                                                                                                                    : '',
-                                                                                                                        })}
-                                                                                                                    />
-                                                                                                                    <Input
-                                                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
-                                                                                                                        placeholder="Max"
-                                                                                                                        value={
-                                                                                                                            typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                                ? (condition.value as { max?: string }).max ?? ''
-                                                                                                                                : ''
-                                                                                                                        }
-                                                                                                                        onChange={event => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, {
-                                                                                                                            min:
-                                                                                                                                typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                                    ? (condition.value as { min?: string }).min ?? ''
-                                                                                                                                    : '',
-                                                                                                                            max: event.target.value,
-                                                                                                                        })}
-                                                                                                                    />
-                                                                                                                </div>
-                                                                                                            ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
-                                                                                                                <select
-                                                                                                                    multiple
-                                                                                                                    value={Array.isArray(condition.value) ? condition.value.map(String) : condition.value ? [String(condition.value)] : []}
-                                                                                                                    onChange={event => handleAdjustmentLogicBlockConditionValueChange(
-                                                                                                                        adjustment.id,
-                                                                                                                        block.id,
-                                                                                                                        condition.id,
-                                                                                                                        Array.from(event.target.selectedOptions).map(option => option.value),
-                                                                                                                    )}
-                                                                                                                    className="h-24 w-full rounded-md border border-indigo-200 px-3 py-2 text-sm"
-                                                                                                                >
-                                                                                                                    {allowedValues.map(option => (
-                                                                                                                        <option key={option} value={option}>
-                                                                                                                            {option}
-                                                                                                                        </option>
-                                                                                                                    ))}
-                                                                                                                </select>
-                                                                                                            ) : inputKind === 'boolean' ? (
-                                                                                                                <div className="flex items-center gap-2">
-                                                                                                                    <Switch
-                                                                                                                        checked={Boolean(condition.value)}
-                                                                                                                        onCheckedChange={checked => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, checked)}
-                                                                                                                    />
-                                                                                                                    <span className="text-xs text-indigo-800">{condition.value ? 'True' : 'False'}</span>
-                                                                                                                </div>
-                                                                                                            ) : (
-                                                                                                                <Input
-                                                                                                                    type={inputKind === 'number' ? 'number' : inputKind === 'date' ? 'date' : 'text'}
-                                                                                                                    value={Array.isArray(condition.value) ? condition.value.join(',') : String(condition.value ?? '')}
-                                                                                                                    onChange={event => handleAdjustmentLogicBlockConditionValueChange(adjustment.id, block.id, condition.id, event.target.value)}
-                                                                                                                />
-                                                                                                            )}
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                )
-                                                                                            })}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
                                                                     )}
                                                                 </div>
                                                             </div>
@@ -3170,7 +2947,8 @@ export function ProceduresPriceListsPage() {
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <Label htmlFor="rule-point-strategy">Point strategy key (optional)</Label>
+                                                    <Label htmlFor="rule-point-strategy">Point strategy key
+                                                        (optional)</Label>
                                                     <Input
                                                         id="rule-point-strategy"
                                                         value={ruleForm.pointStrategy}
@@ -3183,21 +2961,26 @@ export function ProceduresPriceListsPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                            <div
+                                                className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
                                                 <div className="flex items-center justify-between">
                                                     <div>
-                                                        <h3 className="text-sm font-semibold text-amber-800">Tiered point logic</h3>
+                                                        <h3 className="text-sm font-semibold text-amber-800">Tiered
+                                                            point logic</h3>
                                                         <p className="text-xs text-amber-700">
-                                                            Add conditional tiers that override the base points when criteria match.
+                                                            Add conditional tiers that override the base points when
+                                                            criteria match.
                                                         </p>
                                                     </div>
-                                                    <Button type="button" size="sm" variant="outline" onClick={handleAddPricingTier}>
+                                                    <Button type="button" size="sm" variant="outline"
+                                                            onClick={handleAddPricingTier}>
                                                         <Plus className="mr-2 h-4 w-4"/>
                                                         Add tier
                                                     </Button>
                                                 </div>
                                                 {pricingTiers.length === 0 ? (
-                                                    <p className="text-xs text-amber-700">No tiers defined. The rule will use the base configuration.</p>
+                                                    <p className="text-xs text-amber-700">No tiers defined. The rule
+                                                        will use the base configuration.</p>
                                                 ) : (
                                                     <div className="space-y-3">
                                                         {pricingTiers.map(tier => {
@@ -3209,10 +2992,14 @@ export function ProceduresPriceListsPage() {
                                                             const selectedOption = condition ? options.find(option => option.value === condition.operator) ?? options[0] : undefined
 
                                                             return (
-                                                                <div key={tier.id} className="space-y-3 rounded-lg border border-amber-300 bg-white p-4">
-                                                                    <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                                <div key={tier.id}
+                                                                     className="space-y-3 rounded-lg border border-amber-300 bg-white p-4">
+                                                                    <div
+                                                                        className="flex flex-col gap-3 md:flex-row md:items-center">
                                                                         <div className="flex-1 space-y-1">
-                                                                            <Label className="text-xs uppercase text-amber-800">Points override</Label>
+                                                                            <Label
+                                                                                className="text-xs uppercase text-amber-800">Points
+                                                                                override</Label>
                                                                             <Input
                                                                                 type="number"
                                                                                 value={tier.points}
@@ -3220,36 +3007,49 @@ export function ProceduresPriceListsPage() {
                                                                                 placeholder="Enter tier points"
                                                                             />
                                                                         </div>
-                                                                        <div className="flex items-center gap-2 self-start">
+                                                                        <div
+                                                                            className="flex items-center gap-2 self-start">
                                                                             {condition ? (
-                                                                                <Button type="button" variant="outline" size="sm" onClick={() => handleRemovePricingTierCondition(tier.id)}>
+                                                                                <Button type="button" variant="outline"
+                                                                                        size="sm"
+                                                                                        onClick={() => handleRemovePricingTierCondition(tier.id)}>
                                                                                     Remove condition
                                                                                 </Button>
                                                                             ) : (
-                                                                                <Button type="button" variant="outline" size="sm" onClick={() => handleEnsurePricingTierCondition(tier.id)}>
+                                                                                <Button type="button" variant="outline"
+                                                                                        size="sm"
+                                                                                        onClick={() => handleEnsurePricingTierCondition(tier.id)}>
                                                                                     Add condition
                                                                                 </Button>
                                                                             )}
-                                                                            <Button type="button" variant="ghost" size="icon" className="text-amber-700 hover:text-red-600" onClick={() => handleRemovePricingTier(tier.id)}>
+                                                                            <Button type="button" variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="text-amber-700 hover:text-red-600"
+                                                                                    onClick={() => handleRemovePricingTier(tier.id)}>
                                                                                 <Trash2 className="h-4 w-4"/>
                                                                             </Button>
                                                                         </div>
                                                                     </div>
                                                                     {condition ? (
-                                                                        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                                                        <div
+                                                                            className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                                                                             <div className="grid gap-3 md:grid-cols-3">
                                                                                 <div className="space-y-1">
-                                                                                    <Label className="text-[11px] uppercase text-amber-800">Factor</Label>
+                                                                                    <Label
+                                                                                        className="text-[11px] uppercase text-amber-800">Factor</Label>
                                                                                     <Select
                                                                                         value={condition.factorKey}
                                                                                         onValueChange={value => handlePricingTierConditionFactorChange(tier.id, value)}
                                                                                     >
                                                                                         <SelectTrigger>
-                                                                                            <SelectValue placeholder="Select factor"/>
+                                                                                            <SelectValue
+                                                                                                placeholder="Select factor"/>
                                                                                         </SelectTrigger>
                                                                                         <SelectContent>
                                                                                             {factors.map(item => (
-                                                                                                <SelectItem key={item.key} value={item.key}>
+                                                                                                <SelectItem
+                                                                                                    key={item.key}
+                                                                                                    value={item.key}>
                                                                                                     {item.nameEn}
                                                                                                 </SelectItem>
                                                                                             ))}
@@ -3257,17 +3057,21 @@ export function ProceduresPriceListsPage() {
                                                                                     </Select>
                                                                                 </div>
                                                                                 <div className="space-y-1">
-                                                                                    <Label className="text-[11px] uppercase text-amber-800">Operator</Label>
+                                                                                    <Label
+                                                                                        className="text-[11px] uppercase text-amber-800">Operator</Label>
                                                                                     <Select
                                                                                         value={condition.operator}
                                                                                         onValueChange={value => handlePricingTierConditionOperatorChange(tier.id, value)}
                                                                                     >
                                                                                         <SelectTrigger>
-                                                                                            <SelectValue placeholder="Select operator"/>
+                                                                                            <SelectValue
+                                                                                                placeholder="Select operator"/>
                                                                                         </SelectTrigger>
                                                                                         <SelectContent>
                                                                                             {options.map(option => (
-                                                                                                <SelectItem key={option.value} value={option.value}>
+                                                                                                <SelectItem
+                                                                                                    key={option.value}
+                                                                                                    value={option.value}>
                                                                                                     {option.label}
                                                                                                 </SelectItem>
                                                                                             ))}
@@ -3275,22 +3079,28 @@ export function ProceduresPriceListsPage() {
                                                                                     </Select>
                                                                                 </div>
                                                                                 <div className="space-y-1">
-                                                                                    <Label className="text-[11px] uppercase text-amber-800">Value</Label>
+                                                                                    <Label
+                                                                                        className="text-[11px] uppercase text-amber-800">Value</Label>
                                                                                     {selectedOption?.requiresRange ? (
-                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                        <div
+                                                                                            className="grid grid-cols-2 gap-2">
                                                                                             <Input
                                                                                                 type={inputKind === 'date' ? 'date' : 'number'}
                                                                                                 placeholder="Min"
                                                                                                 value={
                                                                                                     typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                        ? (condition.value as { min?: string }).min ?? ''
+                                                                                                        ? (condition.value as {
+                                                                                                        min?: string
+                                                                                                    }).min ?? ''
                                                                                                         : ''
                                                                                                 }
                                                                                                 onChange={event => handlePricingTierConditionValueChange(tier.id, {
                                                                                                     min: event.target.value,
                                                                                                     max:
                                                                                                         typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                            ? (condition.value as { max?: string }).max ?? ''
+                                                                                                            ? (condition.value as {
+                                                                                                            max?: string
+                                                                                                        }).max ?? ''
                                                                                                             : '',
                                                                                                 })}
                                                                                             />
@@ -3299,13 +3109,17 @@ export function ProceduresPriceListsPage() {
                                                                                                 placeholder="Max"
                                                                                                 value={
                                                                                                     typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                        ? (condition.value as { max?: string }).max ?? ''
+                                                                                                        ? (condition.value as {
+                                                                                                        max?: string
+                                                                                                    }).max ?? ''
                                                                                                         : ''
                                                                                                 }
                                                                                                 onChange={event => handlePricingTierConditionValueChange(tier.id, {
                                                                                                     min:
                                                                                                         typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                            ? (condition.value as { min?: string }).min ?? ''
+                                                                                                            ? (condition.value as {
+                                                                                                            min?: string
+                                                                                                        }).min ?? ''
                                                                                                             : '',
                                                                                                     max: event.target.value,
                                                                                                 })}
@@ -3322,18 +3136,21 @@ export function ProceduresPriceListsPage() {
                                                                                             className="h-28 w-full rounded-md border border-amber-200 px-3 py-2 text-sm"
                                                                                         >
                                                                                             {allowedValues.map(option => (
-                                                                                                <option key={option} value={option}>
+                                                                                                <option key={option}
+                                                                                                        value={option}>
                                                                                                     {option}
                                                                                                 </option>
                                                                                             ))}
                                                                                         </select>
                                                                                     ) : inputKind === 'boolean' ? (
-                                                                                        <div className="flex items-center gap-2">
+                                                                                        <div
+                                                                                            className="flex items-center gap-2">
                                                                                             <Switch
                                                                                                 checked={Boolean(condition.value)}
                                                                                                 onCheckedChange={checked => handlePricingTierConditionValueChange(tier.id, checked)}
                                                                                             />
-                                                                                            <span className="text-xs text-amber-800">{condition.value ? 'True' : 'False'}</span>
+                                                                                            <span
+                                                                                                className="text-xs text-amber-800">{condition.value ? 'True' : 'False'}</span>
                                                                                         </div>
                                                                                     ) : (
                                                                                         <Input
@@ -3356,25 +3173,33 @@ export function ProceduresPriceListsPage() {
                                             <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                                                 <div className="flex items-center justify-between">
                                                     <div>
-                                                        <h3 className="text-sm font-semibold text-slate-800">Conditional fixed pricing</h3>
+                                                        <h3 className="text-sm font-semibold text-slate-800">Conditional
+                                                            fixed pricing</h3>
                                                         <p className="text-xs text-slate-600">
-                                                            Define fixed prices that activate only when all nested conditions pass.
+                                                            Define fixed prices that activate only when all nested
+                                                            conditions pass.
                                                         </p>
                                                     </div>
-                                                    <Button type="button" size="sm" variant="outline" onClick={handleAddConditionalFixed}>
+                                                    <Button type="button" size="sm" variant="outline"
+                                                            onClick={handleAddConditionalFixed}>
                                                         <Plus className="mr-2 h-4 w-4"/>
                                                         Add conditional price
                                                     </Button>
                                                 </div>
                                                 {conditionalFixed.length === 0 ? (
-                                                    <p className="text-xs text-slate-500">No conditional overrides added.</p>
+                                                    <p className="text-xs text-slate-500">No conditional overrides
+                                                        added.</p>
                                                 ) : (
                                                     <div className="space-y-3">
                                                         {conditionalFixed.map(entry => (
-                                                            <div key={entry.id} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                                                <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                            <div key={entry.id}
+                                                                 className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                                                <div
+                                                                    className="flex flex-col gap-3 md:flex-row md:items-center">
                                                                     <div className="flex-1 space-y-1">
-                                                                        <Label className="text-xs uppercase text-slate-700">Fixed price</Label>
+                                                                        <Label
+                                                                            className="text-xs uppercase text-slate-700">Fixed
+                                                                            price</Label>
                                                                         <Input
                                                                             type="number"
                                                                             value={entry.price}
@@ -3383,16 +3208,22 @@ export function ProceduresPriceListsPage() {
                                                                         />
                                                                     </div>
                                                                     <div className="flex items-center gap-2 self-start">
-                                                                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddConditionalFixedCondition(entry.id)}>
+                                                                        <Button type="button" variant="outline"
+                                                                                size="sm"
+                                                                                onClick={() => handleAddConditionalFixedCondition(entry.id)}>
                                                                             Add condition
                                                                         </Button>
-                                                                        <Button type="button" variant="ghost" size="icon" className="text-slate-600 hover:text-red-600" onClick={() => handleRemoveConditionalFixed(entry.id)}>
+                                                                        <Button type="button" variant="ghost"
+                                                                                size="icon"
+                                                                                className="text-slate-600 hover:text-red-600"
+                                                                                onClick={() => handleRemoveConditionalFixed(entry.id)}>
                                                                             <Trash2 className="h-4 w-4"/>
                                                                         </Button>
                                                                     </div>
                                                                 </div>
                                                                 {entry.conditions.length === 0 ? (
-                                                                    <p className="text-xs text-slate-500">No conditions attached. Override will always apply.</p>
+                                                                    <p className="text-xs text-slate-500">No conditions
+                                                                        attached. Override will always apply.</p>
                                                                 ) : (
                                                                     <div className="space-y-3">
                                                                         {entry.conditions.map(condition => {
@@ -3403,20 +3234,26 @@ export function ProceduresPriceListsPage() {
                                                                             const selectedOption = options.find(option => option.value === condition.operator)
 
                                                                             return (
-                                                                                <div key={condition.id} className="space-y-3 rounded-lg border border-white bg-white p-3 shadow-sm">
-                                                                                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                <div key={condition.id}
+                                                                                     className="space-y-3 rounded-lg border border-white bg-white p-3 shadow-sm">
+                                                                                    <div
+                                                                                        className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
                                                                                         <div className="space-y-1">
-                                                                                            <Label className="text-[11px] uppercase text-slate-700">Factor</Label>
+                                                                                            <Label
+                                                                                                className="text-[11px] uppercase text-slate-700">Factor</Label>
                                                                                             <Select
                                                                                                 value={condition.factorKey}
                                                                                                 onValueChange={value => handleConditionalFixedConditionFactorChange(entry.id, condition.id, value)}
                                                                                             >
                                                                                                 <SelectTrigger>
-                                                                                                    <SelectValue placeholder="Select factor"/>
+                                                                                                    <SelectValue
+                                                                                                        placeholder="Select factor"/>
                                                                                                 </SelectTrigger>
                                                                                                 <SelectContent>
                                                                                                     {factors.map(item => (
-                                                                                                        <SelectItem key={item.key} value={item.key}>
+                                                                                                        <SelectItem
+                                                                                                            key={item.key}
+                                                                                                            value={item.key}>
                                                                                                             {item.nameEn}
                                                                                                         </SelectItem>
                                                                                                     ))}
@@ -3424,24 +3261,29 @@ export function ProceduresPriceListsPage() {
                                                                                             </Select>
                                                                                         </div>
                                                                                         <div className="space-y-1">
-                                                                                            <Label className="text-[11px] uppercase text-slate-700">Operator</Label>
+                                                                                            <Label
+                                                                                                className="text-[11px] uppercase text-slate-700">Operator</Label>
                                                                                             <Select
                                                                                                 value={condition.operator}
                                                                                                 onValueChange={value => handleConditionalFixedConditionOperatorChange(entry.id, condition.id, value)}
                                                                                             >
                                                                                                 <SelectTrigger>
-                                                                                                    <SelectValue placeholder="Select operator"/>
+                                                                                                    <SelectValue
+                                                                                                        placeholder="Select operator"/>
                                                                                                 </SelectTrigger>
                                                                                                 <SelectContent>
                                                                                                     {options.map(option => (
-                                                                                                        <SelectItem key={option.value} value={option.value}>
+                                                                                                        <SelectItem
+                                                                                                            key={option.value}
+                                                                                                            value={option.value}>
                                                                                                             {option.label}
                                                                                                         </SelectItem>
                                                                                                     ))}
                                                                                                 </SelectContent>
                                                                                             </Select>
                                                                                         </div>
-                                                                                        <div className="flex items-start justify-end">
+                                                                                        <div
+                                                                                            className="flex items-start justify-end">
                                                                                             <Button
                                                                                                 type="button"
                                                                                                 variant="ghost"
@@ -3449,27 +3291,34 @@ export function ProceduresPriceListsPage() {
                                                                                                 className="text-slate-600 hover:text-red-600"
                                                                                                 onClick={() => handleRemoveConditionalFixedCondition(entry.id, condition.id)}
                                                                                             >
-                                                                                                <Trash2 className="h-4 w-4"/>
+                                                                                                <Trash2
+                                                                                                    className="h-4 w-4"/>
                                                                                             </Button>
                                                                                         </div>
                                                                                     </div>
                                                                                     <div className="space-y-1">
-                                                                                        <Label className="text-[11px] uppercase text-slate-700">Value</Label>
+                                                                                        <Label
+                                                                                            className="text-[11px] uppercase text-slate-700">Value</Label>
                                                                                         {selectedOption?.requiresRange ? (
-                                                                                            <div className="grid grid-cols-2 gap-2">
+                                                                                            <div
+                                                                                                className="grid grid-cols-2 gap-2">
                                                                                                 <Input
                                                                                                     type={inputKind === 'date' ? 'date' : 'number'}
                                                                                                     placeholder="Min"
                                                                                                     value={
                                                                                                         typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                            ? (condition.value as { min?: string }).min ?? ''
+                                                                                                            ? (condition.value as {
+                                                                                                            min?: string
+                                                                                                        }).min ?? ''
                                                                                                             : ''
                                                                                                     }
                                                                                                     onChange={event => handleConditionalFixedConditionValueChange(entry.id, condition.id, {
                                                                                                         min: event.target.value,
                                                                                                         max:
                                                                                                             typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                ? (condition.value as {
+                                                                                                                max?: string
+                                                                                                            }).max ?? ''
                                                                                                                 : '',
                                                                                                     })}
                                                                                                 />
@@ -3478,13 +3327,17 @@ export function ProceduresPriceListsPage() {
                                                                                                     placeholder="Max"
                                                                                                     value={
                                                                                                         typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                            ? (condition.value as { max?: string }).max ?? ''
+                                                                                                            ? (condition.value as {
+                                                                                                            max?: string
+                                                                                                        }).max ?? ''
                                                                                                             : ''
                                                                                                     }
                                                                                                     onChange={event => handleConditionalFixedConditionValueChange(entry.id, condition.id, {
                                                                                                         min:
                                                                                                             typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                ? (condition.value as {
+                                                                                                                min?: string
+                                                                                                            }).min ?? ''
                                                                                                                 : '',
                                                                                                         max: event.target.value,
                                                                                                     })}
@@ -3502,18 +3355,21 @@ export function ProceduresPriceListsPage() {
                                                                                                 className="h-28 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
                                                                                             >
                                                                                                 {allowedValues.map(option => (
-                                                                                                    <option key={option} value={option}>
+                                                                                                    <option key={option}
+                                                                                                            value={option}>
                                                                                                         {option}
                                                                                                     </option>
                                                                                                 ))}
                                                                                             </select>
                                                                                         ) : inputKind === 'boolean' ? (
-                                                                                            <div className="flex items-center gap-2">
+                                                                                            <div
+                                                                                                className="flex items-center gap-2">
                                                                                                 <Switch
                                                                                                     checked={Boolean(condition.value)}
                                                                                                     onCheckedChange={checked => handleConditionalFixedConditionValueChange(entry.id, condition.id, checked)}
                                                                                                 />
-                                                                                                <span className="text-xs text-slate-700">{condition.value ? 'True' : 'False'}</span>
+                                                                                                <span
+                                                                                                    className="text-xs text-slate-700">{condition.value ? 'True' : 'False'}</span>
                                                                                             </div>
                                                                                         ) : (
                                                                                             <Input
@@ -3551,9 +3407,13 @@ export function ProceduresPriceListsPage() {
                                                     {ruleAdjustments.map(adjustment => {
                                                         const factor = factors.find(item => item.key === adjustment.factorKey)
                                                         const allowedValues = factor ? parseAllowedValues(factor) : []
+
                                                         return (
-                                                            <div key={adjustment.id}
-                                                                 className="space-y-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                                                            <div
+                                                                key={adjustment.id}
+                                                                className="space-y-4 rounded-xl border border-blue-200 bg-blue-50 p-4"
+                                                            >
+                                                                {/* ================= HEADER ================= */}
                                                                 <div
                                                                     className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
                                                                     <div className="space-y-2">
@@ -3561,7 +3421,9 @@ export function ProceduresPriceListsPage() {
                                                                             className="text-xs uppercase text-blue-800">Type</Label>
                                                                         <Select
                                                                             value={adjustment.type}
-                                                                            onValueChange={value => handleAdjustmentChange(adjustment.id, {type: value})}
+                                                                            onValueChange={value =>
+                                                                                handleAdjustmentChange(adjustment.id, {type: value})
+                                                                            }
                                                                         >
                                                                             <SelectTrigger>
                                                                                 <SelectValue placeholder="Select type"/>
@@ -3575,12 +3437,15 @@ export function ProceduresPriceListsPage() {
                                                                             </SelectContent>
                                                                         </Select>
                                                                     </div>
+
                                                                     <div className="space-y-2">
                                                                         <Label
                                                                             className="text-xs uppercase text-blue-800">Factor</Label>
                                                                         <Select
                                                                             value={adjustment.factorKey}
-                                                                            onValueChange={value => handleAdjustmentChange(adjustment.id, {factorKey: value})}
+                                                                            onValueChange={value =>
+                                                                                handleAdjustmentChange(adjustment.id, {factorKey: value})
+                                                                            }
                                                                         >
                                                                             <SelectTrigger>
                                                                                 <SelectValue
@@ -3596,6 +3461,7 @@ export function ProceduresPriceListsPage() {
                                                                             </SelectContent>
                                                                         </Select>
                                                                     </div>
+
                                                                     <div className="flex items-start justify-end">
                                                                         <Button
                                                                             type="button"
@@ -3608,41 +3474,64 @@ export function ProceduresPriceListsPage() {
                                                                         </Button>
                                                                     </div>
                                                                 </div>
+
+                                                                {/* ================= BASIC PERCENT ================= */}
                                                                 <div className="grid gap-4 md:grid-cols-2">
                                                                     <div className="space-y-2">
                                                                         <Label
-                                                                            className="text-xs uppercase text-blue-800">Percent
-                                                                            (optional)</Label>
+                                                                            className="text-xs uppercase text-blue-800">
+                                                                            Percent (optional)
+                                                                        </Label>
                                                                         <Input
                                                                             type="number"
                                                                             value={adjustment.percent}
-                                                                            onChange={event => handleAdjustmentChange(adjustment.id, {percent: event.target.value})}
+                                                                            onChange={event =>
+                                                                                handleAdjustmentChange(adjustment.id, {
+                                                                                    percent: event.target.value,
+                                                                                })
+                                                                            }
                                                                         />
                                                                     </div>
                                                                 </div>
-                                                                <div className="mt-4 space-y-3">
+
+                                                                {/* ================= CASES ================= */}
+                                                                <div
+                                                                    className="space-y-3 pt-2 border-t border-blue-200">
                                                                     <div className="flex items-center justify-between">
                                                                         <Label
                                                                             className="text-xs uppercase text-blue-800">Cases</Label>
-                                                                        <Button type="button" variant="outline"
-                                                                                size="sm"
-                                                                                onClick={() => handleAddAdjustmentCase(adjustment.id)}>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={() => handleAddAdjustmentCase(adjustment.id)}
+                                                                        >
                                                                             <Plus className="mr-2 h-4 w-4"/>
                                                                             Add case
                                                                         </Button>
                                                                     </div>
+
                                                                     <div className="space-y-2">
                                                                         {adjustment.cases.map(caseEntry => (
-                                                                            <div key={caseEntry.id}
-                                                                                 className="flex flex-col gap-2 rounded-md border border-blue-200 bg-white p-3 md:flex-row md:items-center md:gap-3">
+                                                                            <div
+                                                                                key={caseEntry.id}
+                                                                                className="flex flex-col gap-2 rounded-md border border-blue-200 bg-white p-3 md:flex-row md:items-center md:gap-3"
+                                                                            >
                                                                                 <div className="flex-1">
                                                                                     <Label
-                                                                                        className="text-[10px] uppercase text-blue-800">Factor
-                                                                                        value</Label>
+                                                                                        className="text-[10px] uppercase text-blue-800">
+                                                                                        Factor value
+                                                                                    </Label>
                                                                                     {allowedValues.length > 0 ? (
                                                                                         <select
                                                                                             value={caseEntry.caseValue}
-                                                                                            onChange={event => handleAdjustmentCaseChange(adjustment.id, caseEntry.id, {caseValue: event.target.value})}
+                                                                                            onChange={event =>
+                                                                                                handleAdjustmentCaseChange(
+                                                                                                    adjustment.id,
+                                                                                                    caseEntry.id,
+                                                                                                    {caseValue: event.target.value}
+                                                                                                )
+                                                                                            }
                                                                                             className="mt-1 w-full rounded-md border border-blue-200 px-3 py-2 text-sm"
                                                                                         >
                                                                                             <option value="">Select
@@ -3658,27 +3547,48 @@ export function ProceduresPriceListsPage() {
                                                                                     ) : (
                                                                                         <Input
                                                                                             value={caseEntry.caseValue}
-                                                                                            onChange={event => handleAdjustmentCaseChange(adjustment.id, caseEntry.id, {caseValue: event.target.value})}
+                                                                                            onChange={event =>
+                                                                                                handleAdjustmentCaseChange(
+                                                                                                    adjustment.id,
+                                                                                                    caseEntry.id,
+                                                                                                    {caseValue: event.target.value}
+                                                                                                )
+                                                                                            }
                                                                                             placeholder="Case value"
                                                                                         />
                                                                                     )}
                                                                                 </div>
+
                                                                                 <div className="flex-1">
                                                                                     <Label
-                                                                                        className="text-[10px] uppercase text-blue-800">Value / Amount</Label>
+                                                                                        className="text-[10px] uppercase text-blue-800">
+                                                                                        Value / Amount
+                                                                                    </Label>
                                                                                     <Input
                                                                                         type="text"
                                                                                         value={caseEntry.amount}
-                                                                                        onChange={event => handleAdjustmentCaseChange(adjustment.id, caseEntry.id, {amount: event.target.value})}
+                                                                                        onChange={event =>
+                                                                                            handleAdjustmentCaseChange(
+                                                                                                adjustment.id,
+                                                                                                caseEntry.id,
+                                                                                                {amount: event.target.value}
+                                                                                            )
+                                                                                        }
                                                                                         placeholder="Number, boolean, or JSON"
                                                                                     />
                                                                                 </div>
+
                                                                                 <Button
                                                                                     type="button"
                                                                                     variant="ghost"
                                                                                     size="icon"
                                                                                     className="text-blue-600 hover:text-red-600"
-                                                                                    onClick={() => handleRemoveAdjustmentCase(adjustment.id, caseEntry.id)}
+                                                                                    onClick={() =>
+                                                                                        handleRemoveAdjustmentCase(
+                                                                                            adjustment.id,
+                                                                                            caseEntry.id
+                                                                                        )
+                                                                                    }
                                                                                 >
                                                                                     <Trash2 className="h-4 w-4"/>
                                                                                 </Button>
@@ -3686,10 +3596,498 @@ export function ProceduresPriceListsPage() {
                                                                         ))}
                                                                     </div>
                                                                 </div>
+
+                                                                {/* ================= TIERS ================= */}
+                                                                <div
+                                                                    className="space-y-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <Label
+                                                                            className="text-xs uppercase text-blue-800">Tiers</Label>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={() => handleAddAdjustmentTier(adjustment.id)}
+                                                                        >
+                                                                            <Plus className="mr-2 h-4 w-4"/>
+                                                                            Add tier
+                                                                        </Button>
+                                                                    </div>
+
+                                                                    {adjustment.tiers.length === 0 ? (
+                                                                        <p className="text-xs text-blue-700">No tiers
+                                                                            defined.</p>
+                                                                    ) : (
+                                                                        <div className="space-y-2">
+                                                                            {adjustment.tiers.map(tier => (
+                                                                                <div
+                                                                                    key={tier.id}
+                                                                                    className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_40px]"
+                                                                                >
+                                                                                    <div className="space-y-1">
+                                                                                        <Label
+                                                                                            className="text-[10px] uppercase text-blue-800">
+                                                                                            Value
+                                                                                        </Label>
+                                                                                        <Input
+                                                                                            value={tier.value}
+                                                                                            onChange={event =>
+                                                                                                handleAdjustmentTierChange(
+                                                                                                    adjustment.id,
+                                                                                                    tier.id,
+                                                                                                    {value: event.target.value}
+                                                                                                )
+                                                                                            }
+                                                                                            placeholder="Match value"
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    <div className="space-y-1">
+                                                                                        <Label
+                                                                                            className="text-[10px] uppercase text-blue-800">
+                                                                                            Add (amount)
+                                                                                        </Label>
+                                                                                        <Input
+                                                                                            type="number"
+                                                                                            value={tier.add}
+                                                                                            onChange={event =>
+                                                                                                handleAdjustmentTierChange(
+                                                                                                    adjustment.id,
+                                                                                                    tier.id,
+                                                                                                    {add: event.target.value}
+                                                                                                )
+                                                                                            }
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    <div className="space-y-1">
+                                                                                        <Label
+                                                                                            className="text-[10px] uppercase text-blue-800">
+                                                                                            Add (%)
+                                                                                        </Label>
+                                                                                        <Input
+                                                                                            type="number"
+                                                                                            value={tier.percent}
+                                                                                            onChange={event =>
+                                                                                                handleAdjustmentTierChange(
+                                                                                                    adjustment.id,
+                                                                                                    tier.id,
+                                                                                                    {percent: event.target.value}
+                                                                                                )
+                                                                                            }
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    <div
+                                                                                        className="flex items-center justify-end">
+                                                                                        <Button
+                                                                                            type="button"
+                                                                                            variant="ghost"
+                                                                                            size="icon"
+                                                                                            className="text-blue-600 hover:text-red-600"
+                                                                                            onClick={() =>
+                                                                                                handleRemoveAdjustmentTier(
+                                                                                                    adjustment.id,
+                                                                                                    tier.id
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            <Trash2
+                                                                                                className="h-4 w-4"/>
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* ================= LOGIC BLOCKS ================= */}
+                                                                <div
+                                                                    className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <Label
+                                                                            className="text-xs uppercase text-indigo-800">
+                                                                            Logic blocks
+                                                                        </Label>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={() =>
+                                                                                handleAddAdjustmentLogicBlock(adjustment.id)
+                                                                            }
+                                                                        >
+                                                                            <Plus className="mr-2 h-4 w-4"/>
+                                                                            Add block
+                                                                        </Button>
+                                                                    </div>
+
+                                                                    {adjustment.logicBlocks.length === 0 ? (
+                                                                        <p className="text-xs text-indigo-700">
+                                                                            No conditional logic configured.
+                                                                        </p>
+                                                                    ) : (
+                                                                        <div className="space-y-3">
+                                                                            {adjustment.logicBlocks.map(block => (
+                                                                                <div
+                                                                                    key={block.id}
+                                                                                    className="space-y-3 rounded-lg border border-indigo-200 bg-white p-3"
+                                                                                >
+                                                                                    {/* ===== ADD / ADD % ===== */}
+                                                                                    <div
+                                                                                        className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                        <div className="space-y-1">
+                                                                                            <Label
+                                                                                                className="text-[10px] uppercase text-indigo-800">
+                                                                                                Add amount
+                                                                                            </Label>
+                                                                                            <Input
+                                                                                                type="number"
+                                                                                                value={block.add}
+                                                                                                onChange={event =>
+                                                                                                    handleAdjustmentLogicBlockChange(
+                                                                                                        adjustment.id,
+                                                                                                        block.id,
+                                                                                                        {add: event.target.value}
+                                                                                                    )
+                                                                                                }
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        <div className="space-y-1">
+                                                                                            <Label
+                                                                                                className="text-[10px] uppercase text-indigo-800">
+                                                                                                Add percent
+                                                                                            </Label>
+                                                                                            <Input
+                                                                                                type="number"
+                                                                                                value={block.addPercent}
+                                                                                                onChange={event =>
+                                                                                                    handleAdjustmentLogicBlockChange(
+                                                                                                        adjustment.id,
+                                                                                                        block.id,
+                                                                                                        {
+                                                                                                            addPercent:
+                                                                                                            event.target.value,
+                                                                                                        }
+                                                                                                    )
+                                                                                                }
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        <div
+                                                                                            className="flex items-center justify-end">
+                                                                                            <Button
+                                                                                                type="button"
+                                                                                                variant="ghost"
+                                                                                                size="icon"
+                                                                                                className="text-indigo-700 hover:text-red-600"
+                                                                                                onClick={() =>
+                                                                                                    handleRemoveAdjustmentLogicBlock(
+                                                                                                        adjustment.id,
+                                                                                                        block.id
+                                                                                                    )
+                                                                                                }
+                                                                                            >
+                                                                                                <Trash2
+                                                                                                    className="h-4 w-4"/>
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    {/* ===== CONDITIONS ===== */}
+                                                                                    <div
+                                                                                        className="flex items-center justify-between">
+                                                                                        <p className="text-[11px] uppercase text-indigo-700">
+                                                                                            Conditions
+                                                                                        </p>
+                                                                                        <Button
+                                                                                            type="button"
+                                                                                            variant="outline"
+                                                                                            size="sm"
+                                                                                            onClick={() =>
+                                                                                                handleAddAdjustmentLogicBlockCondition(
+                                                                                                    adjustment.id,
+                                                                                                    block.id
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            Add condition
+                                                                                        </Button>
+                                                                                    </div>
+
+                                                                                    {block.conditions.length === 0 ? (
+                                                                                        <p className="text-xs text-indigo-600">
+                                                                                            No conditions specified.
+                                                                                        </p>
+                                                                                    ) : (
+                                                                                        <div className="space-y-3">
+                                                                                            {block.conditions.map(condition => {
+                                                                                                const factor = factors.find(item => item.key === condition.factorKey)
+                                                                                                const allowedValues = factor ? parseAllowedValues(factor) : []
+                                                                                                const inputKind = factor ? resolveFactorInputKind(factor, condition.operator) : 'text'
+                                                                                                const options = factor ? operatorOptionsForFactor(factor) : []
+                                                                                                const selectedOption = options.find(option => option.value === condition.operator)
+
+                                                                                                return (
+                                                                                                    <div
+                                                                                                        key={condition.id}
+                                                                                                        className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50 p-3"
+                                                                                                    >
+                                                                                                        {/* === Factor & Operator === */}
+                                                                                                        <div
+                                                                                                            className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                                            <div
+                                                                                                                className="space-y-1">
+                                                                                                                <Label
+                                                                                                                    className="text-[10px] uppercase text-indigo-800">
+                                                                                                                    Factor
+                                                                                                                </Label>
+                                                                                                                <Select
+                                                                                                                    value={condition.factorKey}
+                                                                                                                    onValueChange={value =>
+                                                                                                                        handleAdjustmentLogicBlockConditionFactorChange(
+                                                                                                                            adjustment.id,
+                                                                                                                            block.id,
+                                                                                                                            condition.id,
+                                                                                                                            value
+                                                                                                                        )
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    <SelectTrigger>
+                                                                                                                        <SelectValue
+                                                                                                                            placeholder="Select factor"/>
+                                                                                                                    </SelectTrigger>
+                                                                                                                    <SelectContent>
+                                                                                                                        {factors.map(item => (
+                                                                                                                            <SelectItem
+                                                                                                                                key={item.key}
+                                                                                                                                value={item.key}>
+                                                                                                                                {item.nameEn}
+                                                                                                                            </SelectItem>
+                                                                                                                        ))}
+                                                                                                                    </SelectContent>
+                                                                                                                </Select>
+                                                                                                            </div>
+
+                                                                                                            <div
+                                                                                                                className="space-y-1">
+                                                                                                                <Label
+                                                                                                                    className="text-[10px] uppercase text-indigo-800">
+                                                                                                                    Operator
+                                                                                                                </Label>
+                                                                                                                <Select
+                                                                                                                    value={condition.operator}
+                                                                                                                    onValueChange={value =>
+                                                                                                                        handleAdjustmentLogicBlockConditionOperatorChange(
+                                                                                                                            adjustment.id,
+                                                                                                                            block.id,
+                                                                                                                            condition.id,
+                                                                                                                            value
+                                                                                                                        )
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    <SelectTrigger>
+                                                                                                                        <SelectValue
+                                                                                                                            placeholder="Select operator"/>
+                                                                                                                    </SelectTrigger>
+                                                                                                                    <SelectContent>
+                                                                                                                        {options.map(option => (
+                                                                                                                            <SelectItem
+                                                                                                                                key={option.value}
+                                                                                                                                value={option.value}>
+                                                                                                                                {option.label}
+                                                                                                                            </SelectItem>
+                                                                                                                        ))}
+                                                                                                                    </SelectContent>
+                                                                                                                </Select>
+                                                                                                            </div>
+
+                                                                                                            <div
+                                                                                                                className="flex items-start justify-end">
+                                                                                                                <Button
+                                                                                                                    type="button"
+                                                                                                                    variant="ghost"
+                                                                                                                    size="icon"
+                                                                                                                    className="text-indigo-700 hover:text-red-600"
+                                                                                                                    onClick={() =>
+                                                                                                                        handleRemoveAdjustmentLogicBlockCondition(
+                                                                                                                            adjustment.id,
+                                                                                                                            block.id,
+                                                                                                                            condition.id
+                                                                                                                        )
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    <Trash2
+                                                                                                                        className="h-4 w-4"/>
+                                                                                                                </Button>
+                                                                                                            </div>
+                                                                                                        </div>
+
+                                                                                                        {/* === VALUE INPUT === */}
+                                                                                                        <div
+                                                                                                            className="space-y-1">
+                                                                                                            <Label
+                                                                                                                className="text-[10px] uppercase text-indigo-800">
+                                                                                                                Value
+                                                                                                            </Label>
+
+                                                                                                            {/* RANGE */}
+                                                                                                            {selectedOption?.requiresRange ? (
+                                                                                                                <div
+                                                                                                                    className="grid grid-cols-2 gap-2">
+                                                                                                                    <Input
+                                                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                                        placeholder="Min"
+                                                                                                                        value={
+                                                                                                                            typeof condition.value === 'object' &&
+                                                                                                                            condition.value !== null &&
+                                                                                                                            !Array.isArray(condition.value)
+                                                                                                                                ? (condition.value as any).min ?? ''
+                                                                                                                                : ''
+                                                                                                                        }
+                                                                                                                        onChange={event =>
+                                                                                                                            handleAdjustmentLogicBlockConditionValueChange(
+                                                                                                                                adjustment.id,
+                                                                                                                                block.id,
+                                                                                                                                condition.id,
+                                                                                                                                {
+                                                                                                                                    min: event.target.value,
+                                                                                                                                    max:
+                                                                                                                                        typeof condition.value === 'object' &&
+                                                                                                                                        condition.value !== null &&
+                                                                                                                                        !Array.isArray(condition.value)
+                                                                                                                                            ? (condition.value as any).max ?? ''
+                                                                                                                                            : '',
+                                                                                                                                }
+                                                                                                                            )
+                                                                                                                        }
+                                                                                                                    />
+                                                                                                                    <Input
+                                                                                                                        type={inputKind === 'date' ? 'date' : 'number'}
+                                                                                                                        placeholder="Max"
+                                                                                                                        value={
+                                                                                                                            typeof condition.value === 'object' &&
+                                                                                                                            condition.value !== null &&
+                                                                                                                            !Array.isArray(condition.value)
+                                                                                                                                ? (condition.value as any).max ?? ''
+                                                                                                                                : ''
+                                                                                                                        }
+                                                                                                                        onChange={event =>
+                                                                                                                            handleAdjustmentLogicBlockConditionValueChange(
+                                                                                                                                adjustment.id,
+                                                                                                                                block.id,
+                                                                                                                                condition.id,
+                                                                                                                                {
+                                                                                                                                    min:
+                                                                                                                                        typeof condition.value === 'object' &&
+                                                                                                                                        condition.value !== null &&
+                                                                                                                                        !Array.isArray(condition.value)
+                                                                                                                                            ? (condition.value as any).min ?? ''
+                                                                                                                                            : '',
+                                                                                                                                    max: event.target.value,
+                                                                                                                                }
+                                                                                                                            )
+                                                                                                                        }
+                                                                                                                    />
+                                                                                                                </div>
+
+                                                                                                                /* MULTI SELECT */
+                                                                                                            ) : selectedOption?.supportsMultiple &&
+                                                                                                            allowedValues.length > 0 ? (
+                                                                                                                <select
+                                                                                                                    multiple
+                                                                                                                    value={
+                                                                                                                        Array.isArray(condition.value)
+                                                                                                                            ? condition.value.map(String)
+                                                                                                                            : condition.value
+                                                                                                                                ? [String(condition.value)]
+                                                                                                                                : []
+                                                                                                                    }
+                                                                                                                    onChange={event =>
+                                                                                                                        handleAdjustmentLogicBlockConditionValueChange(
+                                                                                                                            adjustment.id,
+                                                                                                                            block.id,
+                                                                                                                            condition.id,
+                                                                                                                            Array.from(
+                                                                                                                                event.target.selectedOptions
+                                                                                                                            ).map(option => option.value)
+                                                                                                                        )
+                                                                                                                    }
+                                                                                                                    className="h-24 w-full rounded-md border border-indigo-200 px-3 py-2 text-sm"
+                                                                                                                >
+                                                                                                                    {allowedValues.map(option => (
+                                                                                                                        <option
+                                                                                                                            key={option}
+                                                                                                                            value={option}>
+                                                                                                                            {option}
+                                                                                                                        </option>
+                                                                                                                    ))}
+                                                                                                                </select>
+
+                                                                                                                /* BOOLEAN */
+                                                                                                            ) : inputKind === 'boolean' ? (
+                                                                                                                <div
+                                                                                                                    className="flex items-center gap-2">
+                                                                                                                    <Switch
+                                                                                                                        checked={Boolean(condition.value)}
+                                                                                                                        onCheckedChange={checked =>
+                                                                                                                            handleAdjustmentLogicBlockConditionValueChange(
+                                                                                                                                adjustment.id,
+                                                                                                                                block.id,
+                                                                                                                                condition.id,
+                                                                                                                                checked
+                                                                                                                            )
+                                                                                                                        }
+                                                                                                                    />
+                                                                                                                    <span
+                                                                                                                        className="text-xs text-indigo-800">
+                                                                        {condition.value ? 'True' : 'False'}
+                                                                    </span>
+                                                                                                                </div>
+
+                                                                                                                /* TEXT / NUMBER / DATE */
+                                                                                                            ) : (
+                                                                                                                <Input
+                                                                                                                    type={
+                                                                                                                        inputKind === 'number'
+                                                                                                                            ? 'number'
+                                                                                                                            : inputKind === 'date'
+                                                                                                                                ? 'date'
+                                                                                                                                : 'text'
+                                                                                                                    }
+                                                                                                                    value={
+                                                                                                                        Array.isArray(condition.value)
+                                                                                                                            ? condition.value.join(',')
+                                                                                                                            : String(condition.value ?? '')
+                                                                                                                    }
+                                                                                                                    onChange={event =>
+                                                                                                                        handleAdjustmentLogicBlockConditionValueChange(
+                                                                                                                            adjustment.id,
+                                                                                                                            block.id,
+                                                                                                                            condition.id,
+                                                                                                                            event.target.value
+                                                                                                                        )
+                                                                                                                    }
+                                                                                                                />
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                )
+                                                                                            })}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         )
                                                     })}
                                                 </div>
+
                                             )}
                                         </TabsContent>
 
@@ -3738,28 +4136,36 @@ export function ProceduresPriceListsPage() {
                                                             </div>
                                                         </div>
 
-                                                        <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                                                        <div
+                                                            className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                                                             <div className="flex items-center justify-between">
                                                                 <div>
-                                                                    <p className="text-sm font-semibold text-emerald-800">Conditional logic blocks</p>
+                                                                    <p className="text-sm font-semibold text-emerald-800">Conditional
+                                                                        logic blocks</p>
                                                                     <p className="text-xs text-emerald-700">
-                                                                        Configure conditional percentages that stack on top of the base discount.
+                                                                        Configure conditional percentages that stack on
+                                                                        top of the base discount.
                                                                     </p>
                                                                 </div>
-                                                                <Button type="button" variant="outline" size="sm" onClick={handleAddDiscountLogicBlock}>
+                                                                <Button type="button" variant="outline" size="sm"
+                                                                        onClick={handleAddDiscountLogicBlock}>
                                                                     <Plus className="mr-2 h-4 w-4"/>
                                                                     Add block
                                                                 </Button>
                                                             </div>
                                                             {discountLogicBlocks.length === 0 ? (
-                                                                <p className="text-xs text-emerald-700">No conditional blocks defined.</p>
+                                                                <p className="text-xs text-emerald-700">No conditional
+                                                                    blocks defined.</p>
                                                             ) : (
                                                                 <div className="space-y-3">
                                                                     {discountLogicBlocks.map(block => (
-                                                                        <div key={block.id} className="space-y-3 rounded-lg border border-emerald-200 bg-white p-4">
-                                                                            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                                        <div key={block.id}
+                                                                             className="space-y-3 rounded-lg border border-emerald-200 bg-white p-4">
+                                                                            <div
+                                                                                className="flex flex-col gap-3 md:flex-row md:items-center">
                                                                                 <div className="flex-1 space-y-1">
-                                                                                    <Label className="text-xs uppercase text-emerald-800">Percent</Label>
+                                                                                    <Label
+                                                                                        className="text-xs uppercase text-emerald-800">Percent</Label>
                                                                                     <Input
                                                                                         type="number"
                                                                                         value={block.percent}
@@ -3767,17 +4173,24 @@ export function ProceduresPriceListsPage() {
                                                                                         placeholder="e.g. 5"
                                                                                     />
                                                                                 </div>
-                                                                                <div className="flex items-center gap-2 self-start">
-                                                                                    <Button type="button" variant="outline" size="sm" onClick={() => handleAddDiscountLogicBlockCondition(block.id)}>
+                                                                                <div
+                                                                                    className="flex items-center gap-2 self-start">
+                                                                                    <Button type="button"
+                                                                                            variant="outline" size="sm"
+                                                                                            onClick={() => handleAddDiscountLogicBlockCondition(block.id)}>
                                                                                         Add condition
                                                                                     </Button>
-                                                                                    <Button type="button" variant="ghost" size="icon" className="text-emerald-700 hover:text-red-600" onClick={() => handleRemoveDiscountLogicBlock(block.id)}>
+                                                                                    <Button type="button"
+                                                                                            variant="ghost" size="icon"
+                                                                                            className="text-emerald-700 hover:text-red-600"
+                                                                                            onClick={() => handleRemoveDiscountLogicBlock(block.id)}>
                                                                                         <Trash2 className="h-4 w-4"/>
                                                                                     </Button>
                                                                                 </div>
                                                                             </div>
                                                                             {block.conditions.length === 0 ? (
-                                                                                <p className="text-xs text-emerald-600">Applies whenever discount is enabled.</p>
+                                                                                <p className="text-xs text-emerald-600">Applies
+                                                                                    whenever discount is enabled.</p>
                                                                             ) : (
                                                                                 <div className="space-y-3">
                                                                                     {block.conditions.map(condition => {
@@ -3788,45 +4201,58 @@ export function ProceduresPriceListsPage() {
                                                                                         const selectedOption = options.find(option => option.value === condition.operator)
 
                                                                                         return (
-                                                                                            <div key={condition.id} className="space-y-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3">
-                                                                                                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
-                                                                                                    <div className="space-y-1">
-                                                                                                        <Label className="text-[11px] uppercase text-emerald-800">Factor</Label>
+                                                                                            <div key={condition.id}
+                                                                                                 className="space-y-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+                                                                                                <div
+                                                                                                    className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
+                                                                                                    <div
+                                                                                                        className="space-y-1">
+                                                                                                        <Label
+                                                                                                            className="text-[11px] uppercase text-emerald-800">Factor</Label>
                                                                                                         <Select
                                                                                                             value={condition.factorKey}
                                                                                                             onValueChange={value => handleDiscountLogicBlockConditionFactorChange(block.id, condition.id, value)}
                                                                                                         >
                                                                                                             <SelectTrigger>
-                                                                                                                <SelectValue placeholder="Select factor"/>
+                                                                                                                <SelectValue
+                                                                                                                    placeholder="Select factor"/>
                                                                                                             </SelectTrigger>
                                                                                                             <SelectContent>
                                                                                                                 {factors.map(item => (
-                                                                                                                    <SelectItem key={item.key} value={item.key}>
+                                                                                                                    <SelectItem
+                                                                                                                        key={item.key}
+                                                                                                                        value={item.key}>
                                                                                                                         {item.nameEn}
                                                                                                                     </SelectItem>
                                                                                                                 ))}
                                                                                                             </SelectContent>
                                                                                                         </Select>
                                                                                                     </div>
-                                                                                                    <div className="space-y-1">
-                                                                                                        <Label className="text-[11px] uppercase text-emerald-800">Operator</Label>
+                                                                                                    <div
+                                                                                                        className="space-y-1">
+                                                                                                        <Label
+                                                                                                            className="text-[11px] uppercase text-emerald-800">Operator</Label>
                                                                                                         <Select
                                                                                                             value={condition.operator}
                                                                                                             onValueChange={value => handleDiscountLogicBlockConditionOperatorChange(block.id, condition.id, value)}
                                                                                                         >
                                                                                                             <SelectTrigger>
-                                                                                                                <SelectValue placeholder="Select operator"/>
+                                                                                                                <SelectValue
+                                                                                                                    placeholder="Select operator"/>
                                                                                                             </SelectTrigger>
                                                                                                             <SelectContent>
                                                                                                                 {options.map(option => (
-                                                                                                                    <SelectItem key={option.value} value={option.value}>
+                                                                                                                    <SelectItem
+                                                                                                                        key={option.value}
+                                                                                                                        value={option.value}>
                                                                                                                         {option.label}
                                                                                                                     </SelectItem>
                                                                                                                 ))}
                                                                                                             </SelectContent>
                                                                                                         </Select>
                                                                                                     </div>
-                                                                                                    <div className="flex items-start justify-end">
+                                                                                                    <div
+                                                                                                        className="flex items-start justify-end">
                                                                                                         <Button
                                                                                                             type="button"
                                                                                                             variant="ghost"
@@ -3834,27 +4260,35 @@ export function ProceduresPriceListsPage() {
                                                                                                             className="text-emerald-700 hover:text-red-600"
                                                                                                             onClick={() => handleRemoveDiscountLogicBlockCondition(block.id, condition.id)}
                                                                                                         >
-                                                                                                            <Trash2 className="h-4 w-4"/>
+                                                                                                            <Trash2
+                                                                                                                className="h-4 w-4"/>
                                                                                                         </Button>
                                                                                                     </div>
                                                                                                 </div>
-                                                                                                <div className="space-y-1">
-                                                                                                    <Label className="text-[11px] uppercase text-emerald-800">Value</Label>
+                                                                                                <div
+                                                                                                    className="space-y-1">
+                                                                                                    <Label
+                                                                                                        className="text-[11px] uppercase text-emerald-800">Value</Label>
                                                                                                     {selectedOption?.requiresRange ? (
-                                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                                        <div
+                                                                                                            className="grid grid-cols-2 gap-2">
                                                                                                             <Input
                                                                                                                 type={inputKind === 'date' ? 'date' : 'number'}
                                                                                                                 placeholder="Min"
                                                                                                                 value={
                                                                                                                     typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                        ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                        ? (condition.value as {
+                                                                                                                        min?: string
+                                                                                                                    }).min ?? ''
                                                                                                                         : ''
                                                                                                                 }
                                                                                                                 onChange={event => handleDiscountLogicBlockConditionValueChange(block.id, condition.id, {
                                                                                                                     min: event.target.value,
                                                                                                                     max:
                                                                                                                         typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                            ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                            ? (condition.value as {
+                                                                                                                            max?: string
+                                                                                                                        }).max ?? ''
                                                                                                                             : '',
                                                                                                                 })}
                                                                                                             />
@@ -3863,13 +4297,17 @@ export function ProceduresPriceListsPage() {
                                                                                                                 placeholder="Max"
                                                                                                                 value={
                                                                                                                     typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                        ? (condition.value as { max?: string }).max ?? ''
+                                                                                                                        ? (condition.value as {
+                                                                                                                        max?: string
+                                                                                                                    }).max ?? ''
                                                                                                                         : ''
                                                                                                                 }
                                                                                                                 onChange={event => handleDiscountLogicBlockConditionValueChange(block.id, condition.id, {
                                                                                                                     min:
                                                                                                                         typeof condition.value === 'object' && condition.value !== null && !Array.isArray(condition.value)
-                                                                                                                            ? (condition.value as { min?: string }).min ?? ''
+                                                                                                                            ? (condition.value as {
+                                                                                                                            min?: string
+                                                                                                                        }).min ?? ''
                                                                                                                             : '',
                                                                                                                     max: event.target.value,
                                                                                                                 })}
@@ -3887,18 +4325,22 @@ export function ProceduresPriceListsPage() {
                                                                                                             className="h-24 w-full rounded-md border border-emerald-200 px-3 py-2 text-sm"
                                                                                                         >
                                                                                                             {allowedValues.map(option => (
-                                                                                                                <option key={option} value={option}>
+                                                                                                                <option
+                                                                                                                    key={option}
+                                                                                                                    value={option}>
                                                                                                                     {option}
                                                                                                                 </option>
                                                                                                             ))}
                                                                                                         </select>
                                                                                                     ) : inputKind === 'boolean' ? (
-                                                                                                        <div className="flex items-center gap-2">
+                                                                                                        <div
+                                                                                                            className="flex items-center gap-2">
                                                                                                             <Switch
                                                                                                                 checked={Boolean(condition.value)}
                                                                                                                 onCheckedChange={checked => handleDiscountLogicBlockConditionValueChange(block.id, condition.id, checked)}
                                                                                                             />
-                                                                                                            <span className="text-xs text-emerald-800">{condition.value ? 'True' : 'False'}</span>
+                                                                                                            <span
+                                                                                                                className="text-xs text-emerald-800">{condition.value ? 'True' : 'False'}</span>
                                                                                                         </div>
                                                                                                     ) : (
                                                                                                         <Input
@@ -4079,7 +4521,8 @@ export function ProceduresPriceListsPage() {
                                                                 <p className="text-xs font-semibold uppercase text-blue-700">Tiers</p>
                                                                 <div className="mt-1 flex flex-wrap gap-2">
                                                                     {adjustment.tiers.map(tier => (
-                                                                        <span key={tier.id} className="rounded bg-white px-2 py-1 text-[11px] text-blue-700">
+                                                                        <span key={tier.id}
+                                                                              className="rounded bg-white px-2 py-1 text-[11px] text-blue-700">
                                                                             {tier.value || '—'} → +{tier.add || 0}{tier.percent ? ` / ${tier.percent}%` : ''}
                                                                         </span>
                                                                     ))}
@@ -4088,22 +4531,26 @@ export function ProceduresPriceListsPage() {
                                                         ) : null}
                                                         {adjustment.logicBlocks.length > 0 ? (
                                                             <div className="mt-3 space-y-2">
-                                                                <p className="text-xs font-semibold uppercase text-blue-700">Logic blocks</p>
+                                                                <p className="text-xs font-semibold uppercase text-blue-700">Logic
+                                                                    blocks</p>
                                                                 {adjustment.logicBlocks.map(block => (
-                                                                    <div key={block.id} className="rounded border border-blue-100 bg-white p-3">
+                                                                    <div key={block.id}
+                                                                         className="rounded border border-blue-100 bg-white p-3">
                                                                         <div className="text-[11px] text-blue-700">
                                                                             +{block.add || 0}{block.addPercent ? ` / ${block.addPercent}%` : ''}
                                                                         </div>
                                                                         {block.conditions.length > 0 ? (
                                                                             <div className="mt-1 flex flex-wrap gap-1">
                                                                                 {block.conditions.map(condition => (
-                                                                                    <span key={condition.id} className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                                                                                    <span key={condition.id}
+                                                                                          className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
                                                                                         {condition.factorKey}: {formatConditionValueDisplay(condition)}
                                                                                     </span>
                                                                                 ))}
                                                                             </div>
                                                                         ) : (
-                                                                            <p className="text-[10px] text-blue-500">Always applies</p>
+                                                                            <p className="text-[10px] text-blue-500">Always
+                                                                                applies</p>
                                                                         )}
                                                                     </div>
                                                                 ))}
@@ -4238,11 +4685,28 @@ export function ProceduresPriceListsPage() {
                                                         </TableCell>
                                                         <TableCell>
                                                             <div className="space-y-2">
-                                                                {parsed?.adjustments && parsed.adjustments.length > 0 ? (
+                                                                {parsed?.adjustments && Array.isArray(parsed.adjustments) && parsed.adjustments.length > 0 ? (
                                                                     parsed.adjustments.map((adj: any, idx: number) => {
                                                                         const factorKey = adj.factorKey ?? adj.factor_key
-                                                                        const tiers = Array.isArray(adj.tiers) ? adj.tiers : []
-                                                                        const logicBlocks = Array.isArray(adj.logicBlocks) ? adj.logicBlocks : []
+
+                                                                        // ----- NORMALIZATION -----
+                                                                        const rawCases = adj.cases ?? {}
+                                                                        const normalizedCases = Array.isArray(rawCases)
+                                                                            ? rawCases
+                                                                            : typeof rawCases === 'object'
+                                                                                ? Object.entries(rawCases).map(([key, val]) => ({
+                                                                                    key,
+                                                                                    value: val
+                                                                                }))
+                                                                                : []
+
+                                                                        const normalizedTiers = Array.isArray(adj.tiers)
+                                                                            ? adj.tiers
+                                                                            : []
+
+                                                                        const normalizedLogicBlocks = Array.isArray(adj.logicBlocks)
+                                                                            ? adj.logicBlocks
+                                                                            : []
 
                                                                         return (
                                                                             <div
@@ -4250,85 +4714,105 @@ export function ProceduresPriceListsPage() {
                                                                                 className="rounded-md border border-purple-300 bg-purple-50 px-2 py-1 text-xs text-purple-700"
                                                                             >
                                                                                 <div className="font-semibold">
-                                                                                {factorKey} → {adj.type}
+                                                                                    {factorKey} → {adj.type}
                                                                                 </div>
 
-                                                                                {/* CASES */}
-                                                                                {adj.cases && (
-                                                                                    <div className="mt-1 flex flex-wrap gap-1">
-                                                                                    {Object.entries(adj.cases).map(([key, val]) => {
-                                                                                        let displayValue
+                                                                                {/* === CASES === */}
+                                                                                {normalizedCases.length > 0 && (
+                                                                                    <div
+                                                                                        className="mt-1 flex flex-wrap gap-1">
+                                                                                        {normalizedCases.map((c: any, i: number) => {
+                                                                                            const displayValue =
+                                                                                                c.value &&
+                                                                                                typeof c.value === 'object' &&
+                                                                                                !Array.isArray(c.value)
+                                                                                                    ? Object.entries(c.value)
+                                                                                                        .map(([k, v]) => `${k}: ${v}`)
+                                                                                                        .join(', ')
+                                                                                                    : String(c.value)
 
-                                                                                        if (val && typeof val === 'object' && !Array.isArray(val)) {
-                                                                                            // format nested object -> "min: 10, max: 20, percent: 5"
-                                                                                            displayValue = Object.entries(val)
-                                                                                                .map(([k, v]) => `${k}: ${v}`)
-                                                                                                .join(', ')
-                                                                                        } else {
-                                                                                            displayValue = String(val)
-                                                                                        }
-
-                                                                                        return (
-                                                                                            <span
-                                                                                                key={key}
-                                                                                                className="rounded bg-white px-1.5 py-0.5 text-[10px] border border-purple-300 font-medium"
-                                                                                            >
-            {key}: {displayValue}
-        </span>
-                                                                                        )
-                                                                                    })}
-
-                                                                                </div>
-                                                                                )}
-
-                                                                                {/* PERCENT */}
-                                                                                {adj.percent !== null && adj.percent !== undefined && (
-                                                                                    <div className="mt-1 text-[10px]">
-                                                                                        Percent: <span className="font-bold">{adj.percent}%</span>
+                                                                                            return (
+                                                                                                <span
+                                                                                                    key={`${factorKey}-case-${i}`}
+                                                                                                    className="rounded bg-white px-1.5 py-0.5 text-[10px] border border-purple-300 font-medium"
+                                                                                                >
+                                            {c.key}: {displayValue}
+                                        </span>
+                                                                                            )
+                                                                                        })}
                                                                                     </div>
                                                                                 )}
 
-                                                                                {/* TIERS */}
-                                                                                {tiers.length > 0 && (
+                                                                                {/* === PERCENT === */}
+                                                                                {adj.percent !== null && adj.percent !== undefined && (
+                                                                                    <div className="mt-1 text-[10px]">
+                                                                                        Percent: <span
+                                                                                        className="font-bold">{adj.percent}%</span>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {/* === TIERS === */}
+                                                                                {normalizedTiers.length > 0 && (
                                                                                     <div className="mt-1 space-y-1">
-                                                                                        <div className="text-[10px] font-semibold uppercase text-purple-700">Tiers</div>
-                                                                                        <div className="flex flex-wrap gap-1">
-                                                                                            {tiers.map((tier: any, tierIndex: number) => (
+                                                                                        <div
+                                                                                            className="text-[10px] font-semibold uppercase text-purple-700">Tiers
+                                                                                        </div>
+                                                                                        <div
+                                                                                            className="flex flex-wrap gap-1">
+                                                                                            {normalizedTiers.map((tier: any, tierIndex: number) => (
                                                                                                 <span
                                                                                                     key={`${factorKey}-tier-${tierIndex}`}
                                                                                                     className="rounded bg-white px-1.5 py-0.5 text-[10px] text-purple-700"
                                                                                                 >
-                                                                                                    {tier.value ?? '—'} → +{tier.add ?? 0}{tier.percent ? ` / ${tier.percent}%` : ''}
-                                                                                                </span>
+                                            {tier.value ?? '—'} → +{tier.add ?? 0}
+                                                                                                    {tier.percent ? ` / ${tier.percent}%` : ''}
+                                        </span>
                                                                                             ))}
                                                                                         </div>
                                                                                     </div>
                                                                                 )}
 
-                                                                                {/* LOGIC BLOCKS */}
-                                                                                {logicBlocks.length > 0 && (
+                                                                                {/* === LOGIC BLOCKS === */}
+                                                                                {normalizedLogicBlocks.length > 0 && (
                                                                                     <div className="mt-1 space-y-1">
-                                                                                        <div className="text-[10px] font-semibold uppercase text-purple-700">Logic blocks</div>
+                                                                                        <div
+                                                                                            className="text-[10px] font-semibold uppercase text-purple-700">
+                                                                                            Logic blocks
+                                                                                        </div>
                                                                                         <div className="space-y-1">
-                                                                                            {logicBlocks.map((block: any, blockIndex: number) => (
-                                                                                                <div key={`${factorKey}-logic-${blockIndex}`} className="rounded border border-purple-200 bg-white px-1.5 py-1">
-                                                                                                    <div className="text-[10px] text-purple-700">
-                                                                                                        +{block.add ?? 0}{block.addPercent ? ` / ${block.addPercent}%` : ''}
+                                                                                            {normalizedLogicBlocks.map((block: any, blockIndex: number) => (
+                                                                                                <div
+                                                                                                    key={`${factorKey}-logic-${blockIndex}`}
+                                                                                                    className="rounded border border-purple-200 bg-white px-1.5 py-1"
+                                                                                                >
+                                                                                                    <div
+                                                                                                        className="text-[10px] text-purple-700">
+                                                                                                        +{block.add ?? 0}
+                                                                                                        {block.addPercent ? ` / ${block.addPercent}%` : ''}
                                                                                                     </div>
-                                                                                                    {Array.isArray(block.whenConditions) && block.whenConditions.length > 0 ? (
-                                                                                                        <div className="mt-1 flex flex-wrap gap-1">
-                                                                                                            {block.whenConditions.map((condition: any, conditionIndex: number) => (
-                                                                                                                <span
-                                                                                                                    key={`${factorKey}-logic-${blockIndex}-${conditionIndex}`}
-                                                                                                                    className="rounded bg-purple-50 px-1 py-0.5 text-[9px] text-purple-700"
-                                                                                                                >
-                                                                                                                    {condition.factor}:{' '}
-                                                                                                                    {formatConditionValue(condition.factor, condition.value)}
-                                                                                                                </span>
-                                                                                                            ))}
+
+                                                                                                    {Array.isArray(block.whenConditions) &&
+                                                                                                    block.whenConditions.length > 0 ? (
+                                                                                                        <div
+                                                                                                            className="mt-1 flex flex-wrap gap-1">
+                                                                                                            {block.whenConditions.map(
+                                                                                                                (condition: any, conditionIndex: number) => (
+                                                                                                                    <span
+                                                                                                                        key={`${factorKey}-logic-${blockIndex}-${conditionIndex}`}
+                                                                                                                        className="rounded bg-purple-50 px-1 py-0.5 text-[9px] text-purple-700"
+                                                                                                                    >
+                                                                {condition.factor}:{' '}
+                                                                                                                        {formatConditionValue(
+                                                                                                                            condition.factor,
+                                                                                                                            condition.value
+                                                                                                                        )}
+                                                            </span>
+                                                                                                                )
+                                                                                                            )}
                                                                                                         </div>
                                                                                                     ) : (
-                                                                                                        <p className="text-[9px] text-purple-500">Always applies</p>
+                                                                                                        <p className="text-[9px] text-purple-500">Always
+                                                                                                            applies</p>
                                                                                                     )}
                                                                                                 </div>
                                                                                             ))}
@@ -4343,6 +4827,7 @@ export function ProceduresPriceListsPage() {
                                                                 )}
                                                             </div>
                                                         </TableCell>
+
 
                                                         <TableCell className="text-sm text-slate-600">
                                                             {Array.isArray(rule.validFrom) ? rule.validFrom.join('/') : rule.validFrom}
