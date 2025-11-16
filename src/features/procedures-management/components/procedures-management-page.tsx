@@ -198,6 +198,12 @@ export function ProceduresManagementPage() {
     const [icdSearchLoading, setIcdSearchLoading] = useState(false)
     const [icdSearchError, setIcdSearchError] = useState<string | null>(null)
     const icdDropdownRef = useRef<HTMLDivElement | null>(null)
+    const [clinicalCategoryQuery, setClinicalCategoryQuery] = useState('')
+    const [subCategoryQuery, setSubCategoryQuery] = useState('')
+    const [clinicalCategoryDropdownOpen, setClinicalCategoryDropdownOpen] = useState(false)
+    const [subCategoryDropdownOpen, setSubCategoryDropdownOpen] = useState(false)
+    const clinicalCategoryDropdownRef = useRef<HTMLDivElement | null>(null)
+    const subCategoryDropdownRef = useRef<HTMLDivElement | null>(null)
 
     const [categoryForm, setCategoryForm] = useState<CreateProcedureCategoryPayload>(INITIAL_CATEGORY_FORM)
     const [categoryFormError, setCategoryFormError] = useState<string | null>(null)
@@ -247,6 +253,48 @@ export function ProceduresManagementPage() {
         first: true,
         last: true,
     })
+
+    const sortedCategories = useMemo(() => {
+        return [...categories].sort((a, b) => {
+            const nameA = (a.nameEn || a.code || '').toLowerCase()
+            const nameB = (b.nameEn || b.code || '').toLowerCase()
+            if (nameA < nameB) {
+                return -1
+            }
+            if (nameA > nameB) {
+                return 1
+            }
+            return 0
+        })
+    }, [categories])
+
+    const subCategoryCandidates = useMemo(() => {
+        return sortedCategories.filter((category) => Number(category.procedureCount) > 0)
+    }, [sortedCategories])
+
+    const filteredClinicalCategories = useMemo(() => {
+        const term = clinicalCategoryQuery.trim().toLowerCase()
+        if (!term) {
+            return sortedCategories
+        }
+        return sortedCategories.filter((category) => {
+            const code = (category.code || '').toLowerCase()
+            const nameEn = (category.nameEn || '').toLowerCase()
+            return code.includes(term) || nameEn.includes(term)
+        })
+    }, [clinicalCategoryQuery, sortedCategories])
+
+    const filteredSubCategories = useMemo(() => {
+        const term = subCategoryQuery.trim().toLowerCase()
+        if (!term) {
+            return subCategoryCandidates
+        }
+        return subCategoryCandidates.filter((category) => {
+            const code = (category.code || '').toLowerCase()
+            const nameEn = (category.nameEn || '').toLowerCase()
+            return code.includes(term) || nameEn.includes(term)
+        })
+    }, [subCategoryCandidates, subCategoryQuery])
 
     const loadCategories = useCallback(async () => {
         setCategoriesLoading(true)
@@ -421,6 +469,34 @@ export function ProceduresManagementPage() {
     }, [icdDropdownOpen])
 
     useEffect(() => {
+        if (!clinicalCategoryDropdownOpen && !subCategoryDropdownOpen) {
+            return
+        }
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                clinicalCategoryDropdownRef.current &&
+                clinicalCategoryDropdownOpen &&
+                !clinicalCategoryDropdownRef.current.contains(event.target as Node)
+            ) {
+                setClinicalCategoryDropdownOpen(false)
+            }
+
+            if (
+                subCategoryDropdownRef.current &&
+                subCategoryDropdownOpen &&
+                !subCategoryDropdownRef.current.contains(event.target as Node)
+            ) {
+                setSubCategoryDropdownOpen(false)
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside)
+
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [clinicalCategoryDropdownOpen, subCategoryDropdownOpen])
+
+    useEffect(() => {
         if (!icdDropdownOpen || icdSearchTerm.trim().length < 2) {
             setIcdResults([])
             setIcdSearchLoading(false)
@@ -466,6 +542,10 @@ export function ProceduresManagementPage() {
             setIcdResults([])
             setIcdDropdownOpen(false)
             setIcdSearchError(null)
+            setClinicalCategoryDropdownOpen(false)
+            setSubCategoryDropdownOpen(false)
+            setClinicalCategoryQuery('')
+            setSubCategoryQuery('')
         }
     }, [isDialogOpen])
 
@@ -500,6 +580,8 @@ export function ProceduresManagementPage() {
             updatedBy: details.updatedBy ?? '',
         })
         setIcdSearchTerm(details.primaryIcdCode ?? '')
+        setClinicalCategoryQuery(details.clinicalCategory ?? '')
+        setSubCategoryQuery(details.subCategory ?? '')
     }, [])
 
     const handleAdd = () => {
@@ -507,6 +589,8 @@ export function ProceduresManagementPage() {
         setEditingProcedureId(null)
         setFormData(INITIAL_FORM_STATE)
         setIcdSearchTerm('')
+        setClinicalCategoryQuery('')
+        setSubCategoryQuery('')
         setFormError(null)
         setIsDialogOpen(true)
     }
@@ -519,6 +603,8 @@ export function ProceduresManagementPage() {
             setFormData(INITIAL_FORM_STATE)
             setFormError(null)
             setIcdSearchTerm('')
+            setClinicalCategoryQuery('')
+            setSubCategoryQuery('')
         }
     }
 
@@ -698,6 +784,30 @@ export function ProceduresManagementPage() {
         setFormData((prev) => ({...prev, primaryIcdCode: ''}))
         setIcdSearchTerm('')
         setIcdResults([])
+    }
+
+    const handleClinicalCategorySelect = (category: ProcedureCategoryRecord) => {
+        const label = category.nameEn || category.code || ''
+        setFormData((prev) => ({...prev, clinicalCategory: label}))
+        setClinicalCategoryQuery(label)
+        setClinicalCategoryDropdownOpen(false)
+    }
+
+    const handleClearClinicalCategory = () => {
+        setFormData((prev) => ({...prev, clinicalCategory: ''}))
+        setClinicalCategoryQuery('')
+    }
+
+    const handleSubCategorySelect = (category: ProcedureCategoryRecord) => {
+        const label = category.nameEn || category.code || ''
+        setFormData((prev) => ({...prev, subCategory: label}))
+        setSubCategoryQuery(label)
+        setSubCategoryDropdownOpen(false)
+    }
+
+    const handleClearSubCategory = () => {
+        setFormData((prev) => ({...prev, subCategory: ''}))
+        setSubCategoryQuery('')
     }
 
     const handleTabValueChange = (value: string) => {
@@ -2697,27 +2807,140 @@ export function ProceduresManagementPage() {
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="clinicalCategory">Clinical Category</Label>
-                                    <Input
-                                        id="clinicalCategory"
-                                        value={formData.clinicalCategory ?? ''}
-                                        onChange={(event) =>
-                                            setFormData((prev) => ({...prev, clinicalCategory: event.target.value}))
-                                        }
-                                        placeholder="e.g., General Surgery"
-                                    />
-                                    <p className="text-xs text-gray-500">Used for grouping on dashboards and catalogs.</p>
+                                    <div className="relative" ref={clinicalCategoryDropdownRef}>
+                                        <Input
+                                            id="clinicalCategory"
+                                            value={clinicalCategoryQuery}
+                                            autoComplete="off"
+                                            className="pr-12"
+                                            onFocus={() => setClinicalCategoryDropdownOpen(true)}
+                                            onChange={(event) => {
+                                                const value = event.target.value
+                                                setClinicalCategoryQuery(value)
+                                                setFormData((prev) => ({...prev, clinicalCategory: value}))
+                                                setClinicalCategoryDropdownOpen(true)
+                                            }}
+                                            placeholder="Search procedure categories"
+                                            role="combobox"
+                                            aria-expanded={clinicalCategoryDropdownOpen}
+                                            aria-controls="clinicalCategory-listbox"
+                                        />
+                                        {formData.clinicalCategory && (
+                                            <button
+                                                type="button"
+                                                onClick={handleClearClinicalCategory}
+                                                className="absolute inset-y-0 right-2 text-xs font-medium text-primary"
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
+                                        {clinicalCategoryDropdownOpen && (
+                                            <div
+                                                id="clinicalCategory-listbox"
+                                                role="listbox"
+                                                className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg"
+                                            >
+                                                {categoriesLoading ? (
+                                                    <div className="flex items-center px-3 py-2 text-sm text-gray-500">
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        Loading categories...
+                                                    </div>
+                                                ) : filteredClinicalCategories.length === 0 ? (
+                                                    <p className="px-3 py-2 text-xs text-gray-500">No categories match this search.</p>
+                                                ) : (
+                                                    <ul className="max-h-60 overflow-auto py-1 text-sm">
+                                                        {filteredClinicalCategories.map((category) => {
+                                                            const displayName = category.nameEn || category.code || 'Unnamed category'
+                                                            return (
+                                                                <li key={category.id}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleClinicalCategorySelect(category)}
+                                                                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-gray-50"
+                                                                    >
+                                                                        <span className="font-medium text-gray-900">{displayName}</span>
+                                                                        <span className="text-xs text-gray-500">{category.code}</span>
+                                                                    </button>
+                                                                </li>
+                                                            )
+                                                        })}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-500">Sourced from the Procedure Categories catalog.</p>
                                 </div>
 
                                 <div className="space-y-2">
                                     <Label htmlFor="subCategory">Sub Category</Label>
-                                    <Input
-                                        id="subCategory"
-                                        value={formData.subCategory ?? ''}
-                                        onChange={(event) =>
-                                            setFormData((prev) => ({...prev, subCategory: event.target.value}))
-                                        }
-                                        placeholder="e.g., Upper Abdomen"
-                                    />
+                                    <div className="relative" ref={subCategoryDropdownRef}>
+                                        <Input
+                                            id="subCategory"
+                                            value={subCategoryQuery}
+                                            autoComplete="off"
+                                            className="pr-12"
+                                            onFocus={() => setSubCategoryDropdownOpen(true)}
+                                            onChange={(event) => {
+                                                const value = event.target.value
+                                                setSubCategoryQuery(value)
+                                                setFormData((prev) => ({...prev, subCategory: value}))
+                                                setSubCategoryDropdownOpen(true)
+                                            }}
+                                            placeholder="Search linked sub categories"
+                                            role="combobox"
+                                            aria-expanded={subCategoryDropdownOpen}
+                                            aria-controls="subCategory-listbox"
+                                        />
+                                        {formData.subCategory && (
+                                            <button
+                                                type="button"
+                                                onClick={handleClearSubCategory}
+                                                className="absolute inset-y-0 right-2 text-xs font-medium text-primary"
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
+                                        {subCategoryDropdownOpen && (
+                                            <div
+                                                id="subCategory-listbox"
+                                                role="listbox"
+                                                className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg"
+                                            >
+                                                {categoriesLoading ? (
+                                                    <div className="flex items-center px-3 py-2 text-sm text-gray-500">
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        Loading sub categories...
+                                                    </div>
+                                                ) : filteredSubCategories.length === 0 ? (
+                                                    <p className="px-3 py-2 text-xs text-gray-500">No linked sub categories found.</p>
+                                                ) : (
+                                                    <ul className="max-h-60 overflow-auto py-1 text-sm">
+                                                        {filteredSubCategories.map((category) => {
+                                                            const displayName = category.nameEn || category.code || 'Unnamed category'
+                                                            const linkedCount = Number(category.procedureCount) || 0
+                                                            return (
+                                                                <li key={category.id}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleSubCategorySelect(category)}
+                                                                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-gray-50"
+                                                                    >
+                                                                        <div className="flex w-full items-center justify-between">
+                                                                            <span className="font-medium text-gray-900">{displayName}</span>
+                                                                            <span className="text-xs text-gray-500">{linkedCount} linked</span>
+                                                                        </div>
+                                                                        <span className="text-xs text-gray-500">{category.code}</span>
+                                                                    </button>
+                                                                </li>
+                                                            )
+                                                        })}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-500">Only categories with linked procedures can be tagged as sub categories.</p>
                                 </div>
 
                                 <div className="space-y-2">
