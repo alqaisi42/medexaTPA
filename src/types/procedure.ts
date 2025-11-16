@@ -40,6 +40,16 @@ export interface ProcedureSummary {
     minIntervalDays: number
     maxFrequencyPerYear: number
     standardDurationMinutes: number
+    clinicalCategory?: string | null
+    subCategory?: string | null
+    bodyRegion?: string | null
+    severityLevel?: string | null
+    riskLevel?: string | null
+    anesthesiaLevel?: string | null
+    operationType?: string | null
+    operationRoomType?: string | null
+    primaryIcdCode?: string | null
+    primarySpecialty?: string | null
     categories: ProcedureCategorySummary[]
     containers: ProcedureContainerSummary[]
     effectiveFrom?: string
@@ -124,6 +134,16 @@ export interface CreateProcedurePayload {
     isActive: boolean
     createdBy?: string
     updatedBy?: string
+    clinicalCategory?: string | null
+    subCategory?: string | null
+    bodyRegion?: string | null
+    severityLevel?: string | null
+    riskLevel?: string | null
+    anesthesiaLevel?: string | null
+    operationType?: string | null
+    operationRoomType?: string | null
+    primaryIcdCode?: string | null
+    primarySpecialty?: string | null
 }
 
 export interface ProcedureSearchFilters {

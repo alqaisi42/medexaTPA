@@ -66,6 +66,12 @@ const BOOLEAN_SELECT_OPTIONS = [
 
 const CONTAINER_USAGE_PAGE_SIZE = 10
 
+const CLINICAL_SEVERITY_OPTIONS = ['LOW', 'MODERATE', 'HIGH'] as const
+const CLINICAL_RISK_OPTIONS = ['MINOR', 'MAJOR', 'COMPLEX'] as const
+const ANESTHESIA_LEVEL_OPTIONS = ['NONE', 'LOCAL', 'GENERAL'] as const
+const OPERATION_TYPE_OPTIONS = ['OPEN', 'LAPAROSCOPY', 'ENDOSCOPY'] as const
+const OPERATION_ROOM_OPTIONS = ['MINOR', 'MEDIUM', 'MAJOR'] as const
+
 const INITIAL_FORM_STATE: CreateProcedurePayload = {
     systemCode: '',
     code: '',
@@ -79,6 +85,16 @@ const INITIAL_FORM_STATE: CreateProcedurePayload = {
     minIntervalDays: 0,
     maxFrequencyPerYear: 0,
     standardDurationMinutes: 0,
+    clinicalCategory: '',
+    subCategory: '',
+    bodyRegion: '',
+    severityLevel: '',
+    riskLevel: '',
+    anesthesiaLevel: '',
+    operationType: '',
+    operationRoomType: '',
+    primaryIcdCode: '',
+    primarySpecialty: '',
     validFrom: '',
     validTo: '',
     isActive: true,
@@ -393,6 +409,16 @@ export function ProceduresManagementPage() {
             minIntervalDays: Number(details.minIntervalDays ?? 0),
             maxFrequencyPerYear: Number(details.maxFrequencyPerYear ?? 0),
             standardDurationMinutes: Number(details.standardDurationMinutes ?? 0),
+            clinicalCategory: details.clinicalCategory ?? '',
+            subCategory: details.subCategory ?? '',
+            bodyRegion: details.bodyRegion ?? '',
+            severityLevel: details.severityLevel ?? '',
+            riskLevel: details.riskLevel ?? '',
+            anesthesiaLevel: details.anesthesiaLevel ?? '',
+            operationType: details.operationType ?? '',
+            operationRoomType: details.operationRoomType ?? '',
+            primaryIcdCode: details.primaryIcdCode ?? '',
+            primarySpecialty: details.primarySpecialty ?? '',
             validFrom: details.validFrom ?? '',
             validTo: details.validTo ?? '',
             isActive: Boolean(details.isActive),
@@ -463,6 +489,27 @@ export function ProceduresManagementPage() {
             createdBy: formData.createdBy?.trim() || undefined,
             updatedBy: formData.updatedBy?.trim() || undefined,
         }
+
+        const optionalStringFields: (keyof CreateProcedurePayload)[] = [
+            'clinicalCategory',
+            'subCategory',
+            'bodyRegion',
+            'severityLevel',
+            'riskLevel',
+            'anesthesiaLevel',
+            'operationType',
+            'operationRoomType',
+            'primaryIcdCode',
+            'primarySpecialty',
+        ]
+
+        optionalStringFields.forEach((field) => {
+            const rawValue = formData[field]
+            if (typeof rawValue === 'string') {
+                const trimmed = rawValue.trim()
+                ;(payload as Record<string, unknown>)[field as string] = trimmed.length > 0 ? trimmed : undefined
+            }
+        })
 
         const isEditingMode = dialogMode === 'edit' && editingProcedureId !== null
         setIsSaving(true)
@@ -2425,8 +2472,9 @@ export function ProceduresManagementPage() {
                     </DialogHeader>
 
                     <Tabs defaultValue="basic" className="w-full">
-                        <TabsList className="grid w-full grid-cols-3">
+                        <TabsList className="grid w-full grid-cols-4">
                             <TabsTrigger value="basic">Basic Information</TabsTrigger>
+                            <TabsTrigger value="clinical">Clinical Context</TabsTrigger>
                             <TabsTrigger value="pricing">Pricing & Availability</TabsTrigger>
                             <TabsTrigger value="ownership">Ownership & Audit</TabsTrigger>
                         </TabsList>
@@ -2539,6 +2587,190 @@ export function ProceduresManagementPage() {
                                         }
                                     />
                                     <Label htmlFor="requiresAnesthesia">Requires anesthesia</Label>
+                                </div>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="clinical" className="space-y-6 pt-4">
+                            <p className="text-sm text-gray-500">
+                                Capture the clinical framing that helps coders, medical reviewers, and providers understand
+                                how the procedure should be positioned. Leave fields blank if they are not applicable.
+                            </p>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="clinicalCategory">Clinical Category</Label>
+                                    <Input
+                                        id="clinicalCategory"
+                                        value={formData.clinicalCategory ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, clinicalCategory: event.target.value}))
+                                        }
+                                        placeholder="e.g., General Surgery"
+                                    />
+                                    <p className="text-xs text-gray-500">Used for grouping on dashboards and catalogs.</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="subCategory">Sub Category</Label>
+                                    <Input
+                                        id="subCategory"
+                                        value={formData.subCategory ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, subCategory: event.target.value}))
+                                        }
+                                        placeholder="e.g., Upper Abdomen"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="bodyRegion">Body Region</Label>
+                                    <Input
+                                        id="bodyRegion"
+                                        value={formData.bodyRegion ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, bodyRegion: event.target.value}))
+                                        }
+                                        placeholder="e.g., Thorax"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="primarySpecialty">Primary Specialty</Label>
+                                    <Input
+                                        id="primarySpecialty"
+                                        value={formData.primarySpecialty ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, primarySpecialty: event.target.value}))
+                                        }
+                                        placeholder="Which specialty primarily performs it?"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="severityLevel">Severity Level</Label>
+                                    <Select
+                                        value={formData.severityLevel || ''}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, severityLevel: value}))
+                                        }
+                                    >
+                                        <SelectTrigger id="severityLevel">
+                                            <SelectValue placeholder="Select severity" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">Not specified</SelectItem>
+                                            {CLINICAL_SEVERITY_OPTIONS.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="riskLevel">Risk Level</Label>
+                                    <Select
+                                        value={formData.riskLevel || ''}
+                                        onValueChange={(value) => setFormData((prev) => ({...prev, riskLevel: value}))}
+                                    >
+                                        <SelectTrigger id="riskLevel">
+                                            <SelectValue placeholder="Select risk" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">Not specified</SelectItem>
+                                            {CLINICAL_RISK_OPTIONS.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="anesthesiaLevel">Anesthesia Level</Label>
+                                    <Select
+                                        value={formData.anesthesiaLevel || ''}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, anesthesiaLevel: value}))
+                                        }
+                                    >
+                                        <SelectTrigger id="anesthesiaLevel">
+                                            <SelectValue placeholder="Select anesthesia" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">Not specified</SelectItem>
+                                            {ANESTHESIA_LEVEL_OPTIONS.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="operationType">Operation Type</Label>
+                                    <Select
+                                        value={formData.operationType || ''}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, operationType: value}))
+                                        }
+                                    >
+                                        <SelectTrigger id="operationType">
+                                            <SelectValue placeholder="Select technique" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">Not specified</SelectItem>
+                                            {OPERATION_TYPE_OPTIONS.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="operationRoomType">Operation Room Type</Label>
+                                    <Select
+                                        value={formData.operationRoomType || ''}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, operationRoomType: value}))
+                                        }
+                                    >
+                                        <SelectTrigger id="operationRoomType">
+                                            <SelectValue placeholder="Select room size" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">Not specified</SelectItem>
+                                            {OPERATION_ROOM_OPTIONS.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="primaryIcdCode">Primary ICD Code</Label>
+                                    <Input
+                                        id="primaryIcdCode"
+                                        value={formData.primaryIcdCode ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                primaryIcdCode: event.target.value.toUpperCase(),
+                                            }))
+                                        }
+                                        placeholder="e.g., K35.2"
+                                    />
+                                    <p className="text-xs text-gray-500">Use the official ICD code that best matches the procedure.</p>
                                 </div>
                             </div>
                         </TabsContent>
@@ -2731,18 +2963,67 @@ export function ProceduresManagementPage() {
                         </div>
                     ) : procedureDetails ? (
                         <div className="space-y-6">
-                            <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <DetailItem label="System Code" value={procedureDetails.systemCode}/>
-                                <DetailItem label="Procedure Code" value={procedureDetails.code}/>
-                                <DetailItem label="Name (EN)" value={procedureDetails.nameEn}/>
-                                <DetailItem label="Name (AR)" value={procedureDetails.nameAr} rtl/>
-                                <DetailItem label="Unit" value={procedureDetails.unitOfMeasure}/>
-                                <DetailItem label="Reference Price"
-                                            value={formatCurrency(procedureDetails.referencePrice)}/>
-                                <DetailItem label="Valid From" value={formatDate(procedureDetails.validFrom)}/>
-                                <DetailItem label="Valid To" value={formatDate(procedureDetails.validTo)}/>
-                                <DetailItem label="Created By" value={procedureDetails.createdBy ?? '-'}/>
-                                <DetailItem label="Updated By" value={procedureDetails.updatedBy ?? '-'}/>
+                            <section className="space-y-3">
+                                <h4 className="text-sm font-semibold text-gray-700">Master Data & Pricing</h4>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <DetailItem label="System Code" value={procedureDetails.systemCode}/>
+                                    <DetailItem label="Procedure Code" value={procedureDetails.code}/>
+                                    <DetailItem label="Name (EN)" value={procedureDetails.nameEn}/>
+                                    <DetailItem label="Name (AR)" value={procedureDetails.nameAr} rtl/>
+                                    <DetailItem label="Unit" value={procedureDetails.unitOfMeasure}/>
+                                    <DetailItem label="Reference Price"
+                                                value={formatCurrency(procedureDetails.referencePrice)}/>
+                                    <DetailItem label="Valid From" value={formatDate(procedureDetails.validFrom)}/>
+                                    <DetailItem label="Valid To" value={formatDate(procedureDetails.validTo)}/>
+                                    <DetailItem label="Surgical" value={procedureDetails.isSurgical ? 'Yes' : 'No'}/>
+                                    <DetailItem
+                                        label="Requires Authorization"
+                                        value={procedureDetails.requiresAuthorization ? 'Yes' : 'No'}
+                                    />
+                                    <DetailItem
+                                        label="Requires Anesthesia"
+                                        value={procedureDetails.requiresAnesthesia ? 'Yes' : 'No'}
+                                    />
+                                    <DetailItem
+                                        label="Min Interval (days)"
+                                        value={procedureDetails.minIntervalDays ?? '-'}
+                                    />
+                                    <DetailItem
+                                        label="Max Frequency / year"
+                                        value={procedureDetails.maxFrequencyPerYear ?? '-'}
+                                    />
+                                    <DetailItem
+                                        label="Standard Duration (min)"
+                                        value={procedureDetails.standardDurationMinutes ?? '-'}
+                                    />
+                                    <DetailItem label="Created By" value={procedureDetails.createdBy ?? '-'}/>
+                                    <DetailItem label="Updated By" value={procedureDetails.updatedBy ?? '-'}/>
+                                </div>
+                            </section>
+
+                            <section className="space-y-3">
+                                <h4 className="text-sm font-semibold text-gray-700">Clinical Classification</h4>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <DetailItem
+                                        label="Clinical Category"
+                                        value={procedureDetails.clinicalCategory ?? '-'}
+                                    />
+                                    <DetailItem label="Sub Category" value={procedureDetails.subCategory ?? '-'}/>
+                                    <DetailItem label="Body Region" value={procedureDetails.bodyRegion ?? '-'}/>
+                                    <DetailItem label="Primary Specialty" value={procedureDetails.primarySpecialty ?? '-'}/>
+                                </div>
+                            </section>
+
+                            <section className="space-y-3">
+                                <h4 className="text-sm font-semibold text-gray-700">Severity & Operating Needs</h4>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <DetailItem label="Severity Level" value={procedureDetails.severityLevel ?? '-'}/>
+                                    <DetailItem label="Risk Level" value={procedureDetails.riskLevel ?? '-'}/>
+                                    <DetailItem label="Anesthesia Level" value={procedureDetails.anesthesiaLevel ?? '-'}/>
+                                    <DetailItem label="Operation Type" value={procedureDetails.operationType ?? '-'}/>
+                                    <DetailItem label="Operation Room Type" value={procedureDetails.operationRoomType ?? '-'}/>
+                                    <DetailItem label="Primary ICD Code" value={procedureDetails.primaryIcdCode ?? '-'}/>
+                                </div>
                             </section>
 
                             <section className="space-y-2">
