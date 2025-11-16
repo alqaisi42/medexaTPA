@@ -1,6 +1,6 @@
 'use client'
 
-import React, {useCallback, useEffect, useMemo, useState} from 'react'
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
     Boxes,
     Filter,
@@ -28,6 +28,7 @@ import {
     CreateProcedureCategoryPayload,
     CreateProcedureContainerPayload,
     CreateProcedurePayload,
+    ICD,
     LinkProcedurePayload,
     ProcedureCategoryRecord,
     ProcedureContainerRecord,
@@ -54,6 +55,7 @@ import {
     updateProcedureCategory,
     updateProcedureContainer,
 } from '@/lib/api/procedures'
+import {searchIcds} from '@/lib/api/icd'
 import {cn, formatCurrency, formatDate} from '@/lib/utils'
 import {useAppStore} from '@/store/app-store'
 
@@ -190,6 +192,12 @@ export function ProceduresManagementPage() {
     const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
     const [formData, setFormData] = useState<CreateProcedurePayload>(INITIAL_FORM_STATE)
     const [editingProcedureId, setEditingProcedureId] = useState<number | null>(null)
+    const [icdSearchTerm, setIcdSearchTerm] = useState('')
+    const [icdResults, setIcdResults] = useState<ICD[]>([])
+    const [icdDropdownOpen, setIcdDropdownOpen] = useState(false)
+    const [icdSearchLoading, setIcdSearchLoading] = useState(false)
+    const [icdSearchError, setIcdSearchError] = useState<string | null>(null)
+    const icdDropdownRef = useRef<HTMLDivElement | null>(null)
 
     const [categoryForm, setCategoryForm] = useState<CreateProcedureCategoryPayload>(INITIAL_CATEGORY_FORM)
     const [categoryFormError, setCategoryFormError] = useState<string | null>(null)
@@ -211,6 +219,7 @@ export function ProceduresManagementPage() {
     const [detailsFeedback, setDetailsFeedback] = useState<FeedbackState | null>(null)
     const [procedureDetails, setProcedureDetails] = useState<ProcedureDetails | null>(null)
     const [detailsId, setDetailsId] = useState<number | null>(null)
+    const [detailsTab, setDetailsTab] = useState<'overview' | 'clinical' | 'links'>('overview')
     const [isDeleting, setIsDeleting] = useState(false)
 
     const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false)
@@ -395,6 +404,71 @@ export function ProceduresManagementPage() {
         void loadProcedures(page, pageSize, filters)
     }, [page, pageSize, filters, loadProcedures])
 
+    useEffect(() => {
+        if (!icdDropdownOpen) {
+            return
+        }
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (icdDropdownRef.current && !icdDropdownRef.current.contains(event.target as Node)) {
+                setIcdDropdownOpen(false)
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside)
+
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [icdDropdownOpen])
+
+    useEffect(() => {
+        if (!icdDropdownOpen || icdSearchTerm.trim().length < 2) {
+            setIcdResults([])
+            setIcdSearchLoading(false)
+            setIcdSearchError(null)
+            return
+        }
+
+        let isCancelled = false
+        setIcdSearchLoading(true)
+        setIcdSearchError(null)
+
+        const handler = window.setTimeout(() => {
+            void (async () => {
+                try {
+                    const results = await searchIcds(icdSearchTerm.trim())
+                    if (!isCancelled) {
+                        setIcdResults(results)
+                    }
+                } catch (err) {
+                    if (!isCancelled) {
+                        setIcdResults([])
+                        setIcdSearchError(
+                            err instanceof Error ? err.message : 'Unable to search ICD catalogue right now.',
+                        )
+                    }
+                } finally {
+                    if (!isCancelled) {
+                        setIcdSearchLoading(false)
+                    }
+                }
+            })()
+        }, 400)
+
+        return () => {
+            isCancelled = true
+            window.clearTimeout(handler)
+        }
+    }, [icdDropdownOpen, icdSearchTerm])
+
+    useEffect(() => {
+        if (!isDialogOpen) {
+            setIcdSearchTerm('')
+            setIcdResults([])
+            setIcdDropdownOpen(false)
+            setIcdSearchError(null)
+        }
+    }, [isDialogOpen])
+
     const populateFormFromDetails = useCallback((details: ProcedureDetails) => {
         setFormData({
             systemCode: details.systemCode ?? '',
@@ -425,12 +499,14 @@ export function ProceduresManagementPage() {
             createdBy: details.createdBy ?? '',
             updatedBy: details.updatedBy ?? '',
         })
+        setIcdSearchTerm(details.primaryIcdCode ?? '')
     }, [])
 
     const handleAdd = () => {
         setDialogMode('create')
         setEditingProcedureId(null)
         setFormData(INITIAL_FORM_STATE)
+        setIcdSearchTerm('')
         setFormError(null)
         setIsDialogOpen(true)
     }
@@ -442,6 +518,7 @@ export function ProceduresManagementPage() {
             setEditingProcedureId(null)
             setFormData(INITIAL_FORM_STATE)
             setFormError(null)
+            setIcdSearchTerm('')
         }
     }
 
@@ -611,21 +688,41 @@ export function ProceduresManagementPage() {
         setPage(0)
     }
 
+    const handlePrimaryIcdSelect = (icd: ICD) => {
+        setFormData((prev) => ({...prev, primaryIcdCode: icd.code}))
+        setIcdSearchTerm(`${icd.code} · ${icd.nameEn}`)
+        setIcdDropdownOpen(false)
+    }
+
+    const handleClearPrimaryIcd = () => {
+        setFormData((prev) => ({...prev, primaryIcdCode: ''}))
+        setIcdSearchTerm('')
+        setIcdResults([])
+    }
+
     const handleTabValueChange = (value: string) => {
         if (value === 'procedures' || value === 'categories' || value === 'containers') {
             setActiveTab(value)
         }
     }
 
+    const handleDetailsTabChange = (value: string) => {
+        if (value === 'overview' || value === 'clinical' || value === 'links') {
+            setDetailsTab(value)
+        }
+    }
+
     const handleViewDetails = (procedure: ProcedureSummary) => {
         setOpenLinkAfterDetails(false)
         setDetailsId(procedure.id)
+        setDetailsTab('overview')
         setIsDetailsOpen(true)
     }
 
     const handleOpenLinkFromRow = (procedure: ProcedureSummary) => {
         setDetailsId(procedure.id)
         setOpenLinkAfterDetails(true)
+        setDetailsTab('overview')
         setIsDetailsOpen(true)
     }
 
@@ -2759,18 +2856,70 @@ export function ProceduresManagementPage() {
 
                                 <div className="space-y-2">
                                     <Label htmlFor="primaryIcdCode">Primary ICD Code</Label>
-                                    <Input
-                                        id="primaryIcdCode"
-                                        value={formData.primaryIcdCode ?? ''}
-                                        onChange={(event) =>
-                                            setFormData((prev) => ({
-                                                ...prev,
-                                                primaryIcdCode: event.target.value.toUpperCase(),
-                                            }))
-                                        }
-                                        placeholder="e.g., K35.2"
-                                    />
-                                    <p className="text-xs text-gray-500">Use the official ICD code that best matches the procedure.</p>
+                                    <div className="relative" ref={icdDropdownRef}>
+                                        <Input
+                                            id="primaryIcdCode"
+                                            value={icdSearchTerm}
+                                            onFocus={() => setIcdDropdownOpen(true)}
+                                            onChange={(event) => {
+                                                const value = event.target.value
+                                                setIcdSearchTerm(value)
+                                                setIcdDropdownOpen(true)
+                                                if (!value) {
+                                                    setFormData((prev) => ({...prev, primaryIcdCode: ''}))
+                                                    setIcdResults([])
+                                                }
+                                            }}
+                                            placeholder="Search ICD code or name"
+                                            autoComplete="off"
+                                            aria-expanded={icdDropdownOpen}
+                                        />
+                                        {formData.primaryIcdCode && (
+                                            <button
+                                                type="button"
+                                                className="absolute inset-y-0 right-2 flex items-center text-xs font-medium text-gray-500 hover:text-gray-700"
+                                                onClick={handleClearPrimaryIcd}
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
+                                        {icdDropdownOpen && (
+                                            <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
+                                                {icdSearchTerm.trim().length < 2 ? (
+                                                    <p className="px-3 py-2 text-xs text-gray-500">
+                                                        Type at least two characters to search the ICD catalogue.
+                                                    </p>
+                                                ) : icdSearchLoading ? (
+                                                    <div className="flex items-center px-3 py-2 text-sm text-gray-500">
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin"/>
+                                                        Searching ICD codes...
+                                                    </div>
+                                                ) : icdSearchError ? (
+                                                    <p className="px-3 py-2 text-xs text-red-600">{icdSearchError}</p>
+                                                ) : icdResults.length === 0 ? (
+                                                    <p className="px-3 py-2 text-xs text-gray-500">No ICD codes match this search.</p>
+                                                ) : (
+                                                    <ul className="max-h-60 overflow-auto py-1 text-sm">
+                                                        {icdResults.map((icd) => (
+                                                            <li key={icd.id}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handlePrimaryIcdSelect(icd)}
+                                                                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-gray-50"
+                                                                >
+                                                                    <span className="font-medium text-gray-900">{icd.code}</span>
+                                                                    <span className="text-xs text-gray-500">{icd.nameEn}</span>
+                                                                </button>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                        Use the searchable ICD catalogue to guide claim reviewers and pricing teams.
+                                    </p>
                                 </div>
                             </div>
                         </TabsContent>
@@ -2962,146 +3111,175 @@ export function ProceduresManagementPage() {
                             {detailsError}
                         </div>
                     ) : procedureDetails ? (
-                        <div className="space-y-6">
-                            <section className="space-y-3">
-                                <h4 className="text-sm font-semibold text-gray-700">Master Data & Pricing</h4>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <DetailItem label="System Code" value={procedureDetails.systemCode}/>
-                                    <DetailItem label="Procedure Code" value={procedureDetails.code}/>
-                                    <DetailItem label="Name (EN)" value={procedureDetails.nameEn}/>
-                                    <DetailItem label="Name (AR)" value={procedureDetails.nameAr} rtl/>
-                                    <DetailItem label="Unit" value={procedureDetails.unitOfMeasure}/>
-                                    <DetailItem label="Reference Price"
-                                                value={formatCurrency(procedureDetails.referencePrice)}/>
-                                    <DetailItem label="Valid From" value={formatDate(procedureDetails.validFrom)}/>
-                                    <DetailItem label="Valid To" value={formatDate(procedureDetails.validTo)}/>
-                                    <DetailItem label="Surgical" value={procedureDetails.isSurgical ? 'Yes' : 'No'}/>
-                                    <DetailItem
-                                        label="Requires Authorization"
-                                        value={procedureDetails.requiresAuthorization ? 'Yes' : 'No'}
-                                    />
-                                    <DetailItem
-                                        label="Requires Anesthesia"
-                                        value={procedureDetails.requiresAnesthesia ? 'Yes' : 'No'}
-                                    />
-                                    <DetailItem
-                                        label="Min Interval (days)"
-                                        value={procedureDetails.minIntervalDays ?? '-'}
-                                    />
-                                    <DetailItem
-                                        label="Max Frequency / year"
-                                        value={procedureDetails.maxFrequencyPerYear ?? '-'}
-                                    />
-                                    <DetailItem
-                                        label="Standard Duration (min)"
-                                        value={procedureDetails.standardDurationMinutes ?? '-'}
-                                    />
-                                    <DetailItem label="Created By" value={procedureDetails.createdBy ?? '-'}/>
-                                    <DetailItem label="Updated By" value={procedureDetails.updatedBy ?? '-'}/>
-                                </div>
-                            </section>
-
-                            <section className="space-y-3">
-                                <h4 className="text-sm font-semibold text-gray-700">Clinical Classification</h4>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <DetailItem
-                                        label="Clinical Category"
-                                        value={procedureDetails.clinicalCategory ?? '-'}
-                                    />
-                                    <DetailItem label="Sub Category" value={procedureDetails.subCategory ?? '-'}/>
-                                    <DetailItem label="Body Region" value={procedureDetails.bodyRegion ?? '-'}/>
-                                    <DetailItem label="Primary Specialty" value={procedureDetails.primarySpecialty ?? '-'}/>
-                                </div>
-                            </section>
-
-                            <section className="space-y-3">
-                                <h4 className="text-sm font-semibold text-gray-700">Severity & Operating Needs</h4>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <DetailItem label="Severity Level" value={procedureDetails.severityLevel ?? '-'}/>
-                                    <DetailItem label="Risk Level" value={procedureDetails.riskLevel ?? '-'}/>
-                                    <DetailItem label="Anesthesia Level" value={procedureDetails.anesthesiaLevel ?? '-'}/>
-                                    <DetailItem label="Operation Type" value={procedureDetails.operationType ?? '-'}/>
-                                    <DetailItem label="Operation Room Type" value={procedureDetails.operationRoomType ?? '-'}/>
-                                    <DetailItem label="Primary ICD Code" value={procedureDetails.primaryIcdCode ?? '-'}/>
-                                </div>
-                            </section>
-
-                            <section className="space-y-2">
-                                <h4 className="text-sm font-semibold text-gray-700">Categories</h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {procedureDetails.categories.length === 0 ? (
-                                        <span className="text-sm text-gray-500">No categories linked.</span>
-                                    ) : (
-                                        procedureDetails.categories.map((category) => (
-                                            <div
-                                                key={`${category.id}-${category.code}`}
-                                                className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800"
-                                            >
-                                                <span>{category.nameEn}</span>
-                                                <Button
-                                                    type="button"
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-5 w-5 rounded-full text-blue-700 hover:bg-blue-200 hover:text-blue-900"
-                                                    onClick={() => void handleUnlinkCategoryFromProcedure(category.id)}
-                                                    disabled={unlinkingCategoryId === category.id}
-                                                    aria-label={`Unlink category ${category.code}`}
-                                                >
-                                                    {unlinkingCategoryId === category.id ? (
-                                                        <Loader2 className="h-3.5 w-3.5 animate-spin"/>
-                                                    ) : (
-                                                        <Unlink className="h-3.5 w-3.5"/>
-                                                    )}
-                                                </Button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </section>
-
-                            <section className="space-y-2">
-                                <h4 className="text-sm font-semibold text-gray-700">Containers</h4>
-                                <div className="space-y-2">
-                                    {procedureDetails.containers.length === 0 ? (
-                                        <p className="text-sm text-gray-500">No container mappings available.</p>
-                                    ) : (
-                                        procedureDetails.containers.map((container) => (
-                                            <div
-                                                key={`${container.id}-${container.code}`}
-                                                className="rounded-lg border border-gray-100 p-3 text-sm"
-                                            >
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div>
-                                                        <div
-                                                            className="font-medium text-gray-800">{container.nameEn}</div>
-                                                        <div className="text-gray-500">Level {container.levelNo}</div>
-                                                        {container.parentName && (
-                                                            <div
-                                                                className="text-gray-500">Parent: {container.parentName}</div>
-                                                        )}
-                                                    </div>
-                                                    <Button
-                                                        type="button"
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        className="h-6 w-6 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                                                        onClick={() => void handleUnlinkContainerFromProcedure(container.id)}
-                                                        disabled={unlinkingContainerId === container.id}
-                                                        aria-label={`Unlink container ${container.code}`}
+                        <Tabs
+                            orientation="vertical"
+                            value={detailsTab}
+                            onValueChange={handleDetailsTabChange}
+                            className="flex flex-col gap-6 md:flex-row"
+                        >
+                            <TabsList className="!h-auto w-full flex-row gap-2 overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-2 text-sm font-medium text-gray-600 md:w-60 md:flex-col">
+                                <TabsTrigger
+                                    value="overview"
+                                    className="w-full justify-start rounded-md text-left data-[state=active]:bg-white data-[state=active]:text-tpa-primary"
+                                >
+                                    Overview
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="clinical"
+                                    className="w-full justify-start rounded-md text-left data-[state=active]:bg-white data-[state=active]:text-tpa-primary"
+                                >
+                                    Clinical Context
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="links"
+                                    className="w-full justify-start rounded-md text-left data-[state=active]:bg-white data-[state=active]:text-tpa-primary"
+                                >
+                                    Categories & Containers
+                                </TabsTrigger>
+                            </TabsList>
+                            <div className="flex-1 space-y-6">
+                                <TabsContent value="overview" className="mt-0 space-y-6">
+                                    <section className="space-y-3">
+                                        <h4 className="text-sm font-semibold text-gray-700">Master Data & Pricing</h4>
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <DetailItem label="System Code" value={procedureDetails.systemCode}/>
+                                            <DetailItem label="Procedure Code" value={procedureDetails.code}/>
+                                            <DetailItem label="Name (EN)" value={procedureDetails.nameEn}/>
+                                            <DetailItem label="Name (AR)" value={procedureDetails.nameAr} rtl/>
+                                            <DetailItem label="Unit" value={procedureDetails.unitOfMeasure}/>
+                                            <DetailItem
+                                                label="Reference Price"
+                                                value={formatCurrency(procedureDetails.referencePrice)}
+                                            />
+                                            <DetailItem label="Valid From" value={formatDate(procedureDetails.validFrom)}/>
+                                            <DetailItem label="Valid To" value={formatDate(procedureDetails.validTo)}/>
+                                            <DetailItem label="Surgical" value={procedureDetails.isSurgical ? 'Yes' : 'No'}/>
+                                            <DetailItem
+                                                label="Requires Authorization"
+                                                value={procedureDetails.requiresAuthorization ? 'Yes' : 'No'}
+                                            />
+                                            <DetailItem
+                                                label="Requires Anesthesia"
+                                                value={procedureDetails.requiresAnesthesia ? 'Yes' : 'No'}
+                                            />
+                                            <DetailItem
+                                                label="Min Interval (days)"
+                                                value={procedureDetails.minIntervalDays ?? '-'}
+                                            />
+                                            <DetailItem
+                                                label="Max Frequency / year"
+                                                value={procedureDetails.maxFrequencyPerYear ?? '-'}
+                                            />
+                                            <DetailItem
+                                                label="Standard Duration (min)"
+                                                value={procedureDetails.standardDurationMinutes ?? '-'}
+                                            />
+                                            <DetailItem label="Created By" value={procedureDetails.createdBy ?? '-'}/>
+                                            <DetailItem label="Updated By" value={procedureDetails.updatedBy ?? '-'}/>
+                                        </div>
+                                    </section>
+                                </TabsContent>
+                                <TabsContent value="clinical" className="mt-0 space-y-6">
+                                    <section className="space-y-3">
+                                        <h4 className="text-sm font-semibold text-gray-700">Clinical Classification</h4>
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <DetailItem
+                                                label="Clinical Category"
+                                                value={procedureDetails.clinicalCategory ?? '-'}
+                                            />
+                                            <DetailItem label="Sub Category" value={procedureDetails.subCategory ?? '-'}/>
+                                            <DetailItem label="Body Region" value={procedureDetails.bodyRegion ?? '-'}/>
+                                            <DetailItem label="Primary Specialty" value={procedureDetails.primarySpecialty ?? '-'}/>
+                                        </div>
+                                    </section>
+                                    <section className="space-y-3">
+                                        <h4 className="text-sm font-semibold text-gray-700">Severity & Operating Needs</h4>
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <DetailItem label="Severity Level" value={procedureDetails.severityLevel ?? '-'}/>
+                                            <DetailItem label="Risk Level" value={procedureDetails.riskLevel ?? '-'}/>
+                                            <DetailItem label="Anesthesia Level" value={procedureDetails.anesthesiaLevel ?? '-'}/>
+                                            <DetailItem label="Operation Type" value={procedureDetails.operationType ?? '-'}/>
+                                            <DetailItem label="Operation Room Type" value={procedureDetails.operationRoomType ?? '-'}/>
+                                            <DetailItem label="Primary ICD Code" value={procedureDetails.primaryIcdCode ?? '-'}/>
+                                        </div>
+                                    </section>
+                                </TabsContent>
+                                <TabsContent value="links" className="mt-0 space-y-6">
+                                    <section className="space-y-2">
+                                        <h4 className="text-sm font-semibold text-gray-700">Categories</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {procedureDetails.categories.length === 0 ? (
+                                                <span className="text-sm text-gray-500">No categories linked.</span>
+                                            ) : (
+                                                procedureDetails.categories.map((category) => (
+                                                    <div
+                                                        key={`${category.id}-${category.code}`}
+                                                        className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800"
                                                     >
-                                                        {unlinkingContainerId === container.id ? (
-                                                            <Loader2 className="h-4 w-4 animate-spin"/>
-                                                        ) : (
-                                                            <Unlink className="h-4 w-4"/>
-                                                        )}
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </section>
-                        </div>
+                                                        <span>{category.nameEn}</span>
+                                                        <Button
+                                                            type="button"
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="h-5 w-5 rounded-full text-blue-700 hover:bg-blue-200 hover:text-blue-900"
+                                                            onClick={() => void handleUnlinkCategoryFromProcedure(category.id)}
+                                                            disabled={unlinkingCategoryId === category.id}
+                                                            aria-label={`Unlink category ${category.code}`}
+                                                        >
+                                                            {unlinkingCategoryId === category.id ? (
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin"/>
+                                                            ) : (
+                                                                <Unlink className="h-3.5 w-3.5"/>
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </section>
+                                    <section className="space-y-2">
+                                        <h4 className="text-sm font-semibold text-gray-700">Containers</h4>
+                                        <div className="space-y-2">
+                                            {procedureDetails.containers.length === 0 ? (
+                                                <p className="text-sm text-gray-500">No container mappings available.</p>
+                                            ) : (
+                                                procedureDetails.containers.map((container) => (
+                                                    <div
+                                                        key={`${container.id}-${container.code}`}
+                                                        className="rounded-lg border border-gray-100 p-3 text-sm"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <div className="font-medium text-gray-800">{container.nameEn}</div>
+                                                                <div className="text-gray-500">Level {container.levelNo}</div>
+                                                                {container.parentName && (
+                                                                    <div className="text-gray-500">Parent: {container.parentName}</div>
+                                                                )}
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-6 w-6 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                                                                onClick={() => void handleUnlinkContainerFromProcedure(container.id)}
+                                                                disabled={unlinkingContainerId === container.id}
+                                                                aria-label={`Unlink container ${container.code}`}
+                                                            >
+                                                                {unlinkingContainerId === container.id ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin"/>
+                                                                ) : (
+                                                                    <Unlink className="h-4 w-4"/>
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </section>
+                                </TabsContent>
+                            </div>
+                        </Tabs>
                     ) : (
                         <div className="text-sm text-gray-500">No details available for the selected procedure.</div>
                     )}
