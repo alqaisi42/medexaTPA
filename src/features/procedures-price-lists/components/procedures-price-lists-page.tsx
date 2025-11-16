@@ -41,6 +41,7 @@ import {
     PriceListSummary,
     PricingCalculationRequest,
     PricingCalculationResponse,
+    PricingConditionEvaluation,
     PricingFactor,
     PricingMode,
     PricingRuleCondition,
@@ -50,6 +51,7 @@ import {
 import {cn, formatCurrency, formatDate, generateId} from '@/lib/utils'
 import {
     AdjustmentDraft,
+    AdjustmentCaseDraft,
     ConditionDraft,
     ConditionalFixedDraft,
     ContextEntryDraft,
@@ -67,6 +69,7 @@ import {
     defaultOperatorForFactor,
     formatConditionValue,
     formatConditionValueDisplay,
+    formatEvaluationCondition,
     formatPriceListLabel,
     formatProcedureLabel,
     formatRulePricing,
@@ -1757,6 +1760,13 @@ export function ProceduresPriceListsPage() {
         [ruleAdjustments, factors],
     )
 
+    const handleActiveTabChange = (value: string) => {
+        setActiveTab(value as 'rules' | 'point-rates' | 'period-discounts' | 'factors' | 'simulation')
+    }
+
+    const selectedRuleConditions: PricingConditionEvaluation[] =
+        simulationResult?.selectedRule?.conditions ?? []
+
     // @ts-ignore
 
     return (
@@ -1769,7 +1779,7 @@ export function ProceduresPriceListsPage() {
                 </p>
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <Tabs value={activeTab} onValueChange={handleActiveTabChange} className="space-y-6">
                 <TabsList className="flex w-full flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
                     <TabsTrigger value="rules" className="flex-1 min-w-[120px]">Rules</TabsTrigger>
                     <TabsTrigger value="point-rates" className="flex-1 min-w-[120px]">Point Rates</TabsTrigger>
@@ -2109,9 +2119,10 @@ export function ProceduresPriceListsPage() {
 
                                                                     {selectedOption?.requiresRange ? (
                                                                         (() => {
-                                                                            const isRange = isRangeValue(condition.value);
-                                                                            const minVal = isRange ? condition.value.min ?? "" : "";
-                                                                            const maxVal = isRange ? condition.value.max ?? "" : "";
+                                                                            const rangeValue: {min?: string; max?: string} =
+                                                                                isRangeValue(condition.value) ? condition.value : {}
+                                                                            const minVal = rangeValue.min ?? ''
+                                                                            const maxVal = rangeValue.max ?? ''
 
                                                                             return (
                                                                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -2119,7 +2130,7 @@ export function ProceduresPriceListsPage() {
                                                                                         type={inputKind === 'date' ? 'date' : 'number'}
                                                                                         placeholder="Min"
                                                                                         value={minVal}
-                                                                                        onChange={(event) =>
+                                                                                        onChange={event =>
                                                                                             handleConditionValueChange(condition.id, {
                                                                                                 min: event.target.value,
                                                                                                 max: maxVal,
@@ -2131,7 +2142,7 @@ export function ProceduresPriceListsPage() {
                                                                                         type={inputKind === 'date' ? 'date' : 'number'}
                                                                                         placeholder="Max"
                                                                                         value={maxVal}
-                                                                                        onChange={(event) =>
+                                                                                        onChange={event =>
                                                                                             handleConditionValueChange(condition.id, {
                                                                                                 min: minVal,
                                                                                                 max: event.target.value,
@@ -2139,9 +2150,9 @@ export function ProceduresPriceListsPage() {
                                                                                         }
                                                                                     />
                                                                                 </div>
-                                                                            );
+                                                                            )
                                                                         })()
-                                                                    )  : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
+                                                                    ) : selectedOption?.supportsMultiple && allowedValues.length > 0 ? (
                                                                         // MULTI
                                                                         <select
                                                                             multiple
@@ -5136,25 +5147,26 @@ export function ProceduresPriceListsPage() {
 
                                 ) : null}
 
-                                {simulationResult && simulationResult.selectedRule?.conditions && simulationResult.selectedRule.conditions.length > 0 && (
-                                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                                {selectedRuleConditions.length > 0 && (
+                                    <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-2">
                                         <div className="flex flex-wrap items-center gap-1 text-xs">
                                             <span className="text-blue-700 font-medium">Applied Conditions:</span>
-                                            {simulationResult.selectedRule.conditions.map((cond: any, idx: number) => (
-                                                <span key={idx} className="inline-flex items-center">
-                    <span className="bg-white px-1.5 py-0.5 rounded border border-blue-300 text-blue-800">
-                        {cond.factor} {cond.operator} {
-                        typeof cond.value === 'boolean'
-                            ? (cond.value ? 'Yes' : 'No')
-                            : Array.isArray(cond.value)
-                                ? cond.value.join(', ')
-                                : String(cond.value)
-                    }
-                    </span>
-                                                    {idx < simulationResult.selectedRule.conditions.length - 1 &&
+                                            {selectedRuleConditions.map((condition, idx) => (
+                                                <span key={`${condition.factor}-${idx}`} className="inline-flex items-center">
+                                                    <span className="rounded border border-blue-300 bg-white px-1.5 py-0.5 text-blue-800">
+                                                        {condition.factor} {condition.operator}{' '}
+                                                        {typeof condition.value === 'boolean'
+                                                            ? condition.value
+                                                                ? 'Yes'
+                                                                : 'No'
+                                                            : Array.isArray(condition.value)
+                                                                ? condition.value.join(', ')
+                                                                : String(condition.value)}
+                                                    </span>
+                                                    {idx < selectedRuleConditions.length - 1 && (
                                                         <span className="mx-1 text-blue-400">•</span>
-                                                    }
-                </span>
+                                                    )}
+                                                </span>
                                             ))}
                                         </div>
                                     </div>

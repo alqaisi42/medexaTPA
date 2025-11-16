@@ -1,5 +1,12 @@
 import {formatDate, generateId} from '@/lib/utils'
-import type {PricingFactor, PricingRuleCondition, PricingRuleResponse, PriceListSummary, ProcedureSummary} from '@/types'
+import type {
+    PricingFactor,
+    PricingRuleCondition,
+    PricingRuleEvaluation,
+    PricingRuleResponse,
+    PriceListSummary,
+    ProcedureSummary,
+} from '@/types'
 import type {
     ConditionDraft,
     ContextEntryDraft,
@@ -487,5 +494,16 @@ export function buildDefaultCondition(factors: PricingFactor[], factor?: Pricing
 
 export function isRangeValue(value: ConditionDraft['value']): value is { min?: string; max?: string } {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function formatEvaluationCondition(
+    condition: PricingRuleEvaluation['failedConditions'][number],
+): string {
+    const factorLabel = FACTOR_LABELS[condition.factor] ?? condition.factor
+    const operatorLabel = formatConditionOperator(condition.operator)
+    const expectedValue = formatConditionValue(condition.factor, condition.expected)
+    const actualValue = formatConditionValue(condition.factor, condition.actual)
+
+    return `${factorLabel} expected ${operatorLabel} ${expectedValue} (actual: ${actualValue})`
 }
 
