@@ -1,7 +1,20 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Search, Download, Upload, Grid3X3, Copy, Calculator } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import {
+    Plus,
+    Edit,
+    Trash2,
+    Search,
+    Download,
+    Upload,
+    Grid3X3,
+    Copy,
+    Calculator,
+    ChevronsUpDown,
+    X,
+    Loader2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,9 +23,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { CombinationRule, CombinationType, CombinationFactor, CreatePricingRulePayload } from '@/types'
+import {
+    CombinationRule,
+    CombinationType,
+    CombinationFactor,
+    CreatePricingRulePayload,
+    PriceListSummary,
+    ProcedureSummary,
+} from '@/types'
 import { generateId, formatCurrency } from '@/lib/utils'
-import { createPricingRule } from '@/lib/api/pricing'
+import { createPricingRule, fetchPriceLists } from '@/lib/api/pricing'
+import { searchProcedures } from '@/lib/api/procedures'
+import {
+    formatPriceListLabel,
+    formatProcedureLabel,
+} from '@/features/procedures-price-lists/components/procedures-price-lists-page/helpers'
 
 type FactorDataType = 'STRING' | 'NUMBER'
 
@@ -185,20 +210,6 @@ const FACTOR_CATEGORIES: FactorCategory[] = [
     }
 ]
 
-const PRICE_LIST_OPTIONS = [
-    { id: 101, name: 'Premium Hospital Network', providerType: 'Hospital' },
-    { id: 205, name: 'National Clinics Standard', providerType: 'Clinic' },
-    { id: 309, name: 'Radiology Partners Preferred', providerType: 'Radiology' },
-]
-
-const PROCEDURE_OPTIONS = [
-    { id: 2964, code: '2964', name: 'Doctor Examination' },
-    { id: 17476, code: '17476', name: 'Short Arm Cast' },
-    { id: 17457, code: '17457', name: 'Metacarpal Fracture MUA' },
-    { id: 80061, code: '80061', name: 'Lipid Panel' },
-    { id: 71020, code: '71020', name: 'Chest X-Ray' },
-]
-
 const FACTOR_DEFINITION_LOOKUP = FACTOR_CATEGORIES
     .flatMap(category => category.factors)
     .reduce<Record<string, FactorDefinition>>((accumulator, factor) => {
@@ -221,8 +232,8 @@ const buildInitialRuleForm = (): RuleFormState => ({
     effectiveFrom: new Date().toISOString().split('T')[0],
     effectiveTo: undefined,
     factors: {},
-    priceListId: PRICE_LIST_OPTIONS[0]?.id,
-    procedureId: PROCEDURE_OPTIONS[0]?.id,
+    priceListId: undefined,
+    procedureId: undefined,
     priority: 1,
     basePrice: 0,
 })
@@ -261,6 +272,20 @@ export function CombinationBuilderPage() {
     const [ruleForm, setRuleForm] = useState<RuleFormState>(buildInitialRuleForm)
     const [activeRuleDesignerTab, setActiveRuleDesignerTab] = useState<'general' | 'factors' | 'financials' | 'summary'>('general')
     const [isCreatingRule, setIsCreatingRule] = useState(false)
+    const [selectedPriceList, setSelectedPriceList] = useState<PriceListSummary | null>(null)
+    const [selectedProcedure, setSelectedProcedure] = useState<ProcedureSummary | null>(null)
+    const [priceListDropdownOpen, setPriceListDropdownOpen] = useState(false)
+    const [priceListSearchTerm, setPriceListSearchTerm] = useState('')
+    const [priceListOptions, setPriceListOptions] = useState<PriceListSummary[]>([])
+    const [priceListSearchLoading, setPriceListSearchLoading] = useState(false)
+    const [priceListSearchError, setPriceListSearchError] = useState<string | null>(null)
+    const [procedureDropdownOpen, setProcedureDropdownOpen] = useState(false)
+    const [procedureSearchTerm, setProcedureSearchTerm] = useState('')
+    const [procedureOptions, setProcedureOptions] = useState<ProcedureSummary[]>([])
+    const [procedureSearchLoading, setProcedureSearchLoading] = useState(false)
+    const [procedureSearchError, setProcedureSearchError] = useState<string | null>(null)
+    const priceListDropdownRef = useRef<HTMLDivElement | null>(null)
+    const procedureDropdownRef = useRef<HTMLDivElement | null>(null)
 
     const updateSelectedFactor = <K extends keyof typeof selectedFactors>(
         factor: K,
@@ -296,8 +321,34 @@ export function CombinationBuilderPage() {
         }))
     }
 
+    const handlePriceListSelect = (priceList: PriceListSummary) => {
+        handleRuleFieldChange('priceListId', priceList.id)
+        setSelectedPriceList(priceList)
+        setPriceListDropdownOpen(false)
+    }
+
+    const handleProcedureSelect = (procedure: ProcedureSummary) => {
+        handleRuleFieldChange('procedureId', procedure.id)
+        setSelectedProcedure(procedure)
+        setProcedureDropdownOpen(false)
+    }
+
+    const clearPriceListSelection = () => {
+        handleRuleFieldChange('priceListId', undefined)
+        setSelectedPriceList(null)
+    }
+
+    const clearProcedureSelection = () => {
+        handleRuleFieldChange('procedureId', undefined)
+        setSelectedProcedure(null)
+    }
+
     const resetRuleForm = () => {
         setRuleForm(buildInitialRuleForm())
+        setSelectedPriceList(null)
+        setSelectedProcedure(null)
+        setPriceListSearchTerm('')
+        setProcedureSearchTerm('')
         setActiveRuleDesignerTab('general')
     }
 
@@ -358,8 +409,6 @@ export function CombinationBuilderPage() {
     }
 
     const filledRuleFactors = Object.entries(ruleForm.factors).filter(([, value]) => value)
-    const selectedPriceList = PRICE_LIST_OPTIONS.find(option => option.id === ruleForm.priceListId)
-    const selectedProcedure = PROCEDURE_OPTIONS.find(option => option.id === ruleForm.procedureId)
 
     const discountSummary = ruleForm.discountType === 'none'
         ? 'No discount applied'
@@ -471,6 +520,114 @@ export function CombinationBuilderPage() {
             setIsCreatingRule(false)
         }
     }
+
+    useEffect(() => {
+        if (!priceListDropdownOpen) {
+            setPriceListSearchLoading(false)
+            return
+        }
+
+        setPriceListSearchLoading(true)
+        setPriceListSearchError(null)
+
+        let cancelled = false
+        const handler = setTimeout(() => {
+            const term = priceListSearchTerm.trim()
+
+            fetchPriceLists({
+                page: 0,
+                size: 10,
+                code: term || undefined,
+                nameEn: term || undefined,
+            })
+                .then(response => {
+                    if (cancelled) return
+                    setPriceListOptions(response.content)
+                })
+                .catch(error => {
+                    if (cancelled) return
+                    setPriceListOptions([])
+                    setPriceListSearchError(
+                        error instanceof Error ? error.message : 'Failed to load price lists'
+                    )
+                })
+                .finally(() => {
+                    if (!cancelled) {
+                        setPriceListSearchLoading(false)
+                    }
+                })
+        }, 300)
+
+        return () => {
+            cancelled = true
+            clearTimeout(handler)
+        }
+    }, [priceListDropdownOpen, priceListSearchTerm])
+
+    useEffect(() => {
+        if (!procedureDropdownOpen) {
+            setProcedureSearchLoading(false)
+            return
+        }
+
+        setProcedureSearchLoading(true)
+        setProcedureSearchError(null)
+
+        let cancelled = false
+        const handler = setTimeout(() => {
+            const term = procedureSearchTerm.trim()
+
+            searchProcedures({
+                filters: term ? { keyword: term } : {},
+                page: 0,
+                size: 10,
+            })
+                .then(response => {
+                    if (cancelled) return
+                    setProcedureOptions(response.content)
+                })
+                .catch(error => {
+                    if (cancelled) return
+                    setProcedureOptions([])
+                    setProcedureSearchError(
+                        error instanceof Error ? error.message : 'Failed to load procedures'
+                    )
+                })
+                .finally(() => {
+                    if (!cancelled) {
+                        setProcedureSearchLoading(false)
+                    }
+                })
+        }, 300)
+
+        return () => {
+            cancelled = true
+            clearTimeout(handler)
+        }
+    }, [procedureDropdownOpen, procedureSearchTerm])
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node
+
+            if (
+                priceListDropdownRef.current &&
+                !priceListDropdownRef.current.contains(target)
+            ) {
+                setPriceListDropdownOpen(false)
+            }
+
+            if (
+                procedureDropdownRef.current &&
+                !procedureDropdownRef.current.contains(target)
+            ) {
+                setProcedureDropdownOpen(false)
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
 
     // Sample data
     useEffect(() => {
@@ -907,13 +1064,17 @@ export function CombinationBuilderPage() {
                             </div>
                             <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                                 <p className="text-xs uppercase tracking-wide text-gray-500">Price List</p>
-                                <p className="text-lg font-semibold text-gray-800">{selectedPriceList?.name ?? 'Select price list'}</p>
-                                <p className="text-xs text-gray-500">{selectedPriceList?.providerType ?? '—'}</p>
+                                <p className="text-lg font-semibold text-gray-800">
+                                    {selectedPriceList ? formatPriceListLabel(selectedPriceList) : 'Select price list'}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                    {selectedPriceList?.providerType ?? selectedPriceList?.regionName ?? '—'}
+                                </p>
                             </div>
                             <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                                 <p className="text-xs uppercase tracking-wide text-gray-500">Procedure</p>
                                 <p className="text-lg font-semibold text-gray-800">
-                                    {selectedProcedure ? `${selectedProcedure.code} · ${selectedProcedure.name}` : 'Select procedure'}
+                                    {selectedProcedure ? formatProcedureLabel(selectedProcedure) : 'Select procedure'}
                                 </p>
                             </div>
                         </div>
@@ -973,39 +1134,181 @@ export function CombinationBuilderPage() {
                                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                                     <div className="space-y-2">
                                         <Label>Price List</Label>
-                                        <Select
-                                            value={ruleForm.priceListId ? String(ruleForm.priceListId) : undefined}
-                                            onValueChange={(value) => handleRuleFieldChange('priceListId', Number(value))}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Choose price list" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {PRICE_LIST_OPTIONS.map(list => (
-                                                    <SelectItem key={list.id} value={String(list.id)}>
-                                                        {list.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <div className="relative" ref={priceListDropdownRef}>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                                                onClick={() => {
+                                                    setPriceListDropdownOpen(prev => !prev)
+                                                    setProcedureDropdownOpen(false)
+                                                }}
+                                            >
+                                                <div className="flex min-w-0 flex-col text-left">
+                                                    <span className="truncate text-sm font-medium text-gray-900">
+                                                        {selectedPriceList
+                                                            ? formatPriceListLabel(selectedPriceList)
+                                                            : 'Search price lists'}
+                                                    </span>
+                                                    <span className="truncate text-xs text-gray-500">
+                                                        {selectedPriceList?.providerType
+                                                            ?? 'Type to filter by name, code, or provider type'}
+                                                    </span>
+                                                </div>
+                                                <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                                            </Button>
+                                            {ruleForm.priceListId && (
+                                                <button
+                                                    type="button"
+                                                    aria-label="Clear price list"
+                                                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation()
+                                                        clearPriceListSelection()
+                                                    }}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            )}
+                                            {priceListDropdownOpen && (
+                                                <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                                                    <div className="border-b border-gray-100 p-2">
+                                                        <Input
+                                                            autoFocus
+                                                            placeholder="Search price lists..."
+                                                            value={priceListSearchTerm}
+                                                            onChange={(e) => setPriceListSearchTerm(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-64 overflow-y-auto">
+                                                        {priceListSearchLoading ? (
+                                                            <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                Loading price lists…
+                                                            </div>
+                                                        ) : priceListSearchError ? (
+                                                            <div className="p-4 text-sm text-red-500">{priceListSearchError}</div>
+                                                        ) : priceListOptions.length === 0 ? (
+                                                            <div className="p-4 text-sm text-gray-500">No price lists found</div>
+                                                        ) : (
+                                                            <ul className="divide-y divide-gray-100">
+                                                                {priceListOptions.map(option => (
+                                                                    <li key={option.id}>
+                                                                        <button
+                                                                            type="button"
+                                                                            className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-gray-50"
+                                                                            onClick={() => handlePriceListSelect(option)}
+                                                                        >
+                                                                            <span className="text-sm font-medium text-gray-900">
+                                                                                {formatPriceListLabel(option)}
+                                                                            </span>
+                                                                            <span className="text-xs text-gray-500">
+                                                                                {(option.regionName || option.providerType || '—')}
+                                                                                {' · Valid '}
+                                                                                {option.validFrom
+                                                                                    ? new Date(option.validFrom).toLocaleDateString()
+                                                                                    : '—'}
+                                                                                {' → '}
+                                                                                {option.validTo
+                                                                                    ? new Date(option.validTo).toLocaleDateString()
+                                                                                    : '—'}
+                                                                            </span>
+                                                                        </button>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Procedure</Label>
-                                        <Select
-                                            value={ruleForm.procedureId ? String(ruleForm.procedureId) : undefined}
-                                            onValueChange={(value) => handleRuleFieldChange('procedureId', Number(value))}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Choose procedure" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {PROCEDURE_OPTIONS.map(procedure => (
-                                                    <SelectItem key={procedure.id} value={String(procedure.id)}>
-                                                        {procedure.code} · {procedure.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <div className="relative" ref={procedureDropdownRef}>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                                                onClick={() => {
+                                                    setProcedureDropdownOpen(prev => !prev)
+                                                    setPriceListDropdownOpen(false)
+                                                }}
+                                            >
+                                                <div className="flex min-w-0 flex-col text-left">
+                                                    <span className="truncate text-sm font-medium text-gray-900">
+                                                        {selectedProcedure
+                                                            ? formatProcedureLabel(selectedProcedure)
+                                                            : 'Search procedures'}
+                                                    </span>
+                                                    <span className="truncate text-xs text-gray-500">
+                                                        {selectedProcedure?.unitOfMeasure
+                                                            ?? 'Type to filter by code, name, or system code'}
+                                                    </span>
+                                                </div>
+                                                <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                                            </Button>
+                                            {ruleForm.procedureId && (
+                                                <button
+                                                    type="button"
+                                                    aria-label="Clear procedure"
+                                                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation()
+                                                        clearProcedureSelection()
+                                                    }}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            )}
+                                            {procedureDropdownOpen && (
+                                                <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                                                    <div className="border-b border-gray-100 p-2">
+                                                        <Input
+                                                            autoFocus
+                                                            placeholder="Search procedures..."
+                                                            value={procedureSearchTerm}
+                                                            onChange={(e) => setProcedureSearchTerm(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-64 overflow-y-auto">
+                                                        {procedureSearchLoading ? (
+                                                            <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                Loading procedures…
+                                                            </div>
+                                                        ) : procedureSearchError ? (
+                                                            <div className="p-4 text-sm text-red-500">{procedureSearchError}</div>
+                                                        ) : procedureOptions.length === 0 ? (
+                                                            <div className="p-4 text-sm text-gray-500">No procedures found</div>
+                                                        ) : (
+                                                            <ul className="divide-y divide-gray-100">
+                                                                {procedureOptions.map(option => (
+                                                                    <li key={option.id}>
+                                                                        <button
+                                                                            type="button"
+                                                                            className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-gray-50"
+                                                                            onClick={() => handleProcedureSelect(option)}
+                                                                        >
+                                                                            <span className="text-sm font-medium text-gray-900">
+                                                                                {formatProcedureLabel(option)}
+                                                                            </span>
+                                                                            <span className="text-xs text-gray-500">
+                                                                                {option.systemCode}
+                                                                                {' · '}
+                                                                                {option.unitOfMeasure}
+                                                                                {' · Ref '}
+                                                                                {formatCurrency(option.referencePrice)}
+                                                                            </span>
+                                                                        </button>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Base Price (JD)</Label>
