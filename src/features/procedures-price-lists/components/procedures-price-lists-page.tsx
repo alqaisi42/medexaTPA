@@ -48,648 +48,38 @@ import {
     ProcedureSummary,
 } from '@/types'
 import {cn, formatCurrency, formatDate, generateId} from '@/lib/utils'
-
-type FactorInputKind = 'text' | 'number' | 'select' | 'date' | 'boolean'
-
-interface ConditionDraft {
-    id: string
-    factorKey: string
-    operator: string
-    value: string | number | boolean | string[] | { min?: string; max?: string }
-}
-
-interface AdjustmentCaseDraft {
-    id: string
-    caseValue: string
-    amount: string
-}
-
-interface PricingTierDraft {
-    id: string
-    points: string
-    condition: ConditionDraft | null
-}
-
-interface ConditionalFixedDraft {
-    id: string
-    price: string
-    conditions: ConditionDraft[]
-}
-
-interface DiscountLogicBlockDraft {
-    id: string
-    percent: string
-    conditions: ConditionDraft[]
-}
-
-interface AdjustmentTierDraft {
-    id: string
-    value: string
-    add: string
-    percent: string
-}
-
-interface AdjustmentLogicBlockDraft {
-    id: string
-    add: string
-    addPercent: string
-    conditions: ConditionDraft[]
-}
-
-interface AdjustmentDraft {
-    id: string
-    type: string
-    factorKey: string
-    percent: string
-    cases: AdjustmentCaseDraft[]
-    tiers: AdjustmentTierDraft[]
-    logicBlocks: AdjustmentLogicBlockDraft[]
-}
-
-interface FactorEntryDraft {
-    id: string
-    factorKey: string
-    value: string | number | boolean | string[]
-}
-
-interface ContextEntryDraft {
-    id: string
-    key: string
-    value: string
-}
-
-function parseAllowedValues(factor: PricingFactor): string[] {
-    if (!factor.allowedValues) {
-        return []
-    }
-
-    try {
-        const parsed = JSON.parse(factor.allowedValues)
-        if (Array.isArray(parsed)) {
-            return parsed.map(value => String(value))
-        }
-    } catch {
-        // Fall back to comma separated parsing
-    }
-
-    return factor.allowedValues
-        .split(',')
-        .map(value => value.trim())
-        .filter(Boolean)
-}
-
-function resolveFactorInputKind(factor: PricingFactor, operator?: string): FactorInputKind {
-    const allowedValues = parseAllowedValues(factor)
-
-    if (factor.dataType === 'BOOLEAN') {
-        return 'boolean'
-    }
-
-    if (factor.dataType === 'DATE') {
-        return 'date'
-    }
-
-    if (allowedValues.length > 0 && operator !== 'BETWEEN') {
-        return 'select'
-    }
-
-    if (factor.dataType === 'NUMBER' || factor.dataType === 'DECIMAL' || factor.dataType === 'INTEGER') {
-        return 'number'
-    }
-
-    if (factor.dataType === 'TEXT') {
-        return 'text'
-    }
-
-    if (factor.dataType === 'STRING') {
-        return allowedValues.length > 0 ? 'select' : 'text'
-    }
-
-    if (factor.dataType === 'SELECT') {
-        return 'select'
-    }
-
-    return 'text'
-}
-
-function RuleConditionsDisplay({ruleJson}: { ruleJson: string }) {
-    // Parse the rule JSON to extract conditions
-    let conditions: any[] = []
-    try {
-        const parsed = JSON.parse(ruleJson)
-        conditions = parsed.conditions || []
-    } catch (error) {
-        return <span className="text-red-500 text-xs">Invalid JSON</span>
-    }
-
-    // Helper function to format each condition for display
-    const formatCondition = (condition: any) => {
-        const factorLabels: Record<string, string> = {
-            gender: 'Gender',
-            patient_age: 'Age',
-            visit_time: 'Visit',
-            specialty_id: 'Specialty',
-            provider_type: 'Provider',
-            insurance_degree: 'Insurance',
-            doctor_experience_years: 'Dr. Experience',
-        }
-
-        const factor = factorLabels[condition.factor] || condition.factor
-        let value = condition.value
-
-        // Format the value based on type
-        if (Array.isArray(value)) {
-            // Handle BETWEEN (2 numbers) or IN (list)
-            if (value.length === 2 && typeof value[0] === 'number') {
-                value = `${value[0]}-${value[1]}`
-            } else {
-                value = value.join(', ')
-            }
-        } else if (typeof value === 'boolean') {
-            value = value ? 'Yes' : 'No'
-        } else if (condition.factor === 'gender') {
-            value = value === 'M' ? 'Male' : value === 'F' ? 'Female' : value
-        } else if (condition.factor === 'visit_time') {
-            value = value === 'DAY' ? 'Day' : value === 'NIGHT' ? 'Night' : value
-        }
-
-        // Format operator
-        const operator = condition.operator === '=' ? ':' :
-            condition.operator === 'BETWEEN' ? ':' :
-                condition.operator === 'IN' ? ' in' :
-                    condition.operator === 'MIN' ? ' ≥' :
-                        condition.operator === 'MAX' ? ' ≤' :
-                            ` ${condition.operator}`
-
-        return {factor, operator, value: String(value)}
-    }
-
-    // Color mapping for different condition types
-    const getColorClass = (factor: string) => {
-        const colors: Record<string, string> = {
-            gender: 'bg-purple-100 text-purple-800 border-purple-200',
-            patient_age: 'bg-blue-100 text-blue-800 border-blue-200',
-            visit_time: 'bg-orange-100 text-orange-800 border-orange-200',
-            insurance_degree: 'bg-green-100 text-green-800 border-green-200',
-            specialty_id: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-            provider_type: 'bg-teal-100 text-teal-800 border-teal-200',
-            doctor_experience_years: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-            default: 'bg-gray-100 text-gray-800 border-gray-200'
-        }
-        return colors[factor] || colors.default
-    }
-
-    return (
-        <div className="flex flex-wrap gap-1">
-            {conditions.map((condition, idx) => {
-                const {factor, operator, value} = formatCondition(condition)
-                const colorClass = getColorClass(condition.factor)
-
-                return (
-                    <span
-                        key={idx}
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colorClass}`}
-                        title={`${factor} ${condition.operator} ${value}`}
-                    >
-                        {factor}{operator} <span className="font-bold ml-0.5">{value}</span>
-                    </span>
-                )
-            })}
-            {conditions.length === 0 && (
-                <span className="text-gray-400 text-xs italic">No conditions</span>
-            )}
-        </div>
-    )
-}
-
-function formatConditionOperator(operator: string): string {
-    const operatorMap: Record<string, string> = {
-        '=': 'equals',
-        'EQUALS': 'equals',
-        '!=': 'not equals',
-        'NOT_EQUALS': 'not equals',
-        '>': 'greater than',
-        'GREATER_THAN': 'greater than',
-        '<': 'less than',
-        'LESS_THAN': 'less than',
-        '>=': 'greater or equal',
-        'GREATER_THAN_OR_EQUAL': 'greater or equal',
-        '<=': 'less or equal',
-        'LESS_THAN_OR_EQUAL': 'less or equal',
-        'IN': 'in',
-        'NOT_IN': 'not in',
-        'BETWEEN': 'between',
-        'CONTAINS': 'contains',
-        'STARTS_WITH': 'starts with',
-        'ENDS_WITH': 'ends with',
-    }
-    return operatorMap[operator] || operator.toLowerCase()
-}
-
-
-type OperatorOption = {
-    value: string
-    label: string
-    requiresRange?: boolean
-    supportsMultiple?: boolean
-}
-
-function operatorOptionsForFactor(factor: PricingFactor): OperatorOption[] {
-    const inputKind = resolveFactorInputKind(factor)
-
-    if (inputKind === 'number') {
-        return [
-            {value: 'EQUALS', label: 'Equals'},
-            {value: 'NOT_EQUALS', label: 'Not equals'},
-            {value: 'GREATER_THAN', label: 'Greater than'},
-            {value: 'LESS_THAN', label: 'Less than'},
-            {value: 'BETWEEN', label: 'Between', requiresRange: true},
-        ]
-    }
-
-    if (inputKind === 'date') {
-        return [
-            {value: 'ON', label: 'On'},
-            {value: 'BEFORE', label: 'Before'},
-            {value: 'AFTER', label: 'After'},
-            {value: 'BETWEEN', label: 'Between', requiresRange: true},
-        ]
-    }
-
-    if (inputKind === 'boolean') {
-        return [
-            {value: 'IS_TRUE', label: 'Is true'},
-            {value: 'IS_FALSE', label: 'Is false'},
-        ]
-    }
-
-    if (inputKind === 'select') {
-        return [
-            {value: 'EQUALS', label: 'Equals'},
-            {value: 'NOT_EQUALS', label: 'Not equals'},
-            {value: 'IN', label: 'In list', supportsMultiple: true},
-            {value: 'NOT_IN', label: 'Not in list', supportsMultiple: true},
-        ]
-    }
-
-    return [
-        {value: 'EQUALS', label: 'Equals'},
-        {value: 'NOT_EQUALS', label: 'Not equals'},
-        {value: 'CONTAINS', label: 'Contains'},
-        {value: 'STARTS_WITH', label: 'Starts with'},
-        {value: 'ENDS_WITH', label: 'Ends with'},
-    ]
-}
-
-function defaultOperatorForFactor(factor: PricingFactor): string {
-    const options = operatorOptionsForFactor(factor)
-    return options[0]?.value ?? 'EQUALS'
-}
-
-function parseRuleJson(rule: PricingRuleResponse): Record<string, unknown> | null {
-    if (!rule.ruleJson) {
-        return null
-    }
-
-    try {
-        return JSON.parse(rule.ruleJson)
-    } catch {
-        return null
-    }
-}
-
-// Helper functions for displaying conditions as badges
-const FACTOR_LABELS: Record<string, string> = {
-    gender: 'Gender',
-    patient_age: 'Patient Age',
-    visit_time: 'Visit Time',
-    specialty_id: 'Specialty ID',
-    provider_type: 'Provider Type',
-    insurance_degree: 'Insurance Degree',
-    doctor_experience_years: 'Doctor Experience',
-    clinic_type: 'Clinic Type',
-    referral_required: 'Referral Required',
-    emergency: 'Emergency',
-};
-
-const OPERATOR_SYMBOLS: Record<string, string> = {
-    '=': '=',
-    'EQUALS': '=',
-    '!=': '≠',
-    'NOT_EQUALS': '≠',
-    '>': '>',
-    'GREATER_THAN': '>',
-    '<': '<',
-    'LESS_THAN': '<',
-    '>=': '≥',
-    'GREATER_THAN_OR_EQUAL': '≥',
-    '<=': '≤',
-    'LESS_THAN_OR_EQUAL': '≤',
-    'IN': 'in',
-    'NOT_IN': 'not in',
-    'BETWEEN': '↔',
-    'MIN': '≥',
-    'MAX': '≤',
-};
-
-function getConditionColorClass(factor: string): string {
-    const colorMap: Record<string, string> = {
-        gender: 'bg-purple-100 text-purple-700 border-purple-200',
-        patient_age: 'bg-blue-100 text-blue-700 border-blue-200',
-        visit_time: 'bg-orange-100 text-orange-700 border-orange-200',
-        insurance_degree: 'bg-green-100 text-green-700 border-green-200',
-        specialty_id: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-        provider_type: 'bg-teal-100 text-teal-700 border-teal-200',
-        doctor_experience_years: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-        emergency: 'bg-red-100 text-red-700 border-red-200',
-        default: 'bg-slate-100 text-slate-700 border-slate-200'
-    };
-    return colorMap[factor] || colorMap.default;
-}
-
-function formatConditionValue(factor: string, value: any): string {
-    if (value === null || value === undefined) return '—';
-
-    // Formal formatting for specific factors
-    if (factor === 'gender') {
-        return value === 'M' ? 'Male' : value === 'F' ? 'Female' : String(value);
-    }
-    if (factor === 'visit_time') {
-        return value === 'DAY' ? 'Day' : value === 'NIGHT' ? 'Night' : String(value);
-    }
-    if (factor === 'provider_type') {
-        return value === 'clinic' ? 'Clinic' : value === 'hospital' ? 'Hospital' : String(value);
-    }
-
-    // Handle different value types
-    if (typeof value === 'boolean') {
-        return value ? 'Yes' : 'No';
-    }
-    if (Array.isArray(value)) {
-        // Handle BETWEEN operator (2 numbers)
-        if (value.length === 2 && typeof value[0] === 'number') {
-            if (factor === 'patient_age') {
-                return `${value[0]}-${value[1]} years`;
-            }
-            return `${value[0]}-${value[1]}`;
-        }
-        // Handle IN operator (list)
-        if (factor === 'insurance_degree') {
-            return value.map(v => String(v)).join(', ');
-        }
-        return value.join(', ');
-    }
-
-    // Add units for specific factors
-    if (factor === 'doctor_experience_years' && typeof value === 'number') {
-        return `${value}+ years`;
-    }
-
-    return String(value);
-}
-
-function formatProcedureLabel(procedure: ProcedureSummary): string {
-    return `${procedure.code} · ${procedure.nameEn}`
-}
-
-function formatPriceListLabel(priceList: PriceListSummary): string {
-    const baseLabel = `${priceList.code} · ${priceList.nameEn}`
-    return priceList.providerType ? `${baseLabel} (${priceList.providerType})` : baseLabel
-}
-
-function extractRuleConditions(ruleJson: Record<string, unknown> | null): any[] {
-    if (!ruleJson) {
-        return [];
-    }
-
-    const conditions = ruleJson.conditions;
-    if (!conditions || !Array.isArray(conditions)) {
-        return [];
-    }
-
-    return conditions;
-}
-
-function formatRulePricing(ruleJson: Record<string, unknown> | null): string {
-    if (!ruleJson) return '—'
-
-    const pricing = ruleJson.pricing as Record<string, unknown> | undefined
-    if (!pricing) return '—'
-
-    const mode = String(pricing.mode ?? '').toUpperCase()
-
-    // SAFE PARSING FOR ARRAYS
-    const tiers = Array.isArray(pricing.tiers)
-        ? pricing.tiers as Array<Record<string, unknown>>
-        : []
-
-    const conditionalFixedRaw =
-        pricing.conditionalFixed ??
-        pricing.conditional_fixed ??
-        []
-
-    const conditionalFixed = Array.isArray(conditionalFixedRaw)
-        ? conditionalFixedRaw as Array<Record<string, unknown>>
-        : []
-
-    // ========== SUMMARY ==========
-
-    let summary: string
-
-    if (mode === 'FIXED') {
-        const fixedPrice = pricing.fixedPrice ?? pricing.fixed_price
-        summary = `Fixed $${fixedPrice || 0}`
-    } else if (mode === 'POINTS') {
-        const points = pricing.points ?? pricing.basePoints ?? pricing.base_points ?? 0
-        summary = `Points × ${points}`
-    } else if (mode === 'RANGE') {
-        const minPrice = pricing.minPrice ?? pricing.min_price
-        const maxPrice = pricing.maxPrice ?? pricing.max_price
-        summary = `Range $${minPrice || 0} - $${maxPrice || '∞'}`
-    } else {
-        summary = mode || '—'
-    }
-
-    const extras: string[] = []
-
-    if (tiers.length > 0) {
-        extras.push(`${tiers.length} tier${tiers.length > 1 ? 's' : ''}`)
-    }
-    if (conditionalFixed.length > 0) {
-        extras.push(`${conditionalFixed.length} conditional`)
-    }
-
-    return extras.length > 0 ? `${summary} (${extras.join(' · ')})` : summary
-}
-
-function formatConditionValueDisplay(condition: ConditionDraft, factor?: PricingFactor): string {
-    const {value} = condition
-
-    if (typeof value === 'boolean') {
-        return value ? 'True' : 'False'
-    }
-
-    if (Array.isArray(value)) {
-        return value.length > 0 ? value.join(', ') : '—'
-    }
-
-    if (value && typeof value === 'object') {
-        const range = value as { min?: string; max?: string }
-        if (range.min && range.max) {
-            return `${range.min} → ${range.max}`
-        }
-        if (range.min) {
-            return `≥ ${range.min}`
-        }
-        if (range.max) {
-            return `≤ ${range.max}`
-        }
-        return JSON.stringify(value)
-    }
-
-    if (value === undefined || value === null || value === '') {
-        return '—'
-    }
-
-    if (factor?.dataType === 'DATE') {
-        try {
-            return formatDate(String(value))
-        } catch {
-            return String(value)
-        }
-    }
-
-    return String(value)
-}
-
-function serializeConditionDraft(condition: ConditionDraft): PricingRuleCondition {
-    let value: unknown = condition.value
-
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        const range = value as { min?: string; max?: string }
-        const normalized: { min?: number; max?: number } = {}
-        if (range.min !== undefined && range.min !== '') {
-            normalized.min = Number(range.min)
-        }
-        if (range.max !== undefined && range.max !== '') {
-            normalized.max = Number(range.max)
-        }
-        value = normalized
-    } else if (Array.isArray(value)) {
-        value = value
-    } else if (typeof value === 'string') {
-        const trimmed = value.trim()
-        if (trimmed === '') {
-            value = ''
-        } else if ((trimmed.startsWith('{') || trimmed.startsWith('['))) {
-            try {
-                value = JSON.parse(trimmed)
-            } catch {
-                value = trimmed
-            }
-        } else if (!Number.isNaN(Number(trimmed)) && condition.operator !== 'CONTAINS') {
-            value = Number(trimmed)
-        } else if (trimmed.toLowerCase() === 'true' || trimmed.toLowerCase() === 'false') {
-            value = trimmed.toLowerCase() === 'true'
-        } else {
-            value = trimmed
-        }
-    }
-
-    return {
-        factor: condition.factorKey,
-        operator: condition.operator,
-        value,
-    }
-}
-
-function parseContextJson(contextJson?: string | null): ContextEntryDraft[] {
-    if (!contextJson) {
-        return []
-    }
-
-    try {
-        const parsed = JSON.parse(contextJson) as Record<string, unknown>
-        return Object.entries(parsed).map(([key, value]) => ({
-            id: generateId(),
-            key,
-            value: typeof value === 'object' ? JSON.stringify(value) : String(value ?? ''),
-        }))
-    } catch {
-        return []
-    }
-}
-
-function buildContextObject(entries: ContextEntryDraft[]): Record<string, unknown> | undefined {
-    const result: Record<string, unknown> = {}
-    entries.forEach(entry => {
-        if (!entry.key) {
-            return
-        }
-
-        const trimmed = entry.value.trim()
-        if (!trimmed) {
-            return
-        }
-
-        try {
-            result[entry.key] = JSON.parse(trimmed)
-        } catch {
-            result[entry.key] = trimmed
-        }
-    })
-
-    return Object.keys(result).length > 0 ? result : undefined
-}
-
-function buildFactorsObject(entries: FactorEntryDraft[]): Record<string, unknown> {
-    const result: Record<string, unknown> = {}
-    entries.forEach(entry => {
-        if (!entry.factorKey) {
-            return
-        }
-
-        if (Array.isArray(entry.value)) {
-            result[entry.factorKey] = entry.value
-        } else if (typeof entry.value === 'string') {
-            const trimmed = entry.value.trim()
-            if (trimmed) {
-                result[entry.factorKey] = trimmed
-            }
-        } else {
-            result[entry.factorKey] = entry.value
-        }
-    })
-
-    return result
-}
-
-function formatEvaluationCondition({factor, operator, expected, actual}: {
-    factor: string;
-    operator: string;
-    expected: unknown;
-    actual: unknown
-}): string {
-    return `${factor} ${operator.toLowerCase()} (expected: ${JSON.stringify(expected)}, actual: ${JSON.stringify(actual)})`
-}
-
-const SectionCard: React.FC<React.PropsWithChildren<{
-    title: string;
-    description?: string;
-    actions?: React.ReactNode
-}>> = ({title, description, actions, children}) => (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <header
-            className="flex flex-col gap-2 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-                <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-                {description ? <p className="text-sm text-slate-500">{description}</p> : null}
-            </div>
-            {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
-        </header>
-        <div className="px-6 py-5">{children}</div>
-    </section>
-)
+import {
+    AdjustmentDraft,
+    ConditionDraft,
+    ConditionalFixedDraft,
+    ContextEntryDraft,
+    FactorEntryDraft,
+    PricingTierDraft,
+    DiscountLogicBlockDraft,
+    AdjustmentTierDraft,
+    AdjustmentLogicBlockDraft,
+} from './procedures-price-lists-page/types'
+import {
+    FACTOR_LABELS,
+    buildContextObject,
+    buildDefaultCondition,
+    buildFactorsObject,
+    defaultOperatorForFactor,
+    formatConditionValue,
+    formatConditionValueDisplay,
+    formatPriceListLabel,
+    formatProcedureLabel,
+    formatRulePricing,
+    isRangeValue,
+    operatorOptionsForFactor,
+    parseAllowedValues,
+    parseContextJson,
+    parseRuleJson,
+    resolveFactorInputKind,
+    serializeConditionDraft,
+} from './procedures-price-lists-page/helpers'
+import {SectionCard} from './procedures-price-lists-page/section-card'
+import {RuleConditionsDisplay} from './procedures-price-lists-page/rule-conditions-display'
 
 const infoTextClass = 'text-sm text-slate-500'
 
@@ -811,27 +201,6 @@ export function ProceduresPriceListsPage() {
     const [periodDiscountsView, setPeriodDiscountsView] = useState<'listing' | 'form'>('listing')
     const [factorsView, setFactorsView] = useState<'listing' | 'create'>('listing')
     const [simulationView, setSimulationView] = useState<'setup' | 'insights'>('setup')
-
-    const buildDefaultCondition = (factor?: PricingFactor): ConditionDraft => {
-        const resolvedFactor = factor ?? factors[0]
-        const operator = resolvedFactor ? defaultOperatorForFactor(resolvedFactor) : 'EQUALS'
-        const operatorOptions = resolvedFactor ? operatorOptionsForFactor(resolvedFactor) : []
-        const operatorConfig = operatorOptions.find(option => option.value === operator) ?? operatorOptions[0]
-
-        let value: ConditionDraft['value'] = ''
-        if (operatorConfig?.requiresRange) {
-            value = {min: '', max: ''}
-        } else if (operatorConfig?.supportsMultiple) {
-            value = []
-        }
-
-        return {
-            id: generateId(),
-            factorKey: resolvedFactor?.key ?? '',
-            operator,
-            value,
-        }
-    }
 
     useEffect(() => {
         if (!procedureDropdownOpen) {
@@ -1161,7 +530,7 @@ export function ProceduresPriceListsPage() {
             {
                 id: generateId(),
                 points: '',
-                condition: factors.length > 0 ? buildDefaultCondition() : null,
+                condition: factors.length > 0 ? buildDefaultCondition(factors) : null,
             },
         ])
     }
@@ -1180,7 +549,7 @@ export function ProceduresPriceListsPage() {
                 tier.id === id && !tier.condition
                     ? {
                         ...tier,
-                        condition: buildDefaultCondition(),
+                        condition: buildDefaultCondition(factors),
                     }
                     : tier,
             ),
@@ -1194,7 +563,7 @@ export function ProceduresPriceListsPage() {
                     return tier
                 }
 
-                const nextCondition = tier.condition ?? buildDefaultCondition()
+                const nextCondition = tier.condition ?? buildDefaultCondition(factors)
                 const factor = factors.find(item => item.key === factorKey)
                 const defaultOperator = factor ? defaultOperatorForFactor(factor) : nextCondition.operator
                 const operatorOptions = factor ? operatorOptionsForFactor(factor) : []
@@ -1296,7 +665,7 @@ export function ProceduresPriceListsPage() {
                 entry.id === id
                     ? {
                         ...entry,
-                        conditions: [...entry.conditions, buildDefaultCondition()],
+                        conditions: [...entry.conditions, buildDefaultCondition(factors)],
                     }
                     : entry,
             ),
@@ -1429,7 +798,7 @@ export function ProceduresPriceListsPage() {
                 block.id === id
                     ? {
                         ...block,
-                        conditions: [...block.conditions, buildDefaultCondition()],
+                        conditions: [...block.conditions, buildDefaultCondition(factors)],
                     }
                     : block,
             ),
@@ -1737,7 +1106,7 @@ export function ProceduresPriceListsPage() {
                             block.id === blockId
                                 ? {
                                     ...block,
-                                    conditions: [...block.conditions, buildDefaultCondition()],
+                                    conditions: [...block.conditions, buildDefaultCondition(factors)],
                                 }
                                 : block,
                         ),
@@ -4601,8 +3970,7 @@ export function ProceduresPriceListsPage() {
                                         <TableBody>
                                             {pricingRules.map(rule => {
                                                 const parsed = parseRuleJson(rule)
-                                                const conditions = extractRuleConditions(parsed)
-                                                return (
+                                                        return (
                                                     <TableRow
                                                         key={rule.id}
                                                         draggable
@@ -4655,34 +4023,13 @@ export function ProceduresPriceListsPage() {
                                                         </TableCell>
 
                                                         <TableCell>
-                                                            <div className="space-y-2">
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {conditions.map((condition: any, idx: number) => {
-                                                                        const label = FACTOR_LABELS[condition.factor] || condition.factor;
-                                                                        const operator = OPERATOR_SYMBOLS[condition.operator] || condition.operator;
-                                                                        const value = formatConditionValue(condition.factor, condition.value);
-                                                                        const colorClass = getConditionColorClass(condition.factor);
-
-                                                                        return (
-                                                                            <span
-                                                                                key={idx}
-                                                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border ${colorClass}`}
-                                                                                title={`${label} ${operator} ${value}`}
-                                                                            >
-                                                        <span>{label}</span>
-                                                                                {operator !== '=' && <span
-                                                                                    className="opacity-60">{operator}</span>}
-                                                                                <span
-                                                                                    className="font-bold">{value}</span>
-                                                    </span>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                                {conditions.length === 0 && (
-                                                                    <span className="text-xs text-slate-400 italic">No conditions defined</span>
-                                                                )}
-                                                            </div>
+                                                            {rule.ruleJson ? (
+                                                                <RuleConditionsDisplay ruleJson={rule.ruleJson}/>
+                                                            ) : (
+                                                                <span className="text-xs text-slate-400 italic">No conditions defined</span>
+                                                            )}
                                                         </TableCell>
+
                                                         <TableCell>
                                                             <div className="space-y-2">
                                                                 {parsed?.adjustments && Array.isArray(parsed.adjustments) && parsed.adjustments.length > 0 ? (
@@ -4844,7 +4191,6 @@ export function ProceduresPriceListsPage() {
                                 <div className="lg:hidden space-y-3">
                                     {pricingRules.map(rule => {
                                         const parsed = parseRuleJson(rule)
-                                        const conditions = extractRuleConditions(parsed)
                                         return (
                                             <div
                                                 key={rule.id}
@@ -4905,33 +4251,15 @@ export function ProceduresPriceListsPage() {
                                                     </div>
 
                                                     {/* Conditions */}
-                                                    {conditions.length > 0 && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 mb-1.5">Conditions
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {conditions.map((condition: any, idx: number) => {
-                                                                    const label = FACTOR_LABELS[condition.factor] || condition.factor;
-                                                                    const operator = OPERATOR_SYMBOLS[condition.operator] || condition.operator;
-                                                                    const value = formatConditionValue(condition.factor, condition.value);
-                                                                    const colorClass = getConditionColorClass(condition.factor);
+                                                    <div>
+                                                        <div className="text-xs text-slate-500 mb-1.5">Conditions</div>
+                                                        {rule.ruleJson ? (
+                                                            <RuleConditionsDisplay ruleJson={rule.ruleJson}/>
+                                                        ) : (
+                                                            <span className="text-xs text-slate-400 italic">No conditions defined</span>
+                                                        )}
+                                                    </div>
 
-                                                                    return (
-                                                                        <span
-                                                                            key={idx}
-                                                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border ${colorClass}`}
-                                                                            title={`${label} ${operator} ${value}`}
-                                                                        >
-                                                    <span>{label}</span>
-                                                                            {operator !== '=' && <span
-                                                                                className="opacity-60">{operator}</span>}
-                                                                            <span className="font-bold">{value}</span>
-                                                </span>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    )}
 
                                                     {/* Validity */}
                                                     {(rule.validFrom || rule.validTo) && (
