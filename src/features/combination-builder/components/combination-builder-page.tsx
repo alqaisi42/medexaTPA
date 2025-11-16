@@ -14,6 +14,190 @@ import { CombinationRule, CombinationType, CombinationFactor } from '@/types'
 import { generateId, formatCurrency } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 
+type FactorDataType = 'STRING' | 'NUMBER'
+
+interface FactorDefinition {
+    key: string
+    name: string
+    dataType: FactorDataType
+    allowedValues?: string[]
+    description?: string
+}
+
+interface FactorCategory {
+    id: string
+    title: string
+    description: string
+    factors: FactorDefinition[]
+}
+
+type DiscountType = 'none' | 'percent' | 'amount'
+type AdjustmentDirection = 'none' | 'increase' | 'decrease'
+type AdjustmentUnit = 'PERCENT' | 'AMOUNT'
+type RuleStatus = 'draft' | 'active'
+
+interface RuleFormState {
+    name: string
+    scope: CombinationType
+    status: RuleStatus
+    description: string
+    stackable: boolean
+    discountType: DiscountType
+    discountValue: number
+    discountCap?: number
+    adjustmentDirection: AdjustmentDirection
+    adjustmentUnit: AdjustmentUnit
+    adjustmentValue: number
+    effectiveFrom: string
+    effectiveTo?: string
+    factors: Record<string, string>
+}
+
+const FACTOR_CATEGORIES: FactorCategory[] = [
+    {
+        id: 'patient',
+        title: 'Patient Factors',
+        description: 'Demographics and eligibility attributes',
+        factors: [
+            { key: 'patient_age', name: 'Patient Age', dataType: 'NUMBER', description: 'Use ranges like 0-18' },
+            { key: 'gender', name: 'Gender', dataType: 'STRING', allowedValues: ['M', 'F'] },
+            { key: 'insurance_degree', name: 'Insurance Degree', dataType: 'STRING', allowedValues: ['GOLD', 'SILVER', 'BRONZE', 'PLATINUM'] },
+            { key: 'member_type', name: 'Member Type', dataType: 'STRING', allowedValues: ['HOF', 'DEPENDENT'] },
+            { key: 'relation_degree', name: 'Relation Degree', dataType: 'STRING', allowedValues: ['SON', 'WIFE', 'FATHER', 'MOTHER'] },
+            { key: 'chronic_status', name: 'Chronic Condition', dataType: 'STRING', allowedValues: ['YES', 'NO'] },
+            { key: 'pregnancy_status', name: 'Pregnancy Status', dataType: 'STRING', allowedValues: ['YES', 'NO'] },
+            { key: 'disability_level', name: 'Disability Level', dataType: 'STRING', allowedValues: ['NONE', 'MILD', 'SEVERE'] },
+            { key: 'loyalty_score', name: 'Loyalty Score', dataType: 'NUMBER' }
+        ]
+    },
+    {
+        id: 'provider',
+        title: 'Provider Factors',
+        description: 'Facility attributes and network grouping',
+        factors: [
+            { key: 'provider_type', name: 'Provider Type', dataType: 'STRING', allowedValues: ['clinic', 'hospital', 'lab', 'radiology'] },
+            { key: 'specialty_id', name: 'Specialty ID', dataType: 'NUMBER' },
+            { key: 'provider_level', name: 'Provider Level', dataType: 'STRING', allowedValues: ['A', 'B', 'C'] },
+            { key: 'provider_region', name: 'Provider Region', dataType: 'STRING', allowedValues: ['AMMAN', 'IRBID', 'AQABA'] },
+            { key: 'provider_network_tier', name: 'Provider Network Tier', dataType: 'STRING', allowedValues: ['IN_NETWORK', 'OUT_NETWORK'] },
+            { key: 'facility_experience_years', name: 'Facility Experience (Years)', dataType: 'NUMBER' },
+            { key: 'facility_licensing_grade', name: 'Facility Licensing Grade', dataType: 'STRING', allowedValues: ['GRADE_1', 'GRADE_2'] }
+        ]
+    },
+    {
+        id: 'doctor',
+        title: 'Doctor Factors',
+        description: 'Physician experience and profile',
+        factors: [
+            { key: 'doctor_experience_years', name: 'Doctor Experience Years', dataType: 'NUMBER' },
+            { key: 'doctor_title', name: 'Doctor Title', dataType: 'STRING', allowedValues: ['CONSULTANT', 'SPECIALIST', 'GP'] },
+            { key: 'doctor_gender', name: 'Doctor Gender', dataType: 'STRING', allowedValues: ['M', 'F'] },
+            { key: 'doctor_rating', name: 'Doctor Rating', dataType: 'NUMBER' },
+            { key: 'doctor_shift', name: 'Doctor Shift', dataType: 'STRING', allowedValues: ['DAY', 'NIGHT'] }
+        ]
+    },
+    {
+        id: 'visit',
+        title: 'Visit Factors',
+        description: 'Visit metadata and channels',
+        factors: [
+            { key: 'visit_time', name: 'Visit Time', dataType: 'STRING', allowedValues: ['DAY', 'NIGHT'] },
+            { key: 'visit_day', name: 'Visit Day', dataType: 'STRING', allowedValues: ['WEEKDAY', 'WEEKEND', 'HOLIDAY'] },
+            { key: 'visit_type', name: 'Visit Type', dataType: 'STRING', allowedValues: ['NEW', 'FOLLOWUP'] },
+            { key: 'visit_channel', name: 'Visit Channel', dataType: 'STRING', allowedValues: ['WALK_IN', 'ONLINE', 'PHONE'] },
+            { key: 'visit_duration', name: 'Visit Duration (minutes)', dataType: 'NUMBER' }
+        ]
+    },
+    {
+        id: 'policy',
+        title: 'Policy & Insurance',
+        description: 'Coverage, co-pay and deductibles',
+        factors: [
+            { key: 'policy_type', name: 'Policy Type', dataType: 'STRING', allowedValues: ['VIP', 'CORPORATE', 'INDIVIDUAL'] },
+            { key: 'coverage_type', name: 'Coverage Type', dataType: 'STRING', allowedValues: ['FULL', 'PARTIAL', 'EXCLUDED'] },
+            { key: 'co_pay_percent', name: 'Co-Pay Percentage', dataType: 'NUMBER' },
+            { key: 'has_preapproval', name: 'Preapproval Required', dataType: 'STRING', allowedValues: ['YES', 'NO'] },
+            { key: 'policy_age_limit', name: 'Policy Age Limit', dataType: 'NUMBER' },
+            { key: 'deductible_amount', name: 'Deductible Amount', dataType: 'NUMBER' }
+        ]
+    },
+    {
+        id: 'procedure',
+        title: 'Procedure / CPT / ICD',
+        description: 'Clinical grouping, severity and complexity',
+        factors: [
+            { key: 'procedure_group', name: 'Procedure Group', dataType: 'STRING', allowedValues: ['CONSULTATION', 'SURGERY', 'LAB', 'RAD'] },
+            { key: 'cpt_level', name: 'CPT Complexity Level', dataType: 'STRING', allowedValues: ['LOW', 'MED', 'HIGH'] },
+            { key: 'icd_category', name: 'ICD Category', dataType: 'STRING' },
+            { key: 'connected_icd_count', name: 'Connected ICD Count', dataType: 'NUMBER' },
+            { key: 'severity_level', name: 'Severity Level', dataType: 'STRING', allowedValues: ['NORMAL', 'MODERATE', 'CRITICAL'] }
+        ]
+    },
+    {
+        id: 'location',
+        title: 'Location',
+        description: 'Geography and zoning',
+        factors: [
+            { key: 'city', name: 'City', dataType: 'STRING' },
+            { key: 'governorate', name: 'Governorate', dataType: 'STRING' },
+            { key: 'zone', name: 'Zone', dataType: 'STRING', allowedValues: ['URBAN', 'RURAL'] }
+        ]
+    },
+    {
+        id: 'time',
+        title: 'Time Factors',
+        description: 'Calendar and seasonal impact',
+        factors: [
+            { key: 'day_of_week', name: 'Day of Week', dataType: 'STRING', allowedValues: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] },
+            { key: 'season', name: 'Season', dataType: 'STRING', allowedValues: ['WINTER', 'SPRING', 'SUMMER', 'AUTUMN'] },
+            { key: 'holiday_flag', name: 'Holiday Flag', dataType: 'STRING', allowedValues: ['YES', 'NO'] }
+        ]
+    },
+    {
+        id: 'claim',
+        title: 'Claim Factors',
+        description: 'Utilization and financial history',
+        factors: [
+            { key: 'claim_type', name: 'Claim Type', dataType: 'STRING', allowedValues: ['OPD', 'ER', 'IPD'] },
+            { key: 'claim_amount', name: 'Claim Amount', dataType: 'NUMBER' },
+            { key: 'claim_frequency', name: 'Claim Frequency', dataType: 'NUMBER' },
+            { key: 'claim_previous_rejections', name: 'Previous Rejections', dataType: 'NUMBER' }
+        ]
+    },
+    {
+        id: 'advanced',
+        title: 'Advanced & AI Factors',
+        description: 'Future-ready risk scores and utilization signals',
+        factors: [
+            { key: 'ai_risk_score', name: 'AI Risk Score', dataType: 'NUMBER' },
+            { key: 'doctor_ai_score', name: 'Doctor AI Score', dataType: 'NUMBER' },
+            { key: 'patient_risk_level', name: 'Patient Risk Level', dataType: 'STRING', allowedValues: ['LOW', 'MED', 'HIGH'] },
+            { key: 'utilization_score', name: 'Utilization Score', dataType: 'NUMBER' },
+            { key: 'fraud_score', name: 'Fraud Score', dataType: 'NUMBER' },
+            { key: 'travel_distance_km', name: 'Distance to Provider (KM)', dataType: 'NUMBER' },
+            { key: 'queue_load', name: 'Queue Load', dataType: 'NUMBER' },
+            { key: 'peak_time_flag', name: 'Peak-Time Flag', dataType: 'STRING', allowedValues: ['YES', 'NO'] }
+        ]
+    }
+]
+
+const initialRuleForm: RuleFormState = {
+    name: '',
+    scope: 'procedure_pricing',
+    status: 'draft',
+    description: '',
+    stackable: true,
+    discountType: 'none',
+    discountValue: 0,
+    discountCap: undefined,
+    adjustmentDirection: 'none',
+    adjustmentUnit: 'PERCENT',
+    adjustmentValue: 0,
+    effectiveFrom: new Date().toISOString().split('T')[0],
+    effectiveTo: undefined,
+    factors: {}
+}
+
 export function CombinationBuilderPage() {
     const language = useAppStore(state => state.language)
     const [combinations, setCombinations] = useState<CombinationRule[]>([])
@@ -46,6 +230,8 @@ export function CombinationBuilderPage() {
         ageRange?: string
     }>({})
 
+    const [ruleForm, setRuleForm] = useState<RuleFormState>(initialRuleForm)
+
     const updateSelectedFactor = <K extends keyof typeof selectedFactors>(
         factor: K,
         value: string
@@ -62,6 +248,75 @@ export function CombinationBuilderPage() {
             return next
         })
     }
+
+    const handleRuleFactorChange = (key: string, value: string) => {
+        setRuleForm(prev => ({
+            ...prev,
+            factors: {
+                ...prev.factors,
+                [key]: value
+            }
+        }))
+    }
+
+    const handleRuleFieldChange = <K extends keyof RuleFormState>(field: K, value: RuleFormState[K]) => {
+        setRuleForm(prev => ({
+            ...prev,
+            [field]: value
+        }))
+    }
+
+    const resetRuleForm = () => {
+        setRuleForm(initialRuleForm)
+    }
+
+    const renderFactorInputControl = (factor: FactorDefinition) => {
+        const value = ruleForm.factors[factor.key] ?? ''
+
+        if (factor.allowedValues && factor.allowedValues.length > 0) {
+            return (
+                <Select
+                    value={value}
+                    onValueChange={(selected) => handleRuleFactorChange(factor.key, selected)}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select value" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="">Not Set</SelectItem>
+                        {factor.allowedValues.map(option => (
+                            <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )
+        }
+
+        return (
+            <Input
+                type={factor.dataType === 'NUMBER' ? 'number' : 'text'}
+                value={value}
+                placeholder={factor.dataType === 'NUMBER' ? 'Enter numeric value' : 'Type value'}
+                onChange={(e) => handleRuleFactorChange(factor.key, e.target.value)}
+            />
+        )
+    }
+
+    const filledRuleFactors = Object.entries(ruleForm.factors).filter(([_, value]) => value)
+
+    const discountSummary = ruleForm.discountType === 'none'
+        ? 'No discount applied'
+        : ruleForm.discountType === 'percent'
+            ? `${ruleForm.discountValue || 0}% discount${ruleForm.discountCap ? ` (cap ${formatCurrency(ruleForm.discountCap)})` : ''}`
+            : `${formatCurrency(ruleForm.discountValue || 0)} discount${ruleForm.discountCap ? ` (cap ${formatCurrency(ruleForm.discountCap)})` : ''}`
+
+    const adjustmentSummary = ruleForm.adjustmentDirection === 'none'
+        ? 'No manual adjustment'
+        : `${ruleForm.adjustmentDirection === 'increase' ? '+' : '-'}${ruleForm.adjustmentValue || 0}${ruleForm.adjustmentUnit === 'PERCENT' ? '%' : ' JD'}`
+
+    const effectiveRangeSummary = ruleForm.effectiveTo
+        ? `${ruleForm.effectiveFrom} → ${ruleForm.effectiveTo}`
+        : `Effective from ${ruleForm.effectiveFrom}`
 
     // Sample data
     useEffect(() => {
@@ -265,198 +520,473 @@ export function CombinationBuilderPage() {
     const icds = ['S62.0', 'S62.1', 'S62.3', 'E78.0', 'J18.9']
 
     return (
-        <div className="p-6">
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold mb-2">Combination Builder</h1>
-                <p className="text-gray-600">Define dynamic rules and pricing combinations using cross-product matrix</p>
-            </div>
+        <div className="p-6 space-y-6">
+            <Tabs defaultValue="combinations" className="space-y-6">
+                <TabsList className="grid w-full max-w-2xl grid-cols-2">
+                    <TabsTrigger value="combinations">Combination Builder</TabsTrigger>
+                    <TabsTrigger value="rule_designer">Rule Designer</TabsTrigger>
+                </TabsList>
 
-            {/* Combination Type Selector */}
-            <div className="bg-white rounded-lg shadow p-4 mb-6">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Grid3X3 className="h-6 w-6 text-tpa-primary" />
-                        <Select value={combinationType} onValueChange={(value) => setCombinationType(value as CombinationType)}>
-                            <SelectTrigger className="w-64">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="procedure_pricing">Procedure Pricing</SelectItem>
-                                <SelectItem value="authorization_rule">Authorization Rules</SelectItem>
-                                <SelectItem value="limit_rule">Limit Rules</SelectItem>
-                                <SelectItem value="coverage_rule">Coverage Rules</SelectItem>
-                            </SelectContent>
-                        </Select>
+                <TabsContent value="combinations" className="space-y-6">
+                    {/* Header */}
+                    <div>
+                        <h1 className="text-2xl font-bold mb-1">Combination Builder</h1>
+                        <p className="text-gray-600">Define dynamic rules and pricing combinations using cross-product matrix</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setIsMatrixView(!isMatrixView)}
-                        >
-                            <Calculator className="h-4 w-4 mr-2" />
-                            {isMatrixView ? 'Table View' : 'Matrix View'}
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={generateCrossProduct}
-                        >
-                            <Grid3X3 className="h-4 w-4 mr-2" />
-                            Generate Cross Product
-                        </Button>
-                    </div>
-                </div>
-            </div>
+                    {/* Combination Type Selector */}
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+                                <div className="flex items-center gap-3">
+                                    <Grid3X3 className="h-6 w-6 text-tpa-primary" />
+                                    <span className="font-semibold text-gray-800">Combination Type</span>
+                                </div>
+                                <Select value={combinationType} onValueChange={(value) => setCombinationType(value as CombinationType)}>
+                                    <SelectTrigger className="w-full md:w-64">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="procedure_pricing">Procedure Pricing</SelectItem>
+                                        <SelectItem value="authorization_rule">Authorization Rules</SelectItem>
+                                        <SelectItem value="limit_rule">Limit Rules</SelectItem>
+                                        <SelectItem value="coverage_rule">Coverage Rules</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-            {/* Toolbar */}
-            <div className="bg-white rounded-lg shadow p-4 mb-6">
-                <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <Input
-                                placeholder="Search combinations..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10 w-64"
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setIsMatrixView(!isMatrixView)}
+                                >
+                                    <Calculator className="h-4 w-4 mr-2" />
+                                    {isMatrixView ? 'Table View' : 'Matrix View'}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={generateCrossProduct}
+                                >
+                                    <Grid3X3 className="h-4 w-4 mr-2" />
+                                    Generate Cross Product
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Toolbar */}
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Input
+                                        placeholder="Search combinations..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-10 w-64"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button variant="outline" size="sm">
+                                    <Copy className="h-4 w-4 mr-2" />
+                                    Duplicate
+                                </Button>
+                                <Button variant="outline" size="sm">
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    Import
+                                </Button>
+                                <Button variant="outline" size="sm">
+                                    <Download className="h-4 w-4 mr-2" />
+                                    Export
+                                </Button>
+                                <Button onClick={handleAdd} className="bg-tpa-primary hover:bg-tpa-accent">
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Add Combination
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Data View */}
+                    {!isMatrixView ? (
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="w-12">
+                                            <input type="checkbox" className="rounded" />
+                                        </TableHead>
+                                        <TableHead>Factors</TableHead>
+                                        <TableHead>Value</TableHead>
+                                        <TableHead>Default</TableHead>
+                                        <TableHead>Effective Date</TableHead>
+                                        <TableHead>Priority</TableHead>
+                                        <TableHead>Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredCombinations.map((combination) => (
+                                        <TableRow key={combination.id} className="hover:bg-gray-50">
+                                            <TableCell>
+                                                <input type="checkbox" className="rounded" />
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {renderFactorPills(combination.factors)}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="font-medium">
+                                                {renderValue(combination)}
+                                            </TableCell>
+                                            <TableCell>
+                                                {combination.isDefault && (
+                                                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
+                                                        Default
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {new Date(combination.effectiveDate).toLocaleDateString()}
+                                            </TableCell>
+                                            <TableCell>{combination.priority}</TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleEdit(combination)}
+                                                    >
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleDelete(combination)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-red-500" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    ) : (
+                        // Matrix View
+                        <div className="bg-white rounded-lg shadow p-4">
+                            <div className="overflow-auto">
+                                <table className="min-w-full border">
+                                    <thead>
+                                    <tr className="bg-gray-50">
+                                        <th className="border p-2 text-left">Provider</th>
+                                        <th className="border p-2 text-left">Procedure</th>
+                                        <th className="border p-2 text-center">First Degree</th>
+                                        <th className="border p-2 text-center">Second Degree</th>
+                                        <th className="border p-2 text-center">Third Degree</th>
+                                        <th className="border p-2 text-center">Private Degree</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {providers.slice(0, 3).map(provider => (
+                                        procedures.slice(0, 3).map(procedure => (
+                                            <tr key={`${provider}-${procedure.code}`} className="hover:bg-gray-50">
+                                                <td className="border p-2">{provider}</td>
+                                                <td className="border p-2">{procedure.code} - {procedure.name}</td>
+                                                {insuranceDegrees.map(degree => {
+                                                    const combination = combinations.find(c =>
+                                                        c.factors.some(f => f.factorValue === provider) &&
+                                                        c.factors.some(f => f.factorValue === procedure.code) &&
+                                                        c.factors.some(f => f.factorValue === degree)
+                                                    )
+                                                    return (
+                                                        <td key={degree} className="border p-2 text-center">
+                                                            {combination ? formatCurrency(combination.value as number) : '-'}
+                                                        </td>
+                                                    )
+                                                })}
+                                            </tr>
+                                        ))
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="mt-4 text-sm text-gray-600">
+                                <p>Matrix view shows cross-product of selected factors. Click cells to edit values directly.</p>
+                            </div>
+                        </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="rule_designer" className="space-y-6">
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className="text-sm uppercase tracking-wide text-gray-500">Fixed Factors</p>
+                                <h2 className="text-2xl font-semibold">Dynamic Rule Designer</h2>
+                                <p className="text-gray-600 text-sm">Use the master factor list to build underwriting, pricing and compliance logic with discounts & adjustments.</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-right">
+                                <p className="text-xs uppercase text-gray-500">Active Factors</p>
+                                <p className="text-3xl font-bold text-tpa-primary">{filledRuleFactors.length}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
+                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                            <div className="space-y-2">
+                                <Label>Rule Name</Label>
+                                <Input
+                                    placeholder="e.g. VIP maternity pricing"
+                                    value={ruleForm.name}
+                                    onChange={(e) => handleRuleFieldChange('name', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Rule Scope</Label>
+                                <Select
+                                    value={ruleForm.scope}
+                                    onValueChange={(value) => handleRuleFieldChange('scope', value as CombinationType)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="procedure_pricing">Procedure Pricing</SelectItem>
+                                        <SelectItem value="authorization_rule">Authorization</SelectItem>
+                                        <SelectItem value="limit_rule">Limits</SelectItem>
+                                        <SelectItem value="coverage_rule">Coverage</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Status</Label>
+                                <Select
+                                    value={ruleForm.status}
+                                    onValueChange={(value) => handleRuleFieldChange('status', value as RuleStatus)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="draft">Draft</SelectItem>
+                                        <SelectItem value="active">Active</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                            <div className="space-y-2">
+                                <Label>Effective From</Label>
+                                <Input
+                                    type="date"
+                                    value={ruleForm.effectiveFrom}
+                                    onChange={(e) => handleRuleFieldChange('effectiveFrom', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Effective To</Label>
+                                <Input
+                                    type="date"
+                                    value={ruleForm.effectiveTo ?? ''}
+                                    onChange={(e) => handleRuleFieldChange('effectiveTo', e.target.value || undefined)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Discount Type</Label>
+                                <Select
+                                    value={ruleForm.discountType}
+                                    onValueChange={(value) => handleRuleFieldChange('discountType', value as DiscountType)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No Discount</SelectItem>
+                                        <SelectItem value="percent">Percentage</SelectItem>
+                                        <SelectItem value="amount">Fixed Amount</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Discount Value</Label>
+                                <Input
+                                    type="number"
+                                    value={ruleForm.discountValue}
+                                    disabled={ruleForm.discountType === 'none'}
+                                    onChange={(e) => handleRuleFieldChange('discountValue', Number(e.target.value))}
+                                    placeholder="0"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                            <div className="space-y-2">
+                                <Label>Discount Cap</Label>
+                                <Input
+                                    type="number"
+                                    value={ruleForm.discountCap ?? ''}
+                                    disabled={ruleForm.discountType === 'none'}
+                                    onChange={(e) => handleRuleFieldChange('discountCap', e.target.value ? Number(e.target.value) : undefined)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Adjustment Direction</Label>
+                                <Select
+                                    value={ruleForm.adjustmentDirection}
+                                    onValueChange={(value) => handleRuleFieldChange('adjustmentDirection', value as AdjustmentDirection)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No Adjustment</SelectItem>
+                                        <SelectItem value="increase">Increase</SelectItem>
+                                        <SelectItem value="decrease">Decrease</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Adjustment Unit</Label>
+                                <Select
+                                    value={ruleForm.adjustmentUnit}
+                                    onValueChange={(value) => handleRuleFieldChange('adjustmentUnit', value as AdjustmentUnit)}
+                                    disabled={ruleForm.adjustmentDirection === 'none'}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="PERCENT">Percent</SelectItem>
+                                        <SelectItem value="AMOUNT">Amount</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Adjustment Value</Label>
+                                <Input
+                                    type="number"
+                                    value={ruleForm.adjustmentValue}
+                                    disabled={ruleForm.adjustmentDirection === 'none'}
+                                    onChange={(e) => handleRuleFieldChange('adjustmentValue', Number(e.target.value))}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4">
+                            <Switch
+                                id="stackable"
+                                checked={ruleForm.stackable}
+                                onCheckedChange={(checked) => handleRuleFieldChange('stackable', checked)}
+                            />
+                            <div>
+                                <Label htmlFor="stackable" className="font-medium">Allow stacking with other discounts</Label>
+                                <p className="text-sm text-gray-500">Enable when this rule should be evaluated with other adjustments.</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Description & Rationale</Label>
+                            <textarea
+                                className="w-full rounded-md border border-gray-200 bg-white p-3 text-sm focus:border-tpa-primary focus:outline-none"
+                                rows={3}
+                                placeholder="Document the logic, approvals or notes..."
+                                value={ruleForm.description}
+                                onChange={(e) => handleRuleFieldChange('description', e.target.value)}
                             />
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm">
-                            <Copy className="h-4 w-4 mr-2" />
-                            Duplicate
-                        </Button>
-                        <Button variant="outline" size="sm">
-                            <Upload className="h-4 w-4 mr-2" />
-                            Import
-                        </Button>
-                        <Button variant="outline" size="sm">
-                            <Download className="h-4 w-4 mr-2" />
-                            Export
-                        </Button>
-                        <Button onClick={handleAdd} className="bg-tpa-primary hover:bg-tpa-accent">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Combination
-                        </Button>
+                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
+                        {FACTOR_CATEGORIES.map(category => (
+                            <div key={category.id} className="space-y-3">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-800">{category.title}</h3>
+                                        <p className="text-sm text-gray-500">{category.description}</p>
+                                    </div>
+                                    <span className="text-xs uppercase tracking-wide text-gray-400">{category.factors.length} fields</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    {category.factors.map(factor => (
+                                        <div key={factor.key} className="space-y-2 rounded-lg border border-gray-100 p-3">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="text-sm font-medium text-gray-700">{factor.name}</Label>
+                                                <span className="text-[11px] uppercase text-gray-400">{factor.dataType}</span>
+                                            </div>
+                                            {renderFactorInputControl(factor)}
+                                            {factor.description && (
+                                                <p className="text-xs text-gray-500">{factor.description}</p>
+                                            )}
+                                            <p className="text-[11px] font-mono text-gray-400">{factor.key}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                </div>
-            </div>
 
-            {/* Data View */}
-            {!isMatrixView ? (
-                <div className="bg-white rounded-lg shadow overflow-hidden">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-12">
-                                    <input type="checkbox" className="rounded" />
-                                </TableHead>
-                                <TableHead>Factors</TableHead>
-                                <TableHead>Value</TableHead>
-                                <TableHead>Default</TableHead>
-                                <TableHead>Effective Date</TableHead>
-                                <TableHead>Priority</TableHead>
-                                <TableHead>Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {filteredCombinations.map((combination) => (
-                                <TableRow key={combination.id} className="hover:bg-gray-50">
-                                    <TableCell>
-                                        <input type="checkbox" className="rounded" />
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex flex-wrap gap-1">
-                                            {renderFactorPills(combination.factors)}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="font-medium">
-                                        {renderValue(combination)}
-                                    </TableCell>
-                                    <TableCell>
-                                        {combination.isDefault && (
-                                            <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
-                        Default
-                      </span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {new Date(combination.effectiveDate).toLocaleDateString()}
-                                    </TableCell>
-                                    <TableCell>{combination.priority}</TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleEdit(combination)}
-                                            >
-                                                <Edit className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleDelete(combination)}
-                                            >
-                                                <Trash2 className="h-4 w-4 text-red-500" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
+                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <div className="rounded-lg border border-gray-100 p-4">
+                                <p className="text-xs uppercase tracking-wide text-gray-400">Discount Strategy</p>
+                                <p className="text-lg font-semibold text-gray-800">{discountSummary}</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-100 p-4">
+                                <p className="text-xs uppercase tracking-wide text-gray-400">Adjustment</p>
+                                <p className="text-lg font-semibold text-gray-800">{adjustmentSummary}</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-100 p-4">
+                                <p className="text-xs uppercase tracking-wide text-gray-400">Timeline</p>
+                                <p className="text-lg font-semibold text-gray-800">{effectiveRangeSummary}</p>
+                            </div>
+                        </div>
+
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Factor</TableHead>
+                                    <TableHead>Key</TableHead>
+                                    <TableHead>Value</TableHead>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            ) : (
-                // Matrix View
-                <div className="bg-white rounded-lg shadow p-4">
-                    <div className="overflow-auto">
-                        <table className="min-w-full border">
-                            <thead>
-                            <tr className="bg-gray-50">
-                                <th className="border p-2 text-left">Provider</th>
-                                <th className="border p-2 text-left">Procedure</th>
-                                <th className="border p-2 text-center">First Degree</th>
-                                <th className="border p-2 text-center">Second Degree</th>
-                                <th className="border p-2 text-center">Third Degree</th>
-                                <th className="border p-2 text-center">Private Degree</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {providers.slice(0, 3).map(provider => (
-                                procedures.slice(0, 3).map(procedure => (
-                                    <tr key={`${provider}-${procedure.code}`} className="hover:bg-gray-50">
-                                        <td className="border p-2">{provider}</td>
-                                        <td className="border p-2">{procedure.code} - {procedure.name}</td>
-                                        {insuranceDegrees.map(degree => {
-                                            const combination = combinations.find(c =>
-                                                c.factors.some(f => f.factorValue === provider) &&
-                                                c.factors.some(f => f.factorValue === procedure.code) &&
-                                                c.factors.some(f => f.factorValue === degree)
-                                            )
-                                            return (
-                                                <td key={degree} className="border p-2 text-center">
-                                                    {combination ? formatCurrency(combination.value as number) : '-'}
-                                                </td>
-                                            )
-                                        })}
-                                    </tr>
-                                ))
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            </TableHeader>
+                            <TableBody>
+                                {filledRuleFactors.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="text-center text-sm text-gray-500">
+                                            No factor values selected yet.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                {filledRuleFactors.map(([key, value]) => {
+                                    const factor = FACTOR_CATEGORIES.flatMap(category => category.factors).find(f => f.key === key)
+                                    return (
+                                        <TableRow key={key}>
+                                            <TableCell>{factor?.name ?? key}</TableCell>
+                                            <TableCell className="font-mono text-xs text-gray-500">{key}</TableCell>
+                                            <TableCell className="font-medium text-gray-900">{value}</TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
 
-                    <div className="mt-4 text-sm text-gray-600">
-                        <p>Matrix view shows cross-product of selected factors. Click cells to edit values directly.</p>
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                            <Button variant="outline" onClick={resetRuleForm}>Reset</Button>
+                            <Button variant="outline">Save Draft</Button>
+                            <Button className="bg-tpa-primary hover:bg-tpa-accent">Activate Rule</Button>
+                        </div>
                     </div>
-                </div>
-            )}
+                </TabsContent>
+            </Tabs>
 
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
