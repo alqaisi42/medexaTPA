@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Search, Filter, Download, Upload, Grid3X3, Copy, Settings, Calculator } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Download, Upload, Grid3X3, Copy, Calculator } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,9 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { CombinationRule, CombinationType, CombinationFactor } from '@/types'
+import { CombinationRule, CombinationType, CombinationFactor, CreatePricingRulePayload } from '@/types'
 import { generateId, formatCurrency } from '@/lib/utils'
-import { useAppStore } from '@/store/app-store'
+import { createPricingRule } from '@/lib/api/pricing'
 
 type FactorDataType = 'STRING' | 'NUMBER'
 
@@ -51,6 +51,10 @@ interface RuleFormState {
     effectiveFrom: string
     effectiveTo?: string
     factors: Record<string, string>
+    priceListId?: number
+    procedureId?: number
+    priority: number
+    basePrice: number
 }
 
 const FACTOR_CATEGORIES: FactorCategory[] = [
@@ -181,7 +185,28 @@ const FACTOR_CATEGORIES: FactorCategory[] = [
     }
 ]
 
-const initialRuleForm: RuleFormState = {
+const PRICE_LIST_OPTIONS = [
+    { id: 101, name: 'Premium Hospital Network', providerType: 'Hospital' },
+    { id: 205, name: 'National Clinics Standard', providerType: 'Clinic' },
+    { id: 309, name: 'Radiology Partners Preferred', providerType: 'Radiology' },
+]
+
+const PROCEDURE_OPTIONS = [
+    { id: 2964, code: '2964', name: 'Doctor Examination' },
+    { id: 17476, code: '17476', name: 'Short Arm Cast' },
+    { id: 17457, code: '17457', name: 'Metacarpal Fracture MUA' },
+    { id: 80061, code: '80061', name: 'Lipid Panel' },
+    { id: 71020, code: '71020', name: 'Chest X-Ray' },
+]
+
+const FACTOR_DEFINITION_LOOKUP = FACTOR_CATEGORIES
+    .flatMap(category => category.factors)
+    .reduce<Record<string, FactorDefinition>>((accumulator, factor) => {
+        accumulator[factor.key] = factor
+        return accumulator
+    }, {})
+
+const buildInitialRuleForm = (): RuleFormState => ({
     name: '',
     scope: 'procedure_pricing',
     status: 'draft',
@@ -195,11 +220,14 @@ const initialRuleForm: RuleFormState = {
     adjustmentValue: 0,
     effectiveFrom: new Date().toISOString().split('T')[0],
     effectiveTo: undefined,
-    factors: {}
-}
+    factors: {},
+    priceListId: PRICE_LIST_OPTIONS[0]?.id,
+    procedureId: PROCEDURE_OPTIONS[0]?.id,
+    priority: 1,
+    basePrice: 0,
+})
 
 export function CombinationBuilderPage() {
-    const language = useAppStore(state => state.language)
     const [combinations, setCombinations] = useState<CombinationRule[]>([])
     const [filteredCombinations, setFilteredCombinations] = useState<CombinationRule[]>([])
     const [selectedCombination, setSelectedCombination] = useState<CombinationRule | null>(null)
@@ -230,7 +258,9 @@ export function CombinationBuilderPage() {
         ageRange?: string
     }>({})
 
-    const [ruleForm, setRuleForm] = useState<RuleFormState>(initialRuleForm)
+    const [ruleForm, setRuleForm] = useState<RuleFormState>(buildInitialRuleForm)
+    const [activeRuleDesignerTab, setActiveRuleDesignerTab] = useState<'general' | 'factors' | 'financials' | 'summary'>('general')
+    const [isCreatingRule, setIsCreatingRule] = useState(false)
 
     const updateSelectedFactor = <K extends keyof typeof selectedFactors>(
         factor: K,
@@ -267,7 +297,8 @@ export function CombinationBuilderPage() {
     }
 
     const resetRuleForm = () => {
-        setRuleForm(initialRuleForm)
+        setRuleForm(buildInitialRuleForm())
+        setActiveRuleDesignerTab('general')
     }
 
     const renderFactorInputControl = (factor: FactorDefinition) => {
@@ -302,7 +333,33 @@ export function CombinationBuilderPage() {
         )
     }
 
-    const filledRuleFactors = Object.entries(ruleForm.factors).filter(([_, value]) => value)
+    const parseFactorValue = (factorKey: string, rawValue: string): unknown => {
+        const definition = FACTOR_DEFINITION_LOOKUP[factorKey]
+
+        if (!rawValue) {
+            return rawValue
+        }
+
+        if (definition?.dataType === 'NUMBER') {
+            const numericValue = Number(rawValue)
+            return Number.isNaN(numericValue) ? rawValue : numericValue
+        }
+
+        const trimmed = rawValue.trim()
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try {
+                return JSON.parse(trimmed)
+            } catch {
+                return trimmed
+            }
+        }
+
+        return trimmed
+    }
+
+    const filledRuleFactors = Object.entries(ruleForm.factors).filter(([, value]) => value)
+    const selectedPriceList = PRICE_LIST_OPTIONS.find(option => option.id === ruleForm.priceListId)
+    const selectedProcedure = PROCEDURE_OPTIONS.find(option => option.id === ruleForm.procedureId)
 
     const discountSummary = ruleForm.discountType === 'none'
         ? 'No discount applied'
@@ -317,6 +374,103 @@ export function CombinationBuilderPage() {
     const effectiveRangeSummary = ruleForm.effectiveTo
         ? `${ruleForm.effectiveFrom} → ${ruleForm.effectiveTo}`
         : `Effective from ${ruleForm.effectiveFrom}`
+
+    const canCreateRule = Boolean(
+        ruleForm.name.trim() &&
+        ruleForm.priceListId &&
+        ruleForm.procedureId &&
+        filledRuleFactors.length > 0 &&
+        ruleForm.basePrice >= 0,
+    )
+
+    const handleCreateRule = async () => {
+        if (!ruleForm.priceListId || !ruleForm.procedureId) {
+            alert('Please select both a price list and a procedure to continue')
+            setActiveRuleDesignerTab('general')
+            return
+        }
+
+        if (filledRuleFactors.length === 0) {
+            alert('Add at least one factor value to build this rule context')
+            setActiveRuleDesignerTab('factors')
+            return
+        }
+
+        const conditions = filledRuleFactors.map(([factor, value]) => ({
+            factor,
+            operator: 'EQUALS',
+            value: parseFactorValue(factor, value),
+        }))
+
+        const hasPercentDiscount = ruleForm.discountType === 'percent' && ruleForm.discountValue > 0
+        const hasAmountDiscount = ruleForm.discountType === 'amount' && ruleForm.discountValue > 0
+
+        const discountPayload: CreatePricingRulePayload['discount'] = hasPercentDiscount
+            ? {
+                apply: true,
+                logicBlocks: [
+                    {
+                        percent: ruleForm.discountValue,
+                    },
+                ],
+            }
+            : undefined
+
+        const adjustmentsPayload: NonNullable<CreatePricingRulePayload['adjustments']> = []
+
+        if (hasAmountDiscount) {
+            adjustmentsPayload.push({
+                type: 'FLAT_DISCOUNT',
+                factorKey: 'GLOBAL',
+                cases: {
+                    default: -Math.abs(ruleForm.discountValue),
+                    ...(ruleForm.discountCap ? { cap: ruleForm.discountCap } : {}),
+                },
+            })
+        }
+
+        if (ruleForm.adjustmentDirection !== 'none' && ruleForm.adjustmentValue > 0) {
+            const signedValue = ruleForm.adjustmentDirection === 'decrease'
+                ? -Math.abs(ruleForm.adjustmentValue)
+                : Math.abs(ruleForm.adjustmentValue)
+
+            adjustmentsPayload.push({
+                type: ruleForm.adjustmentUnit === 'PERCENT' ? 'PERCENT_ADJUSTMENT' : 'AMOUNT_ADJUSTMENT',
+                factorKey: 'GLOBAL',
+                percent: ruleForm.adjustmentUnit === 'PERCENT' ? signedValue : undefined,
+                cases: ruleForm.adjustmentUnit === 'AMOUNT'
+                    ? { default: signedValue }
+                    : { default: 'GLOBAL' },
+            })
+        }
+
+        const payload: CreatePricingRulePayload = {
+            procedureId: ruleForm.procedureId,
+            priceListId: ruleForm.priceListId,
+            priority: ruleForm.priority,
+            validFrom: ruleForm.effectiveFrom,
+            validTo: ruleForm.effectiveTo ?? null,
+            conditions,
+            pricing: {
+                mode: 'FIXED',
+                fixedPrice: ruleForm.basePrice,
+            },
+            discount: discountPayload,
+            adjustments: adjustmentsPayload.length > 0 ? adjustmentsPayload : undefined,
+        }
+
+        try {
+            setIsCreatingRule(true)
+            await createPricingRule(payload)
+            alert('Pricing rule created successfully')
+            setActiveRuleDesignerTab('summary')
+            resetRuleForm()
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to create pricing rule')
+        } finally {
+            setIsCreatingRule(false)
+        }
+    }
 
     // Sample data
     useEffect(() => {
@@ -424,9 +578,9 @@ export function CombinationBuilderPage() {
         setFormData(combination)
 
         // Parse factors back to selected factors
-        const factors: any = {}
+        const factors: Record<string, string> = {}
         combination.factors.forEach(f => {
-            factors[f.factorType] = f.factorValue
+            factors[f.factorType] = String(f.factorValue)
         })
         setSelectedFactors(factors)
 
@@ -441,7 +595,7 @@ export function CombinationBuilderPage() {
 
     const handleSave = () => {
         const factors: CombinationFactor[] = Object.entries(selectedFactors)
-            .filter(([_, value]) => value)
+            .filter(([, value]) => value)
             .map(([type, value]) => ({
                 factorType: type,
                 factorValue: value as string
@@ -732,258 +886,374 @@ export function CombinationBuilderPage() {
                                 <h2 className="text-2xl font-semibold">Dynamic Rule Designer</h2>
                                 <p className="text-gray-600 text-sm">Use the master factor list to build underwriting, pricing and compliance logic with discounts & adjustments.</p>
                             </div>
-                            <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-right">
-                                <p className="text-xs uppercase text-gray-500">Active Factors</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button variant="outline" onClick={resetRuleForm} disabled={isCreatingRule}>Reset</Button>
+                                <Button variant="outline" disabled>Save Draft</Button>
+                                <Button
+                                    className="bg-tpa-primary hover:bg-tpa-accent"
+                                    onClick={handleCreateRule}
+                                    disabled={!canCreateRule || isCreatingRule}
+                                >
+                                    {isCreatingRule ? 'Creating…' : 'Create Rule'}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Active Factors</p>
                                 <p className="text-3xl font-bold text-tpa-primary">{filledRuleFactors.length}</p>
+                                <p className="text-xs text-gray-500">Across {FACTOR_CATEGORIES.length} dimensions</p>
                             </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
-                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                            <div className="space-y-2">
-                                <Label>Rule Name</Label>
-                                <Input
-                                    placeholder="e.g. VIP maternity pricing"
-                                    value={ruleForm.name}
-                                    onChange={(e) => handleRuleFieldChange('name', e.target.value)}
-                                />
+                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Price List</p>
+                                <p className="text-lg font-semibold text-gray-800">{selectedPriceList?.name ?? 'Select price list'}</p>
+                                <p className="text-xs text-gray-500">{selectedPriceList?.providerType ?? '—'}</p>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Rule Scope</Label>
-                                <Select
-                                    value={ruleForm.scope}
-                                    onValueChange={(value) => handleRuleFieldChange('scope', value as CombinationType)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="procedure_pricing">Procedure Pricing</SelectItem>
-                                        <SelectItem value="authorization_rule">Authorization</SelectItem>
-                                        <SelectItem value="limit_rule">Limits</SelectItem>
-                                        <SelectItem value="coverage_rule">Coverage</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Status</Label>
-                                <Select
-                                    value={ruleForm.status}
-                                    onValueChange={(value) => handleRuleFieldChange('status', value as RuleStatus)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="draft">Draft</SelectItem>
-                                        <SelectItem value="active">Active</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Procedure</p>
+                                <p className="text-lg font-semibold text-gray-800">
+                                    {selectedProcedure ? `${selectedProcedure.code} · ${selectedProcedure.name}` : 'Select procedure'}
+                                </p>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                            <div className="space-y-2">
-                                <Label>Effective From</Label>
-                                <Input
-                                    type="date"
-                                    value={ruleForm.effectiveFrom}
-                                    onChange={(e) => handleRuleFieldChange('effectiveFrom', e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Effective To</Label>
-                                <Input
-                                    type="date"
-                                    value={ruleForm.effectiveTo ?? ''}
-                                    onChange={(e) => handleRuleFieldChange('effectiveTo', e.target.value || undefined)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Discount Type</Label>
-                                <Select
-                                    value={ruleForm.discountType}
-                                    onValueChange={(value) => handleRuleFieldChange('discountType', value as DiscountType)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">No Discount</SelectItem>
-                                        <SelectItem value="percent">Percentage</SelectItem>
-                                        <SelectItem value="amount">Fixed Amount</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Discount Value</Label>
-                                <Input
-                                    type="number"
-                                    value={ruleForm.discountValue}
-                                    disabled={ruleForm.discountType === 'none'}
-                                    onChange={(e) => handleRuleFieldChange('discountValue', Number(e.target.value))}
-                                    placeholder="0"
-                                />
-                            </div>
-                        </div>
+                        <Tabs value={activeRuleDesignerTab} onValueChange={setActiveRuleDesignerTab} className="mt-6 space-y-6">
+                            <TabsList className="grid w-full grid-cols-4">
+                                <TabsTrigger value="general">General</TabsTrigger>
+                                <TabsTrigger value="factors">Factors</TabsTrigger>
+                                <TabsTrigger value="financials">Financials</TabsTrigger>
+                                <TabsTrigger value="summary">Summary</TabsTrigger>
+                            </TabsList>
 
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                            <div className="space-y-2">
-                                <Label>Discount Cap</Label>
-                                <Input
-                                    type="number"
-                                    value={ruleForm.discountCap ?? ''}
-                                    disabled={ruleForm.discountType === 'none'}
-                                    onChange={(e) => handleRuleFieldChange('discountCap', e.target.value ? Number(e.target.value) : undefined)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Adjustment Direction</Label>
-                                <Select
-                                    value={ruleForm.adjustmentDirection}
-                                    onValueChange={(value) => handleRuleFieldChange('adjustmentDirection', value as AdjustmentDirection)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">No Adjustment</SelectItem>
-                                        <SelectItem value="increase">Increase</SelectItem>
-                                        <SelectItem value="decrease">Decrease</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Adjustment Unit</Label>
-                                <Select
-                                    value={ruleForm.adjustmentUnit}
-                                    onValueChange={(value) => handleRuleFieldChange('adjustmentUnit', value as AdjustmentUnit)}
-                                    disabled={ruleForm.adjustmentDirection === 'none'}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="PERCENT">Percent</SelectItem>
-                                        <SelectItem value="AMOUNT">Amount</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Adjustment Value</Label>
-                                <Input
-                                    type="number"
-                                    value={ruleForm.adjustmentValue}
-                                    disabled={ruleForm.adjustmentDirection === 'none'}
-                                    onChange={(e) => handleRuleFieldChange('adjustmentValue', Number(e.target.value))}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4">
-                            <Switch
-                                id="stackable"
-                                checked={ruleForm.stackable}
-                                onCheckedChange={(checked) => handleRuleFieldChange('stackable', checked)}
-                            />
-                            <div>
-                                <Label htmlFor="stackable" className="font-medium">Allow stacking with other discounts</Label>
-                                <p className="text-sm text-gray-500">Enable when this rule should be evaluated with other adjustments.</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Description & Rationale</Label>
-                            <textarea
-                                className="w-full rounded-md border border-gray-200 bg-white p-3 text-sm focus:border-tpa-primary focus:outline-none"
-                                rows={3}
-                                placeholder="Document the logic, approvals or notes..."
-                                value={ruleForm.description}
-                                onChange={(e) => handleRuleFieldChange('description', e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
-                        {FACTOR_CATEGORIES.map(category => (
-                            <div key={category.id} className="space-y-3">
-                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-800">{category.title}</h3>
-                                        <p className="text-sm text-gray-500">{category.description}</p>
+                            <TabsContent value="general" className="space-y-6">
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label>Rule Name</Label>
+                                        <Input
+                                            placeholder="e.g. VIP maternity pricing"
+                                            value={ruleForm.name}
+                                            onChange={(e) => handleRuleFieldChange('name', e.target.value)}
+                                        />
                                     </div>
-                                    <span className="text-xs uppercase tracking-wide text-gray-400">{category.factors.length} fields</span>
+                                    <div className="space-y-2">
+                                        <Label>Rule Scope</Label>
+                                        <Select
+                                            value={ruleForm.scope}
+                                            onValueChange={(value) => handleRuleFieldChange('scope', value as CombinationType)}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="procedure_pricing">Procedure Pricing</SelectItem>
+                                                <SelectItem value="authorization_rule">Authorization</SelectItem>
+                                                <SelectItem value="limit_rule">Limits</SelectItem>
+                                                <SelectItem value="coverage_rule">Coverage</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Status</Label>
+                                        <Select
+                                            value={ruleForm.status}
+                                            onValueChange={(value) => handleRuleFieldChange('status', value as RuleStatus)}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="draft">Draft</SelectItem>
+                                                <SelectItem value="active">Active</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    {category.factors.map(factor => (
-                                        <div key={factor.key} className="space-y-2 rounded-lg border border-gray-100 p-3">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-sm font-medium text-gray-700">{factor.name}</Label>
-                                                <span className="text-[11px] uppercase text-gray-400">{factor.dataType}</span>
+
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label>Price List</Label>
+                                        <Select
+                                            value={ruleForm.priceListId ? String(ruleForm.priceListId) : undefined}
+                                            onValueChange={(value) => handleRuleFieldChange('priceListId', Number(value))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Choose price list" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {PRICE_LIST_OPTIONS.map(list => (
+                                                    <SelectItem key={list.id} value={String(list.id)}>
+                                                        {list.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Procedure</Label>
+                                        <Select
+                                            value={ruleForm.procedureId ? String(ruleForm.procedureId) : undefined}
+                                            onValueChange={(value) => handleRuleFieldChange('procedureId', Number(value))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Choose procedure" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {PROCEDURE_OPTIONS.map(procedure => (
+                                                    <SelectItem key={procedure.id} value={String(procedure.id)}>
+                                                        {procedure.code} · {procedure.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Base Price (JD)</Label>
+                                        <Input
+                                            type="number"
+                                            value={ruleForm.basePrice}
+                                            onChange={(e) => handleRuleFieldChange('basePrice', Number(e.target.value))}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label>Priority</Label>
+                                        <Input
+                                            type="number"
+                                            value={ruleForm.priority}
+                                            onChange={(e) => handleRuleFieldChange('priority', Number(e.target.value))}
+                                            placeholder="1"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Effective From</Label>
+                                        <Input
+                                            type="date"
+                                            value={ruleForm.effectiveFrom}
+                                            onChange={(e) => handleRuleFieldChange('effectiveFrom', e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Effective To</Label>
+                                        <Input
+                                            type="date"
+                                            value={ruleForm.effectiveTo ?? ''}
+                                            onChange={(e) => handleRuleFieldChange('effectiveTo', e.target.value || undefined)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4">
+                                    <Switch
+                                        id="stackable"
+                                        checked={ruleForm.stackable}
+                                        onCheckedChange={(checked) => handleRuleFieldChange('stackable', checked)}
+                                    />
+                                    <div>
+                                        <Label htmlFor="stackable" className="font-medium">Allow stacking with other discounts</Label>
+                                        <p className="text-sm text-gray-500">Enable when this rule should be evaluated with other adjustments.</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Description & Rationale</Label>
+                                    <textarea
+                                        className="w-full rounded-md border border-gray-200 bg-white p-3 text-sm focus:border-tpa-primary focus:outline-none"
+                                        rows={3}
+                                        placeholder="Document the logic, approvals or notes..."
+                                        value={ruleForm.description}
+                                        onChange={(e) => handleRuleFieldChange('description', e.target.value)}
+                                    />
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="factors" className="space-y-6">
+                                {FACTOR_CATEGORIES.map(category => (
+                                    <div key={category.id} className="space-y-3">
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-gray-800">{category.title}</h3>
+                                                <p className="text-sm text-gray-500">{category.description}</p>
                                             </div>
-                                            {renderFactorInputControl(factor)}
-                                            {factor.description && (
-                                                <p className="text-xs text-gray-500">{factor.description}</p>
-                                            )}
-                                            <p className="text-[11px] font-mono text-gray-400">{factor.key}</p>
+                                            <span className="text-xs uppercase tracking-wide text-gray-400">{category.factors.length} fields</span>
                                         </div>
-                                    ))}
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            {category.factors.map(factor => (
+                                                <div key={factor.key} className="space-y-2 rounded-lg border border-gray-100 p-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label className="text-sm font-medium text-gray-700">{factor.name}</Label>
+                                                        <span className="text-[11px] uppercase text-gray-400">{factor.dataType}</span>
+                                                    </div>
+                                                    {renderFactorInputControl(factor)}
+                                                    {factor.description && (
+                                                        <p className="text-xs text-gray-500">{factor.description}</p>
+                                                    )}
+                                                    <p className="text-[11px] font-mono text-gray-400">{factor.key}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <div className="border-t pt-4">
+                                    <Label className="text-sm text-gray-600">Selected Factors</Label>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {filledRuleFactors.length === 0 && (
+                                            <span className="text-sm text-gray-500">No factors selected yet.</span>
+                                        )}
+                                        {filledRuleFactors.map(([type, value]) => (
+                                            <span key={type} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                                                {type}: {value}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            </TabsContent>
 
-                    <div className="bg-white rounded-lg shadow p-6 space-y-6">
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <div className="rounded-lg border border-gray-100 p-4">
-                                <p className="text-xs uppercase tracking-wide text-gray-400">Discount Strategy</p>
-                                <p className="text-lg font-semibold text-gray-800">{discountSummary}</p>
-                            </div>
-                            <div className="rounded-lg border border-gray-100 p-4">
-                                <p className="text-xs uppercase tracking-wide text-gray-400">Adjustment</p>
-                                <p className="text-lg font-semibold text-gray-800">{adjustmentSummary}</p>
-                            </div>
-                            <div className="rounded-lg border border-gray-100 p-4">
-                                <p className="text-xs uppercase tracking-wide text-gray-400">Timeline</p>
-                                <p className="text-lg font-semibold text-gray-800">{effectiveRangeSummary}</p>
-                            </div>
-                        </div>
+                            <TabsContent value="financials" className="space-y-6">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                    <div className="space-y-2">
+                                        <Label>Discount Type</Label>
+                                        <Select
+                                            value={ruleForm.discountType}
+                                            onValueChange={(value) => handleRuleFieldChange('discountType', value as DiscountType)}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">No Discount</SelectItem>
+                                                <SelectItem value="percent">Percentage</SelectItem>
+                                                <SelectItem value="amount">Fixed Amount</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Discount Value</Label>
+                                        <Input
+                                            type="number"
+                                            value={ruleForm.discountValue}
+                                            disabled={ruleForm.discountType === 'none'}
+                                            onChange={(e) => handleRuleFieldChange('discountValue', Number(e.target.value))}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Discount Cap</Label>
+                                        <Input
+                                            type="number"
+                                            value={ruleForm.discountCap ?? ''}
+                                            disabled={ruleForm.discountType === 'none'}
+                                            onChange={(e) => handleRuleFieldChange('discountCap', e.target.value ? Number(e.target.value) : undefined)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Stacking</Label>
+                                        <div className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600">
+                                            {ruleForm.stackable ? 'Stackable with other rules' : 'Evaluated independently'}
+                                        </div>
+                                    </div>
+                                </div>
 
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Factor</TableHead>
-                                    <TableHead>Key</TableHead>
-                                    <TableHead>Value</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filledRuleFactors.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={3} className="text-center text-sm text-gray-500">
-                                            No factor values selected yet.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                                {filledRuleFactors.map(([key, value]) => {
-                                    const factor = FACTOR_CATEGORIES.flatMap(category => category.factors).find(f => f.key === key)
-                                    return (
-                                        <TableRow key={key}>
-                                            <TableCell>{factor?.name ?? key}</TableCell>
-                                            <TableCell className="font-mono text-xs text-gray-500">{key}</TableCell>
-                                            <TableCell className="font-medium text-gray-900">{value}</TableCell>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                    <div className="space-y-2">
+                                        <Label>Adjustment Direction</Label>
+                                        <Select
+                                            value={ruleForm.adjustmentDirection}
+                                            onValueChange={(value) => handleRuleFieldChange('adjustmentDirection', value as AdjustmentDirection)}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">No Adjustment</SelectItem>
+                                                <SelectItem value="increase">Increase</SelectItem>
+                                                <SelectItem value="decrease">Decrease</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Adjustment Unit</Label>
+                                        <Select
+                                            value={ruleForm.adjustmentUnit}
+                                            onValueChange={(value) => handleRuleFieldChange('adjustmentUnit', value as AdjustmentUnit)}
+                                            disabled={ruleForm.adjustmentDirection === 'none'}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="PERCENT">Percent</SelectItem>
+                                                <SelectItem value="AMOUNT">Amount</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Adjustment Value</Label>
+                                        <Input
+                                            type="number"
+                                            value={ruleForm.adjustmentValue}
+                                            disabled={ruleForm.adjustmentDirection === 'none'}
+                                            onChange={(e) => handleRuleFieldChange('adjustmentValue', Number(e.target.value))}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Effective Window</Label>
+                                        <div className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600">
+                                            {effectiveRangeSummary}
+                                        </div>
+                                    </div>
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="summary" className="space-y-6">
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    <div className="rounded-lg border border-gray-100 p-4">
+                                        <p className="text-xs uppercase tracking-wide text-gray-400">Discount Strategy</p>
+                                        <p className="text-lg font-semibold text-gray-800">{discountSummary}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-gray-100 p-4">
+                                        <p className="text-xs uppercase tracking-wide text-gray-400">Adjustment</p>
+                                        <p className="text-lg font-semibold text-gray-800">{adjustmentSummary}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-gray-100 p-4">
+                                        <p className="text-xs uppercase tracking-wide text-gray-400">Timeline</p>
+                                        <p className="text-lg font-semibold text-gray-800">{effectiveRangeSummary}</p>
+                                    </div>
+                                </div>
+
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Factor</TableHead>
+                                            <TableHead>Key</TableHead>
+                                            <TableHead>Value</TableHead>
                                         </TableRow>
-                                    )
-                                })}
-                            </TableBody>
-                        </Table>
-
-                        <div className="flex flex-wrap items-center justify-end gap-3">
-                            <Button variant="outline" onClick={resetRuleForm}>Reset</Button>
-                            <Button variant="outline">Save Draft</Button>
-                            <Button className="bg-tpa-primary hover:bg-tpa-accent">Activate Rule</Button>
-                        </div>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filledRuleFactors.length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={3} className="text-center text-sm text-gray-500">
+                                                    No factor values selected yet.
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                        {filledRuleFactors.map(([key, value]) => {
+                                            const factor = FACTOR_CATEGORIES.flatMap(category => category.factors).find(f => f.key === key)
+                                            return (
+                                                <TableRow key={key}>
+                                                    <TableCell>{factor?.name ?? key}</TableCell>
+                                                    <TableCell className="font-mono text-xs text-gray-500">{key}</TableCell>
+                                                    <TableCell className="font-medium text-gray-900">{value}</TableCell>
+                                                </TableRow>
+                                            )
+                                        })}
+                                    </TableBody>
+                                </Table>
+                            </TabsContent>
+                        </Tabs>
                     </div>
                 </TabsContent>
             </Tabs>
@@ -1123,7 +1393,7 @@ export function CombinationBuilderPage() {
                                 <Label className="text-sm text-gray-600">Selected Factors:</Label>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                     {Object.entries(selectedFactors)
-                                        .filter(([_, value]) => value)
+                                        .filter(([, value]) => value)
                                         .map(([type, value]) => (
                                             <span key={type} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
                         {type}: {value}
@@ -1223,8 +1493,4 @@ export function CombinationBuilderPage() {
             </Dialog>
         </div>
     )
-}
-
-function cn(...classes: string[]) {
-    return classes.filter(Boolean).join(' ')
 }
