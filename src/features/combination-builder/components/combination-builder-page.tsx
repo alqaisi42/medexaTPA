@@ -60,6 +60,7 @@ type DiscountType = 'none' | 'percent' | 'amount'
 type AdjustmentDirection = 'none' | 'increase' | 'decrease'
 type AdjustmentUnit = 'PERCENT' | 'AMOUNT'
 type RuleStatus = 'draft' | 'active'
+type PricingUiMode = 'FIXED' | 'POINT'
 
 interface RuleFormState {
     name: string
@@ -67,6 +68,7 @@ interface RuleFormState {
     status: RuleStatus
     description: string
     stackable: boolean
+    pricingMode: PricingUiMode
     discountType: DiscountType
     discountValue: number
     discountCap?: number
@@ -80,6 +82,8 @@ interface RuleFormState {
     procedureId?: number
     priority: number
     basePrice: number
+    points: number
+    pointValue: number
 }
 
 const FACTOR_CATEGORIES: FactorCategory[] = [
@@ -223,6 +227,7 @@ const buildInitialRuleForm = (): RuleFormState => ({
     status: 'draft',
     description: '',
     stackable: true,
+    pricingMode: 'FIXED',
     discountType: 'none',
     discountValue: 0,
     discountCap: undefined,
@@ -236,6 +241,8 @@ const buildInitialRuleForm = (): RuleFormState => ({
     procedureId: undefined,
     priority: 1,
     basePrice: 0,
+    points: 0,
+    pointValue: 0.35,
 })
 
 export function CombinationBuilderPage() {
@@ -286,6 +293,7 @@ export function CombinationBuilderPage() {
     const [procedureSearchError, setProcedureSearchError] = useState<string | null>(null)
     const priceListDropdownRef = useRef<HTMLDivElement | null>(null)
     const procedureDropdownRef = useRef<HTMLDivElement | null>(null)
+    const [activeFactorCategoryId, setActiveFactorCategoryId] = useState<string>(FACTOR_CATEGORIES[0]?.id ?? 'patient')
 
     const updateSelectedFactor = <K extends keyof typeof selectedFactors>(
         factor: K,
@@ -350,6 +358,7 @@ export function CombinationBuilderPage() {
         setPriceListSearchTerm('')
         setProcedureSearchTerm('')
         setActiveRuleDesignerTab('general')
+        setActiveFactorCategoryId(FACTOR_CATEGORIES[0]?.id ?? 'patient')
     }
 
     const renderFactorInputControl = (factor: FactorDefinition) => {
@@ -409,6 +418,14 @@ export function CombinationBuilderPage() {
     }
 
     const filledRuleFactors = Object.entries(ruleForm.factors).filter(([, value]) => value)
+    const activeFactorCategory = FACTOR_CATEGORIES.find(category => category.id === activeFactorCategoryId) ?? FACTOR_CATEGORIES[0]
+    const activeCategoryFilledCount = activeFactorCategory
+        ? activeFactorCategory.factors.filter(factor => Boolean(ruleForm.factors[factor.key])).length
+        : 0
+    const pointConversionPreview = (ruleForm.points || 0) * (ruleForm.pointValue || 0)
+    const pricingSummary = ruleForm.pricingMode === 'POINT'
+        ? `${ruleForm.points || 0} pts ≈ ${formatCurrency(pointConversionPreview)}`
+        : formatCurrency(ruleForm.basePrice || 0)
 
     const discountSummary = ruleForm.discountType === 'none'
         ? 'No discount applied'
@@ -424,12 +441,16 @@ export function CombinationBuilderPage() {
         ? `${ruleForm.effectiveFrom} → ${ruleForm.effectiveTo}`
         : `Effective from ${ruleForm.effectiveFrom}`
 
+    const hasValidPricingValue = ruleForm.pricingMode === 'POINT'
+        ? ruleForm.points > 0
+        : ruleForm.basePrice > 0
+
     const canCreateRule = Boolean(
         ruleForm.name.trim() &&
         ruleForm.priceListId &&
         ruleForm.procedureId &&
         filledRuleFactors.length > 0 &&
-        ruleForm.basePrice >= 0,
+        hasValidPricingValue,
     )
 
     const handleCreateRule = async () => {
@@ -442,6 +463,18 @@ export function CombinationBuilderPage() {
         if (filledRuleFactors.length === 0) {
             alert('Add at least one factor value to build this rule context')
             setActiveRuleDesignerTab('factors')
+            return
+        }
+
+        if (ruleForm.pricingMode === 'POINT' && ruleForm.points <= 0) {
+            alert('Specify how many points this rule should award or consume')
+            setActiveRuleDesignerTab('general')
+            return
+        }
+
+        if (ruleForm.pricingMode === 'FIXED' && ruleForm.basePrice <= 0) {
+            alert('Enter a base price for the fixed pricing mode')
+            setActiveRuleDesignerTab('general')
             return
         }
 
@@ -493,6 +526,17 @@ export function CombinationBuilderPage() {
             })
         }
 
+        const pricingPayload: CreatePricingRulePayload['pricing'] = ruleForm.pricingMode === 'POINT'
+            ? {
+                mode: 'POINTS',
+                points: ruleForm.points,
+                basePoints: ruleForm.points,
+            }
+            : {
+                mode: 'FIXED',
+                fixedPrice: ruleForm.basePrice,
+            }
+
         const payload: CreatePricingRulePayload = {
             procedureId: ruleForm.procedureId,
             priceListId: ruleForm.priceListId,
@@ -500,10 +544,7 @@ export function CombinationBuilderPage() {
             validFrom: ruleForm.effectiveFrom,
             validTo: ruleForm.effectiveTo ?? null,
             conditions,
-            pricing: {
-                mode: 'FIXED',
-                fixedPrice: ruleForm.basePrice,
-            },
+            pricing: pricingPayload,
             discount: discountPayload,
             adjustments: adjustmentsPayload.length > 0 ? adjustmentsPayload : undefined,
         }
@@ -1056,7 +1097,7 @@ export function CombinationBuilderPage() {
                             </div>
                         </div>
 
-                        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                             <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                                 <p className="text-xs uppercase tracking-wide text-gray-500">Active Factors</p>
                                 <p className="text-3xl font-bold text-tpa-primary">{filledRuleFactors.length}</p>
@@ -1076,6 +1117,13 @@ export function CombinationBuilderPage() {
                                 <p className="text-lg font-semibold text-gray-800">
                                     {selectedProcedure ? formatProcedureLabel(selectedProcedure) : 'Select procedure'}
                                 </p>
+                            </div>
+                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Pricing Mode</p>
+                                <p className="text-lg font-semibold text-gray-800">
+                                    {ruleForm.pricingMode === 'POINT' ? 'Point-Based' : 'Fixed Amount'}
+                                </p>
+                                <p className="text-xs text-gray-500">{pricingSummary}</p>
                             </div>
                         </div>
 
@@ -1131,7 +1179,7 @@ export function CombinationBuilderPage() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label>Price List</Label>
                                         <div className="relative" ref={priceListDropdownRef}>
@@ -1310,14 +1358,82 @@ export function CombinationBuilderPage() {
                                             )}
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>Base Price (JD)</Label>
-                                        <Input
-                                            type="number"
-                                            value={ruleForm.basePrice}
-                                            onChange={(e) => handleRuleFieldChange('basePrice', Number(e.target.value))}
-                                        />
+                                </div>
+
+                                <div className="space-y-4 rounded-xl border border-gray-100 p-4">
+                                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-800">Pricing Mode</p>
+                                            <p className="text-xs text-gray-500">Toggle between direct fixed pricing or point-based logic.</p>
+                                        </div>
+                                        <p className="text-xs uppercase tracking-wide text-gray-400">{ruleForm.pricingMode === 'POINT' ? 'Point flow enabled' : 'Fixed amount mode'}</p>
                                     </div>
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        {(['FIXED', 'POINT'] as PricingUiMode[]).map(mode => (
+                                            <button
+                                                key={mode}
+                                                type="button"
+                                                className={`rounded-lg border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-tpa-primary ${ruleForm.pricingMode === mode ? 'border-tpa-primary bg-blue-50 text-blue-900' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                                onClick={() => handleRuleFieldChange('pricingMode', mode)}
+                                            >
+                                                <p className="text-sm font-semibold">{mode === 'FIXED' ? 'Fixed Price' : 'Point-Based'}</p>
+                                                <p className="text-xs text-gray-500">
+                                                    {mode === 'FIXED'
+                                                        ? 'Enter an absolute JD amount.'
+                                                        : 'Use point totals multiplied by live point rates.'}
+                                                </p>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {ruleForm.pricingMode === 'FIXED' ? (
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label>Base Price (JD)</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    value={ruleForm.basePrice}
+                                                    onChange={(e) => handleRuleFieldChange('basePrice', Number(e.target.value))}
+                                                />
+                                            </div>
+                                            <div className="rounded-lg border border-dashed border-gray-200 bg-white p-4 text-sm text-gray-600">
+                                                <p className="font-semibold text-gray-800">Fixed Mode Example</p>
+                                                <p className="mt-1 text-gray-600">Patient billed exactly {formatCurrency(ruleForm.basePrice || 0)} before discounts or adjustments.</p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                            <div className="space-y-2">
+                                                <Label>Total Points</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    value={ruleForm.points}
+                                                    onChange={(e) => handleRuleFieldChange('points', Number(e.target.value))}
+                                                    placeholder="e.g. 120"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Point value (JD)</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={ruleForm.pointValue}
+                                                    onChange={(e) => handleRuleFieldChange('pointValue', Number(e.target.value))}
+                                                    placeholder="Live point rate"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Points Example</Label>
+                                                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+                                                    <p className="font-semibold">{ruleForm.points || 0} pts × {formatCurrency(ruleForm.pointValue || 0)} = {formatCurrency(pointConversionPreview)}</p>
+                                                    <p className="text-xs text-blue-800">This mirrors the point price lookup that Medexa applies.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1373,17 +1489,35 @@ export function CombinationBuilderPage() {
                             </TabsContent>
 
                             <TabsContent value="factors" className="space-y-6">
-                                {FACTOR_CATEGORIES.map(category => (
-                                    <div key={category.id} className="space-y-3">
+                                <div className="flex flex-col gap-4 lg:flex-row">
+                                    <div className="flex flex-wrap gap-2 lg:w-72 lg:flex-col">
+                                        {FACTOR_CATEGORIES.map(category => {
+                                            const isActive = category.id === activeFactorCategory?.id
+                                            const filledCount = category.factors.filter(factor => Boolean(ruleForm.factors[factor.key])).length
+                                            return (
+                                                <button
+                                                    key={category.id}
+                                                    type="button"
+                                                    onClick={() => setActiveFactorCategoryId(category.id)}
+                                                    className={`flex-1 rounded-lg border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-tpa-primary ${isActive ? 'border-tpa-primary bg-blue-50 text-blue-900' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                                >
+                                                    <p className="text-sm font-semibold">{category.title}</p>
+                                                    <p className="text-xs text-gray-500">{category.description}</p>
+                                                    <p className="mt-2 text-[11px] text-gray-400">{filledCount}/{category.factors.length} filled</p>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                    <div className="flex-1 space-y-4">
                                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                             <div>
-                                                <h3 className="text-lg font-semibold text-gray-800">{category.title}</h3>
-                                                <p className="text-sm text-gray-500">{category.description}</p>
+                                                <h3 className="text-lg font-semibold text-gray-800">{activeFactorCategory?.title}</h3>
+                                                <p className="text-sm text-gray-500">{activeFactorCategory?.description}</p>
                                             </div>
-                                            <span className="text-xs uppercase tracking-wide text-gray-400">{category.factors.length} fields</span>
+                                            <span className="text-xs uppercase tracking-wide text-gray-400">{activeCategoryFilledCount}/{activeFactorCategory?.factors.length ?? 0} values set</span>
                                         </div>
                                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                            {category.factors.map(factor => (
+                                            {activeFactorCategory?.factors.map(factor => (
                                                 <div key={factor.key} className="space-y-2 rounded-lg border border-gray-100 p-3">
                                                     <div className="flex items-center justify-between">
                                                         <Label className="text-sm font-medium text-gray-700">{factor.name}</Label>
@@ -1397,20 +1531,19 @@ export function CombinationBuilderPage() {
                                                 </div>
                                             ))}
                                         </div>
-                                    </div>
-                                ))}
-
-                                <div className="border-t pt-4">
-                                    <Label className="text-sm text-gray-600">Selected Factors</Label>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {filledRuleFactors.length === 0 && (
-                                            <span className="text-sm text-gray-500">No factors selected yet.</span>
-                                        )}
-                                        {filledRuleFactors.map(([type, value]) => (
-                                            <span key={type} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                                                {type}: {value}
-                                            </span>
-                                        ))}
+                                        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
+                                            <p className="text-sm font-semibold text-gray-700">Selected Factors</p>
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {filledRuleFactors.length === 0 && (
+                                                    <span className="text-sm text-gray-500">No factors selected yet.</span>
+                                                )}
+                                                {filledRuleFactors.map(([type, value]) => (
+                                                    <span key={type} className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
+                                                        {type}: {value}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </TabsContent>
