@@ -56,6 +56,13 @@ interface FactorCategory {
     factors: FactorDefinition[]
 }
 
+const SAFE_EMPTY = "__none__" as const;
+
+const safeValue = (v: any) => {
+    if (v === undefined || v === null || v === "") return SAFE_EMPTY;
+    return String(v);
+};
+
 type DiscountType = 'none' | 'percent' | 'amount'
 type AdjustmentDirection = 'none' | 'increase' | 'decrease'
 type AdjustmentUnit = 'PERCENT' | 'AMOUNT'
@@ -374,7 +381,7 @@ export function CombinationBuilderPage() {
                         <SelectValue placeholder="Select value" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">Not Set</SelectItem>
+                        <SelectItem value={SAFE_EMPTY}>Not Set</SelectItem>
                         {factor.allowedValues.map(option => (
                             <SelectItem key={option} value={option}>{option}</SelectItem>
                         ))}
@@ -1414,17 +1421,17 @@ export function CombinationBuilderPage() {
                                                     placeholder="e.g. 120"
                                                 />
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label>Point value (JD)</Label>
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={ruleForm.pointValue}
-                                                    onChange={(e) => handleRuleFieldChange('pointValue', Number(e.target.value))}
-                                                    placeholder="Live point rate"
-                                                />
-                                            </div>
+                                            {/*<div className="space-y-2">*/}
+                                            {/*    <Label>Point value (JD)</Label>*/}
+                                            {/*    <Input*/}
+                                            {/*        type="number"*/}
+                                            {/*        min="0"*/}
+                                            {/*        step="0.01"*/}
+                                            {/*        value={ruleForm.pointValue}*/}
+                                            {/*        onChange={(e) => handleRuleFieldChange('pointValue', Number(e.target.value))}*/}
+                                            {/*        placeholder="Live point rate"*/}
+                                            {/*    />*/}
+                                            {/*</div>*/}
                                             <div className="space-y-2">
                                                 <Label>Points Example</Label>
                                                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
