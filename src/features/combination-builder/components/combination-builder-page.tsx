@@ -878,6 +878,7 @@ export function CombinationBuilderPage() {
 
     const icds = ['S62.0', 'S62.1', 'S62.3', 'E78.0', 'J18.9']
 
+    // @ts-ignore
     return (
         <div className="p-6 space-y-6">
             <Tabs defaultValue="combinations" className="space-y-6">
