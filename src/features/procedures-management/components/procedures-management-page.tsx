@@ -35,6 +35,8 @@ import {
     ProcedureDetails,
     ProcedureSearchFilters,
     ProcedureSummary,
+    ProviderType,
+    Specialty,
 } from '@/types'
 import {
     createProcedure,
@@ -56,6 +58,7 @@ import {
     updateProcedureContainer,
 } from '@/lib/api/procedures'
 import {searchIcds} from '@/lib/api/icd'
+import {fetchProviderTypesLookup, fetchSpecialtiesLookup} from '@/lib/api/lookups'
 import {cn, formatCurrency, formatDate} from '@/lib/utils'
 import {useAppStore} from '@/store/app-store'
 import {ProcedureFormDialog} from './procedure-form-dialog'
@@ -226,6 +229,10 @@ export function ProceduresManagementPage() {
     const [subCategoryDropdownOpen, setSubCategoryDropdownOpen] = useState(false)
     const clinicalCategoryDropdownRef = useRef<HTMLDivElement>(null)
     const subCategoryDropdownRef = useRef<HTMLDivElement>(null)
+    const [specialties, setSpecialties] = useState<Specialty[]>([])
+    const [providerTypes, setProviderTypes] = useState<ProviderType[]>([])
+    const [specialtiesLoading, setSpecialtiesLoading] = useState(false)
+    const [providerTypesLoading, setProviderTypesLoading] = useState(false)
 
     const [categoryForm, setCategoryForm] = useState<CreateProcedureCategoryPayload>(INITIAL_CATEGORY_FORM)
     const [categoryFormError, setCategoryFormError] = useState<string | null>(null)
@@ -320,6 +327,32 @@ export function ProceduresManagementPage() {
 
     const hasActiveFilter = useMemo(() => hasActiveFilters(filters), [filters])
 
+    const loadSpecialties = useCallback(async () => {
+        setSpecialtiesLoading(true)
+        try {
+            const data = await fetchSpecialtiesLookup()
+            setSpecialties(data)
+        } catch (error) {
+            console.error('Failed to load specialties', error)
+            setFormError((prev) => prev ?? 'Failed to load specialties. Please try again.')
+        } finally {
+            setSpecialtiesLoading(false)
+        }
+    }, [])
+
+    const loadProviderTypes = useCallback(async () => {
+        setProviderTypesLoading(true)
+        try {
+            const data = await fetchProviderTypesLookup()
+            setProviderTypes(data)
+        } catch (error) {
+            console.error('Failed to load provider types', error)
+            setFormError((prev) => prev ?? 'Failed to load provider types. Please try again.')
+        } finally {
+            setProviderTypesLoading(false)
+        }
+    }, [])
+
     const loadCategories = useCallback(async () => {
         setCategoriesLoading(true)
         try {
@@ -396,6 +429,11 @@ export function ProceduresManagementPage() {
             setSelectedItems(procedures.map((procedure) => String(procedure.id)))
         }
     }
+
+    useEffect(() => {
+        void loadSpecialties()
+        void loadProviderTypes()
+    }, [loadProviderTypes, loadSpecialties])
 
     useEffect(() => {
         void loadCategories()
@@ -2800,6 +2838,10 @@ export function ProceduresManagementPage() {
                 filteredSubCategories={filteredSubCategories}
                 subCategoryDropdownOpen={subCategoryDropdownOpen}
                 subCategoryQuery={subCategoryQuery}
+                specialties={specialties}
+                providerTypes={providerTypes}
+                specialtiesLoading={specialtiesLoading}
+                providerTypesLoading={providerTypesLoading}
                 onFormDataChange={setFormData}
                 onOpenChange={handleDialogChange}
                 onSearchIcds={triggerManualIcdSearch}

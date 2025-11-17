@@ -1,4 +1,4 @@
-import React, {RefObject} from 'react'
+import React, {RefObject, useMemo, useState} from 'react'
 import {Loader2, Search} from 'lucide-react'
 import {Button} from '@/components/ui/button'
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
@@ -7,9 +7,8 @@ import {Label} from '@/components/ui/label'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 import {Switch} from '@/components/ui/switch'
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs'
-import {Textarea} from '@/components/ui/textarea'
 import {cn} from '@/lib/utils'
-import {CreateProcedurePayload, ICD, ProcedureCategoryRecord} from '@/types'
+import {CreateProcedurePayload, ICD, ProcedureCategoryRecord, ProviderType, Specialty} from '@/types'
 
 const CLINICAL_SEVERITY_OPTIONS = ['LOW', 'MODERATE', 'HIGH'] as const
 const CLINICAL_RISK_OPTIONS = ['MINOR', 'MAJOR', 'COMPLEX'] as const
@@ -44,6 +43,10 @@ export interface ProcedureFormDialogProps {
     subCategoryDropdownOpen: boolean
     subCategoryDropdownRef: RefObject<HTMLDivElement>
     subCategoryQuery: string
+    specialties: Specialty[]
+    providerTypes: ProviderType[]
+    specialtiesLoading: boolean
+    providerTypesLoading: boolean
     onFormDataChange: React.Dispatch<React.SetStateAction<CreateProcedurePayload>>
     onOpenChange: (open: boolean) => void
     onSearchIcds: () => Promise<void> | void
@@ -76,6 +79,10 @@ export function ProcedureFormDialog({
                                         subCategoryDropdownOpen,
                                         subCategoryDropdownRef,
                                         subCategoryQuery,
+                                        specialties,
+                                        providerTypes,
+                                        specialtiesLoading,
+                                        providerTypesLoading,
                                         onFormDataChange,
                                         onOpenChange,
                                         onSearchIcds,
@@ -87,6 +94,33 @@ export function ProcedureFormDialog({
                                         onSubCategoryQueryChange,
                                         onSave,
                                     }: ProcedureFormDialogProps) {
+    const [specialtySearch, setSpecialtySearch] = useState('')
+    const [providerTypeSearch, setProviderTypeSearch] = useState('')
+
+    const filteredSpecialties = useMemo(() => {
+        const term = specialtySearch.toLowerCase().trim()
+
+        if (!term) {
+            return specialties
+        }
+
+        return specialties.filter((item) =>
+            [item.nameEn, item.nameAr, item.code].some((field) => field.toLowerCase().includes(term)),
+        )
+    }, [specialtySearch, specialties])
+
+    const filteredProviderTypes = useMemo(() => {
+        const term = providerTypeSearch.toLowerCase().trim()
+
+        if (!term) {
+            return providerTypes
+        }
+
+        return providerTypes.filter((item) =>
+            [item.nameEn, item.nameAr, item.code].some((field) => field.toLowerCase().includes(term)),
+        )
+    }, [providerTypeSearch, providerTypes])
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-4xl">
@@ -649,31 +683,99 @@ export function ProcedureFormDialog({
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label htmlFor="primarySpecialty">Primary Specialty</Label>
-                                        <Input
-                                            id="primarySpecialty"
+                                        <Select
                                             value={formData.primarySpecialty ?? ''}
-                                            onChange={(event) =>
+                                            onValueChange={(value) =>
                                                 onFormDataChange((prev) => ({
                                                     ...prev,
-                                                    primarySpecialty: event.target.value
+                                                    primarySpecialty: value,
                                                 }))
                                             }
-                                            placeholder="E.g. Orthopedics"
-                                        />
+                                        >
+                                            <SelectTrigger id="primarySpecialty">
+                                                <SelectValue placeholder="Search specialties"/>
+                                            </SelectTrigger>
+                                            <SelectContent className="w-[280px]">
+                                                <div className="p-2">
+                                                    <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                                                        <Search className="h-4 w-4 text-muted-foreground"/>
+                                                        <input
+                                                            className="h-8 w-full bg-transparent text-sm outline-none"
+                                                            placeholder="Search by name or code"
+                                                            value={specialtySearch}
+                                                            onChange={(event) => setSpecialtySearch(event.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <SelectItem value="">Not specified</SelectItem>
+                                                {specialtiesLoading && (
+                                                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
+                                                        <Loader2 className="h-4 w-4 animate-spin"/>
+                                                        Loading specialties...
+                                                    </div>
+                                                )}
+                                                {!specialtiesLoading && filteredSpecialties.length === 0 && (
+                                                    <div className="px-3 py-2 text-sm text-gray-500">No specialties found</div>
+                                                )}
+                                                {!specialtiesLoading &&
+                                                    filteredSpecialties.map((specialty) => (
+                                                        <SelectItem key={specialty.id} value={specialty.code}>
+                                                            <div className="flex flex-col text-left">
+                                                                <span className="text-sm font-medium">{specialty.nameEn}</span>
+                                                                <span className="text-xs text-gray-500">{specialty.code}</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="providerType">Provider Type</Label>
-                                        <Input
-                                            id="providerType"
+                                        <Select
                                             value={formData.providerType ?? ''}
-                                            onChange={(event) =>
+                                            onValueChange={(value) =>
                                                 onFormDataChange((prev) => ({
                                                     ...prev,
-                                                    providerType: event.target.value
+                                                    providerType: value,
                                                 }))
                                             }
-                                            placeholder="E.g. Hospital, Clinic"
-                                        />
+                                        >
+                                            <SelectTrigger id="providerType">
+                                                <SelectValue placeholder="Search provider types"/>
+                                            </SelectTrigger>
+                                            <SelectContent className="w-[280px]">
+                                                <div className="p-2">
+                                                    <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                                                        <Search className="h-4 w-4 text-muted-foreground"/>
+                                                        <input
+                                                            className="h-8 w-full bg-transparent text-sm outline-none"
+                                                            placeholder="Search by name or code"
+                                                            value={providerTypeSearch}
+                                                            onChange={(event) => setProviderTypeSearch(event.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <SelectItem value="">Not specified</SelectItem>
+                                                {providerTypesLoading && (
+                                                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
+                                                        <Loader2 className="h-4 w-4 animate-spin"/>
+                                                        Loading provider types...
+                                                    </div>
+                                                )}
+                                                {!providerTypesLoading && filteredProviderTypes.length === 0 && (
+                                                    <div className="px-3 py-2 text-sm text-gray-500">No provider types found</div>
+                                                )}
+                                                {!providerTypesLoading &&
+                                                    filteredProviderTypes.map((type) => (
+                                                        <SelectItem key={type.id} value={type.code}>
+                                                            <div className="flex flex-col text-left">
+                                                                <span className="text-sm font-medium">{type.nameEn}</span>
+                                                                <span className="text-xs text-gray-500">{type.code}</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
 
