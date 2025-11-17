@@ -19,6 +19,7 @@ import {
 import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
+import {Textarea} from '@/components/ui/textarea'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table'
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
@@ -71,8 +72,15 @@ const CONTAINER_USAGE_PAGE_SIZE = 10
 const CLINICAL_SEVERITY_OPTIONS = ['LOW', 'MODERATE', 'HIGH'] as const
 const CLINICAL_RISK_OPTIONS = ['MINOR', 'MAJOR', 'COMPLEX'] as const
 const ANESTHESIA_LEVEL_OPTIONS = ['NONE', 'LOCAL', 'GENERAL'] as const
-const OPERATION_TYPE_OPTIONS = ['OPEN', 'LAPAROSCOPY', 'ENDOSCOPY'] as const
+const OPERATION_TYPE_OPTIONS = ['OPEN', 'LAP', 'ENDO'] as const
 const OPERATION_ROOM_OPTIONS = ['MINOR', 'MEDIUM', 'MAJOR'] as const
+const GENDER_OPTIONS = ['ANY', 'M', 'F'] as const
+const ICD_VALIDATION_OPTIONS = ['STRICT', 'RELAXED'] as const
+const YES_NO_OPTIONS = [
+    { label: 'Not specified', value: '' },
+    { label: 'Yes', value: 'true' },
+    { label: 'No', value: 'false' },
+]
 
 const INITIAL_FORM_STATE: CreateProcedurePayload = {
     systemCode: '',
@@ -97,6 +105,33 @@ const INITIAL_FORM_STATE: CreateProcedurePayload = {
     operationRoomType: '',
     primaryIcdCode: '',
     primarySpecialty: '',
+    primaryIcd: '',
+    allowedIcds: '',
+    forbiddenIcds: '',
+    icdValidationMode: '',
+    providerType: '',
+    minProviderLevel: null,
+    surgeonExperienceMinYears: null,
+    genderSpecific: '',
+    coverageInclusions: '',
+    coPayment: null,
+    patientShare: null,
+    deductible: null,
+    maxAllowedAmount: null,
+    limitPerVisit: null,
+    limitPerYear: null,
+    waitingPeriodDays: null,
+    requiresInternalReview: null,
+    parentId: null,
+    bundleParentId: null,
+    bundleComponents: '',
+    isBundle: null,
+    isFollowUp: null,
+    followUpDays: null,
+    baseCost: null,
+    rvu: null,
+    consumablesRequired: '',
+    equipmentRequired: '',
     validFrom: '',
     validTo: '',
     isActive: true,
@@ -573,6 +608,33 @@ export function ProceduresManagementPage() {
             operationRoomType: details.operationRoomType ?? '',
             primaryIcdCode: details.primaryIcdCode ?? '',
             primarySpecialty: details.primarySpecialty ?? '',
+            primaryIcd: details.primaryIcd ?? '',
+            allowedIcds: details.allowedIcds ?? '',
+            forbiddenIcds: details.forbiddenIcds ?? '',
+            icdValidationMode: details.icdValidationMode ?? '',
+            providerType: details.providerType ?? '',
+            minProviderLevel: details.minProviderLevel ?? null,
+            surgeonExperienceMinYears: details.surgeonExperienceMinYears ?? null,
+            genderSpecific: details.genderSpecific ?? '',
+            coverageInclusions: details.coverageInclusions ?? '',
+            coPayment: details.coPayment ?? null,
+            patientShare: details.patientShare ?? null,
+            deductible: details.deductible ?? null,
+            maxAllowedAmount: details.maxAllowedAmount ?? null,
+            limitPerVisit: details.limitPerVisit ?? null,
+            limitPerYear: details.limitPerYear ?? null,
+            waitingPeriodDays: details.waitingPeriodDays ?? null,
+            requiresInternalReview: details.requiresInternalReview ?? null,
+            parentId: details.parentId ?? null,
+            bundleParentId: details.bundleParentId ?? null,
+            bundleComponents: details.bundleComponents ?? '',
+            isBundle: details.isBundle ?? null,
+            isFollowUp: details.isFollowUp ?? null,
+            followUpDays: details.followUpDays ?? null,
+            baseCost: details.baseCost ?? null,
+            rvu: details.rvu ?? null,
+            consumablesRequired: details.consumablesRequired ?? '',
+            equipmentRequired: details.equipmentRequired ?? '',
             validFrom: details.validFrom ?? '',
             validTo: details.validTo ?? '',
             isActive: Boolean(details.isActive),
@@ -633,11 +695,26 @@ export function ProceduresManagementPage() {
             'minIntervalDays',
             'maxFrequencyPerYear',
             'standardDurationMinutes',
+            'minProviderLevel',
+            'surgeonExperienceMinYears',
+            'coPayment',
+            'patientShare',
+            'deductible',
+            'maxAllowedAmount',
+            'limitPerVisit',
+            'limitPerYear',
+            'waitingPeriodDays',
+            'followUpDays',
+            'baseCost',
+            'rvu',
         ]
 
         for (const field of numericFields) {
-            const value = Number(formData[field])
-            if (Number.isNaN(value)) {
+            const value = formData[field]
+            if (value === null || value === undefined || value === '') {
+                continue
+            }
+            if (Number.isNaN(Number(value))) {
                 setFormError('Please ensure numeric fields contain valid numbers.')
                 return
             }
@@ -649,6 +726,24 @@ export function ProceduresManagementPage() {
             minIntervalDays: Number(formData.minIntervalDays),
             maxFrequencyPerYear: Number(formData.maxFrequencyPerYear),
             standardDurationMinutes: Number(formData.standardDurationMinutes),
+            minProviderLevel:
+                formData.minProviderLevel === null || formData.minProviderLevel === undefined
+                    ? null
+                    : Number(formData.minProviderLevel),
+            surgeonExperienceMinYears:
+                formData.surgeonExperienceMinYears === null || formData.surgeonExperienceMinYears === undefined
+                    ? null
+                    : Number(formData.surgeonExperienceMinYears),
+            coPayment: formData.coPayment === null ? null : Number(formData.coPayment),
+            patientShare: formData.patientShare === null ? null : Number(formData.patientShare),
+            deductible: formData.deductible === null ? null : Number(formData.deductible),
+            maxAllowedAmount: formData.maxAllowedAmount === null ? null : Number(formData.maxAllowedAmount),
+            limitPerVisit: formData.limitPerVisit === null ? null : Number(formData.limitPerVisit),
+            limitPerYear: formData.limitPerYear === null ? null : Number(formData.limitPerYear),
+            waitingPeriodDays: formData.waitingPeriodDays === null ? null : Number(formData.waitingPeriodDays),
+            followUpDays: formData.followUpDays === null ? null : Number(formData.followUpDays),
+            baseCost: formData.baseCost === null ? null : Number(formData.baseCost),
+            rvu: formData.rvu === null ? null : Number(formData.rvu),
             createdBy: formData.createdBy?.trim() || undefined,
             updatedBy: formData.updatedBy?.trim() || undefined,
         }
@@ -664,6 +759,16 @@ export function ProceduresManagementPage() {
             'operationRoomType',
             'primaryIcdCode',
             'primarySpecialty',
+            'primaryIcd',
+            'allowedIcds',
+            'forbiddenIcds',
+            'icdValidationMode',
+            'providerType',
+            'genderSpecific',
+            'coverageInclusions',
+            'bundleComponents',
+            'consumablesRequired',
+            'equipmentRequired',
         ]
 
         optionalStringFields.forEach((field) => {
@@ -2679,14 +2784,16 @@ export function ProceduresManagementPage() {
                     </DialogHeader>
 
                     <Tabs defaultValue="basic" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4">
-                            <TabsTrigger value="basic">Basic Information</TabsTrigger>
-                            <TabsTrigger value="clinical">Clinical Context</TabsTrigger>
-                            <TabsTrigger value="pricing">Pricing & Availability</TabsTrigger>
-                            <TabsTrigger value="ownership">Ownership & Audit</TabsTrigger>
-                        </TabsList>
+                        <div className="flex flex-col gap-4 md:flex-row">
+                            <TabsList className="flex h-full w-full flex-col gap-2 rounded-lg bg-gray-50 p-2 md:w-56">
+                                <TabsTrigger value="basic">Basic Information</TabsTrigger>
+                                <TabsTrigger value="clinical">Clinical Context</TabsTrigger>
+                                <TabsTrigger value="pricing">Coverage & Pricing</TabsTrigger>
+                                <TabsTrigger value="ownership">Ownership & Audit</TabsTrigger>
+                            </TabsList>
 
-                        <TabsContent value="basic" className="space-y-4 pt-4">
+                            <div className="flex-1">
+                        <TabsContent value="basic" className="space-y-4 pt-2">
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="systemCode">System Code *</Label>
@@ -3145,6 +3252,114 @@ export function ProceduresManagementPage() {
                                     </p>
                                 </div>
                             </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="primaryIcd">Primary ICD Name</Label>
+                                    <Input
+                                        id="primaryIcd"
+                                        value={formData.primaryIcd ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, primaryIcd: event.target.value}))
+                                        }
+                                        placeholder="Optional ICD description"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="icdValidationMode">ICD Validation Mode</Label>
+                                    <Select
+                                        value={formData.icdValidationMode || ''}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, icdValidationMode: value}))
+                                        }
+                                    >
+                                        <SelectTrigger id="icdValidationMode">
+                                            <SelectValue placeholder="Select validation" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">Not specified</SelectItem>
+                                            {ICD_VALIDATION_OPTIONS.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="providerType">Provider Type</Label>
+                                    <Input
+                                        id="providerType"
+                                        value={formData.providerType ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, providerType: event.target.value}))
+                                        }
+                                        placeholder="e.g., Surgeon, GP"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="minProviderLevel">Minimum Provider Level</Label>
+                                    <Input
+                                        id="minProviderLevel"
+                                        type="number"
+                                        min="0"
+                                        value={formData.minProviderLevel ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                minProviderLevel: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="surgeonExperienceMinYears">Surgeon Experience (years)</Label>
+                                    <Input
+                                        id="surgeonExperienceMinYears"
+                                        type="number"
+                                        min="0"
+                                        value={formData.surgeonExperienceMinYears ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                surgeonExperienceMinYears: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="allowedIcds">Allowed ICDs</Label>
+                                    <Textarea
+                                        id="allowedIcds"
+                                        rows={3}
+                                        value={formData.allowedIcds ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, allowedIcds: event.target.value}))
+                                        }
+                                        placeholder="JSON array or comma separated values"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="forbiddenIcds">Forbidden ICDs</Label>
+                                    <Textarea
+                                        id="forbiddenIcds"
+                                        rows={3}
+                                        value={formData.forbiddenIcds ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, forbiddenIcds: event.target.value}))
+                                        }
+                                        placeholder="JSON array or comma separated values"
+                                    />
+                                </div>
+                            </div>
                         </TabsContent>
 
                         <TabsContent value="pricing" className="space-y-4 pt-4">
@@ -3236,6 +3451,349 @@ export function ProceduresManagementPage() {
                                         onChange={(event) =>
                                             setFormData((prev) => ({...prev, validTo: event.target.value}))
                                         }
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="genderSpecific">Gender Specific</Label>
+                                    <Select
+                                        value={formData.genderSpecific || ''}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, genderSpecific: value}))
+                                        }
+                                    >
+                                        <SelectTrigger id="genderSpecific">
+                                            <SelectValue placeholder="Any" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {GENDER_OPTIONS.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                    {option === 'ANY' ? 'Any' : option}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="coverageInclusions">Coverage Inclusions</Label>
+                                    <Textarea
+                                        id="coverageInclusions"
+                                        rows={3}
+                                        value={formData.coverageInclusions ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, coverageInclusions: event.target.value}))
+                                        }
+                                        placeholder="JSON array or comma separated list"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="coPayment">Co-Payment (%)</Label>
+                                    <Input
+                                        id="coPayment"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={formData.coPayment ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                coPayment: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="patientShare">Patient Share (%)</Label>
+                                    <Input
+                                        id="patientShare"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={formData.patientShare ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                patientShare: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="deductible">Deductible</Label>
+                                    <Input
+                                        id="deductible"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={formData.deductible ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                deductible: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="maxAllowedAmount">Max Allowed Amount</Label>
+                                    <Input
+                                        id="maxAllowedAmount"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={formData.maxAllowedAmount ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                maxAllowedAmount: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="limitPerVisit">Limit per Visit</Label>
+                                    <Input
+                                        id="limitPerVisit"
+                                        type="number"
+                                        min="0"
+                                        value={formData.limitPerVisit ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                limitPerVisit: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="limitPerYear">Limit per Year</Label>
+                                    <Input
+                                        id="limitPerYear"
+                                        type="number"
+                                        min="0"
+                                        value={formData.limitPerYear ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                limitPerYear: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="waitingPeriodDays">Waiting Period (days)</Label>
+                                    <Input
+                                        id="waitingPeriodDays"
+                                        type="number"
+                                        min="0"
+                                        value={formData.waitingPeriodDays ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                waitingPeriodDays: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="requiresInternalReview">Requires Internal Review</Label>
+                                    <Select
+                                        value={formData.requiresInternalReview === null ? '' : String(formData.requiresInternalReview)}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                requiresInternalReview: value === '' ? null : value === 'true',
+                                            }))
+                                        }
+                                    >
+                                        <SelectTrigger id="requiresInternalReview">
+                                            <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {YES_NO_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="baseCost">Base Cost</Label>
+                                    <Input
+                                        id="baseCost"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={formData.baseCost ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                baseCost: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="rvu">RVU</Label>
+                                    <Input
+                                        id="rvu"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={formData.rvu ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                rvu: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="bundleParentId">Bundle Parent ID</Label>
+                                    <Input
+                                        id="bundleParentId"
+                                        type="number"
+                                        min="0"
+                                        value={formData.bundleParentId ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                bundleParentId: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="bundleComponents">Bundle Components</Label>
+                                    <Textarea
+                                        id="bundleComponents"
+                                        rows={3}
+                                        value={formData.bundleComponents ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, bundleComponents: event.target.value}))
+                                        }
+                                        placeholder="JSON array of component IDs"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="isBundle">Is Bundle</Label>
+                                    <Select
+                                        value={formData.isBundle === null ? '' : String(formData.isBundle)}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, isBundle: value === '' ? null : value === 'true'}))
+                                        }
+                                    >
+                                        <SelectTrigger id="isBundle">
+                                            <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {YES_NO_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="isFollowUp">Is Follow Up</Label>
+                                    <Select
+                                        value={formData.isFollowUp === null ? '' : String(formData.isFollowUp)}
+                                        onValueChange={(value) =>
+                                            setFormData((prev) => ({...prev, isFollowUp: value === '' ? null : value === 'true'}))
+                                        }
+                                    >
+                                        <SelectTrigger id="isFollowUp">
+                                            <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {YES_NO_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="followUpDays">Follow Up Days</Label>
+                                    <Input
+                                        id="followUpDays"
+                                        type="number"
+                                        min="0"
+                                        value={formData.followUpDays ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                followUpDays: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="parentId">Parent Procedure ID</Label>
+                                    <Input
+                                        id="parentId"
+                                        type="number"
+                                        min="0"
+                                        value={formData.parentId ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                parentId: event.target.value ? Number(event.target.value) : null,
+                                            }))
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="consumablesRequired">Consumables Required</Label>
+                                    <Textarea
+                                        id="consumablesRequired"
+                                        rows={3}
+                                        value={formData.consumablesRequired ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, consumablesRequired: event.target.value}))
+                                        }
+                                        placeholder="List consumables or JSON array"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="equipmentRequired">Equipment Required</Label>
+                                    <Textarea
+                                        id="equipmentRequired"
+                                        rows={3}
+                                        value={formData.equipmentRequired ?? ''}
+                                        onChange={(event) =>
+                                            setFormData((prev) => ({...prev, equipmentRequired: event.target.value}))
+                                        }
+                                        placeholder="List equipment or JSON array"
                                     />
                                 </div>
                             </div>

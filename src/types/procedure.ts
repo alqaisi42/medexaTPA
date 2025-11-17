@@ -50,6 +50,33 @@ export interface ProcedureSummary {
     operationRoomType?: string | null
     primaryIcdCode?: string | null
     primarySpecialty?: string | null
+    primaryIcd?: string | null
+    allowedIcds?: string | null
+    forbiddenIcds?: string | null
+    icdValidationMode?: string | null
+    providerType?: string | null
+    minProviderLevel?: number | null
+    surgeonExperienceMinYears?: number | null
+    genderSpecific?: string | null
+    coverageInclusions?: string | null
+    coPayment?: number | null
+    patientShare?: number | null
+    deductible?: number | null
+    maxAllowedAmount?: number | null
+    limitPerVisit?: number | null
+    limitPerYear?: number | null
+    waitingPeriodDays?: number | null
+    requiresInternalReview?: boolean | null
+    parentId?: number | null
+    bundleParentId?: number | null
+    bundleComponents?: string | null
+    isBundle?: boolean | null
+    isFollowUp?: boolean | null
+    followUpDays?: number | null
+    baseCost?: number | null
+    rvu?: number | null
+    consumablesRequired?: string | null
+    equipmentRequired?: string | null
     categories: ProcedureCategorySummary[]
     containers: ProcedureContainerSummary[]
     effectiveFrom?: string
@@ -144,6 +171,33 @@ export interface CreateProcedurePayload {
     operationRoomType?: string | null
     primaryIcdCode?: string | null
     primarySpecialty?: string | null
+    primaryIcd?: string | null
+    allowedIcds?: string | null
+    forbiddenIcds?: string | null
+    icdValidationMode?: string | null
+    providerType?: string | null
+    minProviderLevel?: number | null
+    surgeonExperienceMinYears?: number | null
+    genderSpecific?: string | null
+    coverageInclusions?: string | null
+    coPayment?: number | null
+    patientShare?: number | null
+    deductible?: number | null
+    maxAllowedAmount?: number | null
+    limitPerVisit?: number | null
+    limitPerYear?: number | null
+    waitingPeriodDays?: number | null
+    requiresInternalReview?: boolean | null
+    parentId?: number | null
+    bundleParentId?: number | null
+    bundleComponents?: string | null
+    isBundle?: boolean | null
+    isFollowUp?: boolean | null
+    followUpDays?: number | null
+    baseCost?: number | null
+    rvu?: number | null
+    consumablesRequired?: string | null
+    equipmentRequired?: string | null
 }
 
 export interface ProcedureSearchFilters {
