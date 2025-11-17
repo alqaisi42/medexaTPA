@@ -38,6 +38,7 @@ import {
     FactorDefinition,
     FACTOR_CATEGORIES,
     PricingUiMode,
+    RuleStatus,
     RuleFormState,
     SAFE_EMPTY,
     buildConditions,
@@ -251,7 +252,7 @@ export function CombinationBuilderPage() {
         const conditions = buildConditions(ruleForm, filledRuleFactors)
         const pricingPayload = createPricingPayload(ruleForm)
         const discountPayload = createDiscountPayload(ruleForm)
-        const adjustmentsPayload = createAdjustmentsPayload(ruleForm)
+        const adjustmentsPayload = createAdjustmentsPayload(ruleForm) ?? []
 
         const payload: CreatePricingRulePayload = {
             procedureId: ruleForm.procedureId,
