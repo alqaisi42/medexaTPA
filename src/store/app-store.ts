@@ -100,6 +100,12 @@ export const useAppStore = create<AppState>((set) => ({
                             path: '/lookup-management',
                         },
                         {
+                            id: 'specialties',
+                            label: 'Specialties',
+                            icon: 'Stethoscope',
+                            path: '/specialties',
+                        },
+                        {
                             id: 'combination-builder',
                             label: 'Combination Builder',
                             icon: 'Grid3X3',
