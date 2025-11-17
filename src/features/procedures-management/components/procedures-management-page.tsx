@@ -318,6 +318,8 @@ export function ProceduresManagementPage() {
         })
     }, [subCategoryCandidates, subCategoryQuery])
 
+    const hasActiveFilter = useMemo(() => hasActiveFilters(filters), [filters])
+
     const loadCategories = useCallback(async () => {
         setCategoriesLoading(true)
         try {
@@ -828,6 +830,12 @@ export function ProceduresManagementPage() {
 
     const handleFilterToggle = () => {
         setShowFilters((prev) => !prev)
+    }
+
+    const handleResetFilters = () => {
+        setSearchTerm('')
+        setFilters(INITIAL_FILTERS)
+        setPage(0)
     }
 
     const handleRefresh = () => {
@@ -1702,7 +1710,10 @@ export function ProceduresManagementPage() {
                                         type="button"
                                         variant="outline"
                                         onClick={handleFilterToggle}
-                                        className="flex items-center gap-2"
+                                        className={cn(
+                                            'flex items-center gap-2',
+                                            hasActiveFilter && 'border-primary text-primary',
+                                        )}
                                     >
                                         <Filter className="h-4 w-4" />
                                         Filters
@@ -1710,8 +1721,20 @@ export function ProceduresManagementPage() {
 
                                     <Button
                                         type="button"
+                                        variant="ghost"
+                                        onClick={handleResetFilters}
+                                        disabled={!hasActiveFilter && !filters.keyword}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                        Reset
+                                    </Button>
+
+                                    <Button
+                                        type="button"
                                         variant="outline"
                                         onClick={handleRefresh}
+                                        disabled={isLoading}
                                         className="flex items-center gap-2"
                                     >
                                         <RefreshCcw className="h-4 w-4" />
@@ -1880,6 +1903,9 @@ export function ProceduresManagementPage() {
                                     <span className="text-sm text-gray-600">
                                         Page {page + 1} of {Math.max(pageMeta.totalPages, 1)}
                                     </span>
+                                    {(hasActiveFilter || filters.keyword) && (
+                                        <span className="text-xs text-primary">Filters applied</span>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Button
@@ -1934,7 +1960,19 @@ export function ProceduresManagementPage() {
                                             <TableRow>
                                                 <TableCell colSpan={8}
                                                            className="h-40 text-center text-sm text-gray-500">
-                                                    No procedures found. Try adjusting your search or filters.
+                                                    <div className="flex flex-col items-center gap-2">
+                                                        <span>No procedures found. Try adjusting your search or filters.</span>
+                                                        {(hasActiveFilter || filters.keyword) && (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={handleResetFilters}
+                                                            >
+                                                                Clear filters
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
