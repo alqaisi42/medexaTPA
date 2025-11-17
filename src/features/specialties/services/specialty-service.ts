@@ -1,6 +1,6 @@
 import { Specialty, SpecialtyPayload } from '@/types/specialty'
 
-const API_ROUTE_PREFIX = '/api/v1/specialties'
+const API_ROUTE_PREFIX = '/api/specialties'
 
 async function handleJsonResponse(response: Response, fallbackMessage: string) {
     if (!response.ok) {

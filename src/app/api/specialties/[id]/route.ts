@@ -32,8 +32,9 @@ async function forwardRequest(id: string, init?: RequestInit) {
     })
 }
 
-export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-    const { id } = await context.params
+export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+    const { id } = context.params
+
     const payload = await request.json()
 
     try {
