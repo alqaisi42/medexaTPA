@@ -219,13 +219,13 @@ export function ProceduresManagementPage() {
     const [icdDropdownOpen, setIcdDropdownOpen] = useState(false)
     const [icdSearchLoading, setIcdSearchLoading] = useState(false)
     const [icdSearchError, setIcdSearchError] = useState<string | null>(null)
-    const icdDropdownRef = useRef<HTMLDivElement | null>(null)
+    const icdDropdownRef = useRef<HTMLDivElement>(null)
     const [clinicalCategoryQuery, setClinicalCategoryQuery] = useState('')
     const [subCategoryQuery, setSubCategoryQuery] = useState('')
     const [clinicalCategoryDropdownOpen, setClinicalCategoryDropdownOpen] = useState(false)
     const [subCategoryDropdownOpen, setSubCategoryDropdownOpen] = useState(false)
-    const clinicalCategoryDropdownRef = useRef<HTMLDivElement | null>(null)
-    const subCategoryDropdownRef = useRef<HTMLDivElement | null>(null)
+    const clinicalCategoryDropdownRef = useRef<HTMLDivElement>(null)
+    const subCategoryDropdownRef = useRef<HTMLDivElement>(null)
 
     const [categoryForm, setCategoryForm] = useState<CreateProcedureCategoryPayload>(INITIAL_CATEGORY_FORM)
     const [categoryFormError, setCategoryFormError] = useState<string | null>(null)
@@ -764,13 +764,17 @@ export function ProceduresManagementPage() {
             'equipmentRequired',
         ]
 
+        const payloadRecord = payload as unknown as Record<string, unknown>
+
         optionalStringFields.forEach((field) => {
             const rawValue = formData[field]
+
             if (typeof rawValue === 'string') {
                 const trimmed = rawValue.trim()
-                ;(payload as Record<string, unknown>)[field as string] = trimmed.length > 0 ? trimmed : undefined
+                payloadRecord[field] = trimmed.length > 0 ? trimmed : undefined
             }
         })
+
 
         const isEditingMode = dialogMode === 'edit' && editingProcedureId !== null
         setIsSaving(true)
@@ -1037,7 +1041,7 @@ export function ProceduresManagementPage() {
                 await createProcedureContainer(payload)
             }
 
-            setContainerFeedback({ type: 'success', message: successMessage })
+            setContainerFeedback({type: 'success', message: successMessage})
             handleResetContainerForm()
             await loadContainers()
 
@@ -1048,7 +1052,7 @@ export function ProceduresManagementPage() {
             }
         } catch (err) {
             setContainerFormError(err instanceof Error ? err.message : failureMessage)
-            setContainerFeedback({ type: 'error', message: failureMessage })
+            setContainerFeedback({type: 'error', message: failureMessage})
         } finally {
             setIsSavingContainer(false)
         }
@@ -1692,7 +1696,7 @@ export function ProceduresManagementPage() {
                                         onClick={() => setActiveTab('categories')}
                                         className="flex items-center gap-2"
                                     >
-                                        <Library className="h-4 w-4" />
+                                        <Library className="h-4 w-4"/>
                                         Categories
                                     </Button>
 
@@ -1702,7 +1706,7 @@ export function ProceduresManagementPage() {
                                         onClick={() => setActiveTab('containers')}
                                         className="flex items-center gap-2"
                                     >
-                                        <Boxes className="h-4 w-4" />
+                                        <Boxes className="h-4 w-4"/>
                                         Containers
                                     </Button>
 
@@ -1715,7 +1719,7 @@ export function ProceduresManagementPage() {
                                             hasActiveFilter && 'border-primary text-primary',
                                         )}
                                     >
-                                        <Filter className="h-4 w-4" />
+                                        <Filter className="h-4 w-4"/>
                                         Filters
                                     </Button>
 
@@ -1737,7 +1741,7 @@ export function ProceduresManagementPage() {
                                         disabled={isLoading}
                                         className="flex items-center gap-2"
                                     >
-                                        <RefreshCcw className="h-4 w-4" />
+                                        <RefreshCcw className="h-4 w-4"/>
                                         Refresh
                                     </Button>
                                 </div>
@@ -1746,7 +1750,7 @@ export function ProceduresManagementPage() {
                                     onClick={handleAdd}
                                     className="ml-auto bg-tpa-primary hover:bg-tpa-accent text-white shadow-sm px-4"
                                 >
-                                    <Plus className="h-4 w-4 mr-1" />
+                                    <Plus className="h-4 w-4 mr-1"/>
                                     Add Procedure
                                 </Button>
                             </div>
@@ -2582,12 +2586,12 @@ export function ProceduresManagementPage() {
                                         >
                                             {categoriesLoading ? (
                                                 <>
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin"/>
                                                     Loading
                                                 </>
                                             ) : (
                                                 <>
-                                                    <RefreshCcw className="h-3.5 w-3.5" />
+                                                    <RefreshCcw className="h-3.5 w-3.5"/>
                                                     Refresh
                                                 </>
                                             )}
@@ -2595,7 +2599,8 @@ export function ProceduresManagementPage() {
                                     </div>
 
                                     <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                        <Search
+                                            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"/>
                                         <Input
                                             placeholder="Search categories..."
                                             value={linkCategoryQuery}
@@ -2606,8 +2611,9 @@ export function ProceduresManagementPage() {
 
                                     <div className="max-h-64 overflow-y-auto rounded-md border border-gray-200">
                                         {categoriesLoading ? (
-                                            <div className="flex h-32 items-center justify-center text-sm text-gray-500">
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading categories...
+                                            <div
+                                                className="flex h-32 items-center justify-center text-sm text-gray-500">
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading categories...
                                             </div>
                                         ) : filteredLinkCategories.length === 0 ? (
                                             <div className="px-4 py-6 text-center text-sm text-gray-500">
@@ -2637,7 +2643,8 @@ export function ProceduresManagementPage() {
                                                                     Code: {category.code} · Procedures linked: {category.procedureCount}
                                                                 </span>
                                                                 {!category.isActive && (
-                                                                    <span className="mt-1 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                                                    <span
+                                                                        className="mt-1 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
                                                                         Inactive
                                                                     </span>
                                                                 )}
@@ -2668,12 +2675,12 @@ export function ProceduresManagementPage() {
                                         >
                                             {containersLoading ? (
                                                 <>
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin"/>
                                                     Loading
                                                 </>
                                             ) : (
                                                 <>
-                                                    <RefreshCcw className="h-3.5 w-3.5" />
+                                                    <RefreshCcw className="h-3.5 w-3.5"/>
                                                     Refresh
                                                 </>
                                             )}
@@ -2681,7 +2688,8 @@ export function ProceduresManagementPage() {
                                     </div>
 
                                     <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                        <Search
+                                            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"/>
                                         <Input
                                             placeholder="Search containers..."
                                             value={linkContainerQuery}
@@ -2692,8 +2700,9 @@ export function ProceduresManagementPage() {
 
                                     <div className="max-h-64 overflow-y-auto rounded-md border border-gray-200">
                                         {containersLoading ? (
-                                            <div className="flex h-32 items-center justify-center text-sm text-gray-500">
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading containers...
+                                            <div
+                                                className="flex h-32 items-center justify-center text-sm text-gray-500">
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading containers...
                                             </div>
                                         ) : filteredLinkContainers.length === 0 ? (
                                             <div className="px-4 py-6 text-center text-sm text-gray-500">
@@ -2728,7 +2737,8 @@ export function ProceduresManagementPage() {
                                                                     </span>
                                                                 )}
                                                                 {!container.isActive && (
-                                                                    <span className="mt-1 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                                                    <span
+                                                                        className="mt-1 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
                                                                         Inactive
                                                                     </span>
                                                                 )}
@@ -2760,7 +2770,7 @@ export function ProceduresManagementPage() {
                         >
                             {isLinkSaving ? (
                                 <span className="flex items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                    <Loader2 className="h-4 w-4 animate-spin"/> Saving...
                                 </span>
                             ) : (
                                 'Save Changes'
@@ -2779,16 +2789,16 @@ export function ProceduresManagementPage() {
                 icdResults={icdResults}
                 icdDropdownOpen={icdDropdownOpen}
                 icdDropdownRef={icdDropdownRef}
+                clinicalCategoryDropdownRef={clinicalCategoryDropdownRef}
+                subCategoryDropdownRef={subCategoryDropdownRef}
                 icdSearchError={icdSearchError}
                 icdSearchLoading={icdSearchLoading}
                 icdSearchTerm={icdSearchTerm}
                 clinicalCategoryDropdownOpen={clinicalCategoryDropdownOpen}
-                clinicalCategoryDropdownRef={clinicalCategoryDropdownRef}
                 clinicalCategoryQuery={clinicalCategoryQuery}
                 filteredClinicalCategories={filteredClinicalCategories}
                 filteredSubCategories={filteredSubCategories}
                 subCategoryDropdownOpen={subCategoryDropdownOpen}
-                subCategoryDropdownRef={subCategoryDropdownRef}
                 subCategoryQuery={subCategoryQuery}
                 onFormDataChange={setFormData}
                 onOpenChange={handleDialogChange}
@@ -2840,7 +2850,8 @@ export function ProceduresManagementPage() {
                             onValueChange={handleDetailsTabChange}
                             className="flex flex-col gap-6 md:flex-row"
                         >
-                            <TabsList className="!h-auto w-full flex-row gap-2 overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-2 text-sm font-medium text-gray-600 md:w-60 md:flex-col">
+                            <TabsList
+                                className="!h-auto w-full flex-row gap-2 overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-2 text-sm font-medium text-gray-600 md:w-60 md:flex-col">
                                 <TabsTrigger
                                     value="overview"
                                     className="w-full justify-start rounded-md text-left data-[state=active]:bg-white data-[state=active]:text-tpa-primary"
@@ -2874,9 +2885,11 @@ export function ProceduresManagementPage() {
                                                 label="Reference Price"
                                                 value={formatCurrency(procedureDetails.referencePrice)}
                                             />
-                                            <DetailItem label="Valid From" value={formatDate(procedureDetails.validFrom)}/>
+                                            <DetailItem label="Valid From"
+                                                        value={formatDate(procedureDetails.validFrom)}/>
                                             <DetailItem label="Valid To" value={formatDate(procedureDetails.validTo)}/>
-                                            <DetailItem label="Surgical" value={procedureDetails.isSurgical ? 'Yes' : 'No'}/>
+                                            <DetailItem label="Surgical"
+                                                        value={procedureDetails.isSurgical ? 'Yes' : 'No'}/>
                                             <DetailItem
                                                 label="Requires Authorization"
                                                 value={procedureDetails.requiresAuthorization ? 'Yes' : 'No'}
@@ -2910,20 +2923,28 @@ export function ProceduresManagementPage() {
                                                 label="Clinical Category"
                                                 value={procedureDetails.clinicalCategory ?? '-'}
                                             />
-                                            <DetailItem label="Sub Category" value={procedureDetails.subCategory ?? '-'}/>
+                                            <DetailItem label="Sub Category"
+                                                        value={procedureDetails.subCategory ?? '-'}/>
                                             <DetailItem label="Body Region" value={procedureDetails.bodyRegion ?? '-'}/>
-                                            <DetailItem label="Primary Specialty" value={procedureDetails.primarySpecialty ?? '-'}/>
+                                            <DetailItem label="Primary Specialty"
+                                                        value={procedureDetails.primarySpecialty ?? '-'}/>
                                         </div>
                                     </section>
                                     <section className="space-y-3">
-                                        <h4 className="text-sm font-semibold text-gray-700">Severity & Operating Needs</h4>
+                                        <h4 className="text-sm font-semibold text-gray-700">Severity & Operating
+                                            Needs</h4>
                                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                            <DetailItem label="Severity Level" value={procedureDetails.severityLevel ?? '-'}/>
+                                            <DetailItem label="Severity Level"
+                                                        value={procedureDetails.severityLevel ?? '-'}/>
                                             <DetailItem label="Risk Level" value={procedureDetails.riskLevel ?? '-'}/>
-                                            <DetailItem label="Anesthesia Level" value={procedureDetails.anesthesiaLevel ?? '-'}/>
-                                            <DetailItem label="Operation Type" value={procedureDetails.operationType ?? '-'}/>
-                                            <DetailItem label="Operation Room Type" value={procedureDetails.operationRoomType ?? '-'}/>
-                                            <DetailItem label="Primary ICD Code" value={procedureDetails.primaryIcdCode ?? '-'}/>
+                                            <DetailItem label="Anesthesia Level"
+                                                        value={procedureDetails.anesthesiaLevel ?? '-'}/>
+                                            <DetailItem label="Operation Type"
+                                                        value={procedureDetails.operationType ?? '-'}/>
+                                            <DetailItem label="Operation Room Type"
+                                                        value={procedureDetails.operationRoomType ?? '-'}/>
+                                            <DetailItem label="Primary ICD Code"
+                                                        value={procedureDetails.primaryIcdCode ?? '-'}/>
                                         </div>
                                     </section>
                                 </TabsContent>
@@ -2964,7 +2985,8 @@ export function ProceduresManagementPage() {
                                         <h4 className="text-sm font-semibold text-gray-700">Containers</h4>
                                         <div className="space-y-2">
                                             {procedureDetails.containers.length === 0 ? (
-                                                <p className="text-sm text-gray-500">No container mappings available.</p>
+                                                <p className="text-sm text-gray-500">No container mappings
+                                                    available.</p>
                                             ) : (
                                                 procedureDetails.containers.map((container) => (
                                                     <div
@@ -2973,10 +2995,13 @@ export function ProceduresManagementPage() {
                                                     >
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div>
-                                                                <div className="font-medium text-gray-800">{container.nameEn}</div>
-                                                                <div className="text-gray-500">Level {container.levelNo}</div>
+                                                                <div
+                                                                    className="font-medium text-gray-800">{container.nameEn}</div>
+                                                                <div
+                                                                    className="text-gray-500">Level {container.levelNo}</div>
                                                                 {container.parentName && (
-                                                                    <div className="text-gray-500">Parent: {container.parentName}</div>
+                                                                    <div
+                                                                        className="text-gray-500">Parent: {container.parentName}</div>
                                                                 )}
                                                             </div>
                                                             <Button

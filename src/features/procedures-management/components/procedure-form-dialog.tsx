@@ -57,36 +57,36 @@ export interface ProcedureFormDialogProps {
 }
 
 export function ProcedureFormDialog({
-    open,
-    mode,
-    formData,
-    formError,
-    isSaving,
-    icdResults,
-    icdDropdownOpen,
-    icdDropdownRef,
-    icdSearchError,
-    icdSearchLoading,
-    icdSearchTerm,
-    clinicalCategoryDropdownOpen,
-    clinicalCategoryDropdownRef,
-    clinicalCategoryQuery,
-    filteredClinicalCategories,
-    filteredSubCategories,
-    subCategoryDropdownOpen,
-    subCategoryDropdownRef,
-    subCategoryQuery,
-    onFormDataChange,
-    onOpenChange,
-    onSearchIcds,
-    onIcdSearchTermChange,
-    onIcdDropdownOpenChange,
-    onClinicalCategoryDropdownChange,
-    onClinicalCategoryQueryChange,
-    onSubCategoryDropdownChange,
-    onSubCategoryQueryChange,
-    onSave,
-}: ProcedureFormDialogProps) {
+                                        open,
+                                        mode,
+                                        formData,
+                                        formError,
+                                        isSaving,
+                                        icdResults,
+                                        icdDropdownOpen,
+                                        icdDropdownRef,
+                                        icdSearchError,
+                                        icdSearchLoading,
+                                        icdSearchTerm,
+                                        clinicalCategoryDropdownOpen,
+                                        clinicalCategoryDropdownRef,
+                                        clinicalCategoryQuery,
+                                        filteredClinicalCategories,
+                                        filteredSubCategories,
+                                        subCategoryDropdownOpen,
+                                        subCategoryDropdownRef,
+                                        subCategoryQuery,
+                                        onFormDataChange,
+                                        onOpenChange,
+                                        onSearchIcds,
+                                        onIcdSearchTermChange,
+                                        onIcdDropdownOpenChange,
+                                        onClinicalCategoryDropdownChange,
+                                        onClinicalCategoryQueryChange,
+                                        onSubCategoryDropdownChange,
+                                        onSubCategoryQueryChange,
+                                        onSave,
+                                    }: ProcedureFormDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-4xl">
@@ -163,7 +163,10 @@ export function ProcedureFormDialog({
                                             id="unitOfMeasure"
                                             value={formData.unitOfMeasure}
                                             onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, unitOfMeasure: event.target.value}))
+                                                onFormDataChange((prev) => ({
+                                                    ...prev,
+                                                    unitOfMeasure: event.target.value
+                                                }))
                                             }
                                             placeholder="E.g. session, visit, unit"
                                         />
@@ -175,7 +178,10 @@ export function ProcedureFormDialog({
                                             type="number"
                                             value={formData.referencePrice}
                                             onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, referencePrice: Number(event.target.value)}))
+                                                onFormDataChange((prev) => ({
+                                                    ...prev,
+                                                    referencePrice: Number(event.target.value)
+                                                }))
                                             }
                                             placeholder="0"
                                         />
@@ -313,10 +319,11 @@ export function ProcedureFormDialog({
                                                 placeholder="Search or select category"
                                             />
                                             <div className="absolute right-2 top-2.5 text-gray-400">
-                                                <Search className="h-4 w-4" />
+                                                <Search className="h-4 w-4"/>
                                             </div>
                                             {clinicalCategoryDropdownOpen && (
-                                                <div className="absolute z-10 mt-2 max-h-48 w-full overflow-auto rounded-md border bg-white shadow-lg">
+                                                <div
+                                                    className="absolute z-10 mt-2 max-h-48 w-full overflow-auto rounded-md border bg-white shadow-lg">
                                                     <div className="p-2">
                                                         <Input
                                                             value={clinicalCategoryQuery}
@@ -344,9 +351,11 @@ export function ProcedureFormDialog({
                                                             >
                                                                 <span className="flex flex-col">
                                                                     <span className="font-medium">{category.code}</span>
-                                                                    <span className="text-xs text-gray-600">{category.nameEn}</span>
+                                                                    <span
+                                                                        className="text-xs text-gray-600">{category.nameEn}</span>
                                                                 </span>
-                                                                <span className="text-xs text-gray-500">{category.procedureCount} procedures</span>
+                                                                <span
+                                                                    className="text-xs text-gray-500">{category.procedureCount} procedures</span>
                                                             </button>
                                                         ))}
                                                     </div>
@@ -362,16 +371,20 @@ export function ProcedureFormDialog({
                                                 id="subCategory"
                                                 value={formData.subCategory ?? ''}
                                                 onChange={(event) =>
-                                                    onFormDataChange((prev) => ({...prev, subCategory: event.target.value}))
+                                                    onFormDataChange((prev) => ({
+                                                        ...prev,
+                                                        subCategory: event.target.value
+                                                    }))
                                                 }
                                                 onFocus={() => onSubCategoryDropdownChange(true)}
                                                 placeholder="Search or select sub-category"
                                             />
                                             <div className="absolute right-2 top-2.5 text-gray-400">
-                                                <Search className="h-4 w-4" />
+                                                <Search className="h-4 w-4"/>
                                             </div>
                                             {subCategoryDropdownOpen && (
-                                                <div className="absolute z-10 mt-2 max-h-48 w-full overflow-auto rounded-md border bg-white shadow-lg">
+                                                <div
+                                                    className="absolute z-10 mt-2 max-h-48 w-full overflow-auto rounded-md border bg-white shadow-lg">
                                                     <div className="p-2">
                                                         <Input
                                                             value={subCategoryQuery}
@@ -389,16 +402,21 @@ export function ProcedureFormDialog({
                                                                     formData.subCategory === category.code && 'bg-gray-100',
                                                                 )}
                                                                 onClick={() => {
-                                                                    onFormDataChange((prev) => ({...prev, subCategory: category.code}))
+                                                                    onFormDataChange((prev) => ({
+                                                                        ...prev,
+                                                                        subCategory: category.code
+                                                                    }))
                                                                     onSubCategoryQueryChange(category.code ?? '')
                                                                     onSubCategoryDropdownChange(false)
                                                                 }}
                                                             >
                                                                 <span className="flex flex-col">
                                                                     <span className="font-medium">{category.code}</span>
-                                                                    <span className="text-xs text-gray-600">{category.nameEn}</span>
+                                                                    <span
+                                                                        className="text-xs text-gray-600">{category.nameEn}</span>
                                                                 </span>
-                                                                <span className="text-xs text-gray-500">{category.procedureCount} procedures</span>
+                                                                <span
+                                                                    className="text-xs text-gray-500">{category.procedureCount} procedures</span>
                                                             </button>
                                                         ))}
                                                     </div>
@@ -429,7 +447,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="severityLevel">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Not specified</SelectItem>
@@ -445,10 +463,13 @@ export function ProcedureFormDialog({
                                         <Label htmlFor="riskLevel">Risk Level</Label>
                                         <Select
                                             value={formData.riskLevel ?? ''}
-                                            onValueChange={(value) => onFormDataChange((prev) => ({...prev, riskLevel: value || null}))}
+                                            onValueChange={(value) => onFormDataChange((prev) => ({
+                                                ...prev,
+                                                riskLevel: value || null
+                                            }))}
                                         >
                                             <SelectTrigger id="riskLevel">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Not specified</SelectItem>
@@ -472,7 +493,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="anesthesiaLevel">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Not specified</SelectItem>
@@ -493,7 +514,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="operationType">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Not specified</SelectItem>
@@ -510,11 +531,14 @@ export function ProcedureFormDialog({
                                         <Select
                                             value={formData.operationRoomType ?? ''}
                                             onValueChange={(value) =>
-                                                onFormDataChange((prev) => ({...prev, operationRoomType: value || null}))
+                                                onFormDataChange((prev) => ({
+                                                    ...prev,
+                                                    operationRoomType: value || null
+                                                }))
                                             }
                                         >
                                             <SelectTrigger id="operationRoomType">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Not specified</SelectItem>
@@ -540,10 +564,11 @@ export function ProcedureFormDialog({
                                                 placeholder="Search ICD codes"
                                             />
                                             <div className="absolute right-2 top-2.5 text-gray-400">
-                                                <Search className="h-4 w-4" />
+                                                <Search className="h-4 w-4"/>
                                             </div>
                                             {icdDropdownOpen && (
-                                                <div className="absolute z-10 mt-2 w-full rounded-md border bg-white shadow-lg">
+                                                <div
+                                                    className="absolute z-10 mt-2 w-full rounded-md border bg-white shadow-lg">
                                                     <div className="p-2">
                                                         <div className="flex items-center gap-2">
                                                             <Input
@@ -551,19 +576,23 @@ export function ProcedureFormDialog({
                                                                 onChange={(event) => onIcdSearchTermChange(event.target.value)}
                                                                 placeholder="Search ICDs"
                                                             />
-                                                            <Button variant="outline" size="icon" onClick={() => onSearchIcds()}>
-                                                                <Search className="h-4 w-4" />
+                                                            <Button variant="outline" size="icon"
+                                                                    onClick={() => onSearchIcds()}>
+                                                                <Search className="h-4 w-4"/>
                                                             </Button>
                                                         </div>
                                                     </div>
                                                     <div className="max-h-56 overflow-auto">
                                                         {icdSearchLoading && (
-                                                            <div className="flex items-center justify-center py-3 text-sm text-gray-500">
-                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Searching...
+                                                            <div
+                                                                className="flex items-center justify-center py-3 text-sm text-gray-500">
+                                                                <Loader2
+                                                                    className="mr-2 h-4 w-4 animate-spin"/> Searching...
                                                             </div>
                                                         )}
                                                         {icdSearchError && (
-                                                            <div className="px-4 py-2 text-xs text-red-600">{icdSearchError}</div>
+                                                            <div
+                                                                className="px-4 py-2 text-xs text-red-600">{icdSearchError}</div>
                                                         )}
                                                         {icdResults.map((icd) => (
                                                             <button
@@ -574,14 +603,15 @@ export function ProcedureFormDialog({
                                                                     onFormDataChange((prev) => ({
                                                                         ...prev,
                                                                         primaryIcdCode: icd.code,
-                                                                        primaryIcd: icd.description,
+                                                                        primaryIcd: icd.nameEn,
                                                                     }))
-                                                                    onIcdSearchTermChange(`${icd.code} · ${icd.description ?? ''}`.trim())
+                                                                    onIcdSearchTermChange(`${icd.code} · ${icd.nameEn ?? ''}`.trim())
                                                                     onIcdDropdownOpenChange(false)
                                                                 }}
                                                             >
                                                                 <span className="font-medium">{icd.code}</span>
-                                                                <span className="text-xs text-gray-600">{icd.description}</span>
+                                                                <span
+                                                                    className="text-xs text-gray-600">{icd.nameEn}</span>
                                                             </button>
                                                         ))}
                                                     </div>
@@ -595,11 +625,14 @@ export function ProcedureFormDialog({
                                         <Select
                                             value={formData.icdValidationMode ?? ''}
                                             onValueChange={(value) =>
-                                                onFormDataChange((prev) => ({...prev, icdValidationMode: value || null}))
+                                                onFormDataChange((prev) => ({
+                                                    ...prev,
+                                                    icdValidationMode: value || null
+                                                }))
                                             }
                                         >
                                             <SelectTrigger id="icdValidationMode">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Not specified</SelectItem>
@@ -620,7 +653,10 @@ export function ProcedureFormDialog({
                                             id="primarySpecialty"
                                             value={formData.primarySpecialty ?? ''}
                                             onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, primarySpecialty: event.target.value}))
+                                                onFormDataChange((prev) => ({
+                                                    ...prev,
+                                                    primarySpecialty: event.target.value
+                                                }))
                                             }
                                             placeholder="E.g. Orthopedics"
                                         />
@@ -631,7 +667,10 @@ export function ProcedureFormDialog({
                                             id="providerType"
                                             value={formData.providerType ?? ''}
                                             onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, providerType: event.target.value}))
+                                                onFormDataChange((prev) => ({
+                                                    ...prev,
+                                                    providerType: event.target.value
+                                                }))
                                             }
                                             placeholder="E.g. Hospital, Clinic"
                                         />
@@ -680,7 +719,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="genderSpecific">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Any</SelectItem>
@@ -695,28 +734,34 @@ export function ProcedureFormDialog({
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="allowedIcds">Allowed ICDs (JSON array)</Label>
-                                        <Textarea
-                                            id="allowedIcds"
-                                            rows={3}
-                                            value={formData.allowedIcds ?? ''}
-                                            onChange={(event) => onFormDataChange((prev) => ({...prev, allowedIcds: event.target.value}))}
-                                            placeholder='["ICD1","ICD2"]'
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="forbiddenIcds">Forbidden ICDs (JSON array)</Label>
-                                        <Textarea
-                                            id="forbiddenIcds"
-                                            rows={3}
-                                            value={formData.forbiddenIcds ?? ''}
-                                            onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, forbiddenIcds: event.target.value}))
-                                            }
-                                            placeholder='["ICD3","ICD4"]'
-                                        />
-                                    </div>
+                                    {/*<div className="space-y-2">*/}
+                                    {/*    <Label htmlFor="allowedIcds">Allowed ICDs (JSON array)</Label>*/}
+                                    {/*    <Textarea*/}
+                                    {/*        id="allowedIcds"*/}
+                                    {/*        rows={3}*/}
+                                    {/*        value={formData.allowedIcds ?? ''}*/}
+                                    {/*        onChange={(event) => onFormDataChange((prev) => ({*/}
+                                    {/*            ...prev,*/}
+                                    {/*            allowedIcds: event.target.value*/}
+                                    {/*        }))}*/}
+                                    {/*        placeholder='["ICD1","ICD2"]'*/}
+                                    {/*    />*/}
+                                    {/*</div>*/}
+                                    {/*<div className="space-y-2">*/}
+                                    {/*    <Label htmlFor="forbiddenIcds">Forbidden ICDs (JSON array)</Label>*/}
+                                    {/*    <Textarea*/}
+                                    {/*        id="forbiddenIcds"*/}
+                                    {/*        rows={3}*/}
+                                    {/*        value={formData.forbiddenIcds ?? ''}*/}
+                                    {/*        onChange={(event) =>*/}
+                                    {/*            onFormDataChange((prev) => ({*/}
+                                    {/*                ...prev,*/}
+                                    {/*                forbiddenIcds: event.target.value*/}
+                                    {/*            }))*/}
+                                    {/*        }*/}
+                                    {/*        placeholder='["ICD3","ICD4"]'*/}
+                                    {/*    />*/}
+                                    {/*</div>*/}
                                 </div>
                             </TabsContent>
 
@@ -772,7 +817,7 @@ export function ProcedureFormDialog({
                                         <Input
                                             id="maxAllowedAmount"
                                             type="number"
-        min="0"
+                                            min="0"
                                             value={formData.maxAllowedAmount ?? ''}
                                             onChange={(event) =>
                                                 onFormDataChange((prev) => ({
@@ -805,7 +850,10 @@ export function ProcedureFormDialog({
                                             min="0"
                                             value={formData.rvu ?? ''}
                                             onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, rvu: event.target.value ? Number(event.target.value) : null}))
+                                                onFormDataChange((prev) => ({
+                                                    ...prev,
+                                                    rvu: event.target.value ? Number(event.target.value) : null
+                                                }))
                                             }
                                         />
                                     </div>
@@ -860,18 +908,21 @@ export function ProcedureFormDialog({
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="coverageInclusions">Coverage Inclusions</Label>
-                                        <Textarea
-                                            id="coverageInclusions"
-                                            rows={3}
-                                            value={formData.coverageInclusions ?? ''}
-                                            onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, coverageInclusions: event.target.value}))
-                                            }
-                                            placeholder='["Room & board", "Physician fees"]'
-                                        />
-                                    </div>
+                                    {/*<div className="space-y-2">*/}
+                                    {/*    <Label htmlFor="coverageInclusions">Coverage Inclusions</Label>*/}
+                                    {/*    <Textarea*/}
+                                    {/*        id="coverageInclusions"*/}
+                                    {/*        rows={3}*/}
+                                    {/*        value={formData.coverageInclusions ?? ''}*/}
+                                    {/*        onChange={(event) =>*/}
+                                    {/*            onFormDataChange((prev) => ({*/}
+                                    {/*                ...prev,*/}
+                                    {/*                coverageInclusions: event.target.value*/}
+                                    {/*            }))*/}
+                                    {/*        }*/}
+                                    {/*        placeholder='["Room & board", "Physician fees"]'*/}
+                                    {/*    />*/}
+                                    {/*</div>*/}
                                     <div className="space-y-2">
                                         <Label htmlFor="requiresInternalReview">Requires Internal Review</Label>
                                         <Select
@@ -884,7 +935,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="requiresInternalReview">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {YES_NO_OPTIONS.map((option) => (
@@ -904,7 +955,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="genderSpecificCoverage">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="">Any</SelectItem>
@@ -931,7 +982,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="isBundle">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {YES_NO_OPTIONS.map((option) => (
@@ -959,18 +1010,21 @@ export function ProcedureFormDialog({
                                         />
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label htmlFor="bundleComponents">Bundle Components (JSON array)</Label>
-                                        <Textarea
-                                            id="bundleComponents"
-                                            rows={3}
-                                            value={formData.bundleComponents ?? ''}
-                                            onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, bundleComponents: event.target.value}))
-                                            }
-                                            placeholder='["PROC-1","PROC-2"]'
-                                        />
-                                    </div>
+                                    {/*<div className="space-y-2">*/}
+                                    {/*    <Label htmlFor="bundleComponents">Bundle Components (JSON array)</Label>*/}
+                                    {/*    <Textarea*/}
+                                    {/*        id="bundleComponents"*/}
+                                    {/*        rows={3}*/}
+                                    {/*        value={formData.bundleComponents ?? ''}*/}
+                                    {/*        onChange={(event) =>*/}
+                                    {/*            onFormDataChange((prev) => ({*/}
+                                    {/*                ...prev,*/}
+                                    {/*                bundleComponents: event.target.value*/}
+                                    {/*            }))*/}
+                                    {/*        }*/}
+                                    {/*        placeholder='["PROC-1","PROC-2"]'*/}
+                                    {/*    />*/}
+                                    {/*</div>*/}
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -986,7 +1040,7 @@ export function ProcedureFormDialog({
                                             }
                                         >
                                             <SelectTrigger id="isFollowUp">
-                                                <SelectValue placeholder="Select" />
+                                                <SelectValue placeholder="Select"/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {YES_NO_OPTIONS.map((option) => (
@@ -1031,33 +1085,6 @@ export function ProcedureFormDialog({
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="consumablesRequired">Consumables Required</Label>
-                                        <Textarea
-                                            id="consumablesRequired"
-                                            rows={3}
-                                            value={formData.consumablesRequired ?? ''}
-                                            onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, consumablesRequired: event.target.value}))
-                                            }
-                                            placeholder="List consumables or JSON array"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="equipmentRequired">Equipment Required</Label>
-                                        <Textarea
-                                            id="equipmentRequired"
-                                            rows={3}
-                                            value={formData.equipmentRequired ?? ''}
-                                            onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, equipmentRequired: event.target.value}))
-                                            }
-                                            placeholder="List equipment or JSON array"
-                                        />
-                                    </div>
-                                </div>
                             </TabsContent>
 
                             <TabsContent value="ownership" className="space-y-4 pt-4">
@@ -1087,7 +1114,8 @@ export function ProcedureFormDialog({
                                     </div>
                                 </div>
                                 <p className="text-sm text-gray-500">
-                                    Ownership fields help track who created and last updated the procedure in downstream systems.
+                                    Ownership fields help track who created and last updated the procedure in downstream
+                                    systems.
                                 </p>
                             </TabsContent>
                         </div>
@@ -1095,7 +1123,8 @@ export function ProcedureFormDialog({
                 </Tabs>
 
                 {formError && (
-                    <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</div>
+                    <div
+                        className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</div>
                 )}
 
                 <DialogFooter>
@@ -1110,7 +1139,7 @@ export function ProcedureFormDialog({
                     >
                         {isSaving ? (
                             <span className="flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                <Loader2 className="h-4 w-4 animate-spin"/> Saving...
                             </span>
                         ) : (
                             'Save Procedure'
