@@ -92,6 +92,62 @@ const EMPTY_PRICE_PAYLOAD: DrugPricePayload = {
     effectiveTo: null,
 }
 
+// Pharmacy Standard Unit-of-Measure (UoM) Lookup List
+const UNIT_OF_MEASURE_OPTIONS = [
+    // Solid Dosage Forms
+    { code: 'TAB', description: 'Tablet' },
+    { code: 'CAP', description: 'Capsule' },
+    { code: 'PILL', description: 'Pill' },
+    { code: 'CHEW', description: 'Chewable Tablet' },
+    { code: 'ODT', description: 'Orally Disintegrating Tablet' },
+    { code: 'GUM', description: 'Medicated Gum' },
+    { code: 'SUPP', description: 'Suppository' },
+    { code: 'GRAN', description: 'Granules' },
+    { code: 'POWD', description: 'Powder (Solid)' },
+    // Liquid Forms
+    { code: 'ML', description: 'Milliliter' },
+    { code: 'L', description: 'Liter' },
+    { code: 'SYRUP', description: 'Syrup' },
+    { code: 'SUSP', description: 'Suspension' },
+    { code: 'SOLN', description: 'Solution' },
+    { code: 'DROPS', description: 'Drops (Oral/Ear/Eye)' },
+    { code: 'AMP', description: 'Ampoule' },
+    { code: 'VIAL', description: 'Vial' },
+    { code: 'IVBAG', description: 'Intravenous Bag' },
+    { code: 'INJ', description: 'Injection (General)' },
+    // Topical & Dermatology Forms
+    { code: 'GM', description: 'Gram (Cream / Ointment / Gel)' },
+    { code: 'TUBE', description: 'Tube (Cream/Ointment/Gel)' },
+    { code: 'PATCH', description: 'Transdermal Patch' },
+    { code: 'SPRAY', description: 'Spray' },
+    { code: 'AEROSOL', description: 'Aerosol' },
+    { code: 'LOTION', description: 'Lotion' },
+    // Inhalation & Respiratory
+    { code: 'PFS', description: 'Pre-Filled Syringe' },
+    { code: 'NEB', description: 'Nebulizer Unit' },
+    { code: 'INH', description: 'Inhaler (General)' },
+    { code: 'PUFF', description: 'Puff / Actuation' },
+    { code: 'DPI', description: 'Dry Powder Inhaler' },
+    { code: 'MDI', description: 'Metered Dose Inhaler' },
+    // Ophthalmic / Otic
+    { code: 'EYE_DROP', description: 'Eye Drops' },
+    { code: 'EAR_DROP', description: 'Ear Drops' },
+    { code: 'OPHTH_GEL', description: 'Ophthalmic Gel' },
+    { code: 'OPHTH_OINT', description: 'Ophthalmic Ointment' },
+    // Injectable Standard Units
+    { code: 'SYR', description: 'Syringe' },
+    { code: 'CC', description: 'Cubic Centimeter (same as mL)' },
+    { code: 'IU', description: 'International Units' },
+    // Special / Advanced
+    { code: 'KIT', description: 'Medical Kit' },
+    { code: 'STRIP', description: 'Strip (Tablets/Capsules)' },
+    { code: 'BOTTLE', description: 'Bottle' },
+    { code: 'BAG', description: 'Bag' },
+    { code: 'CARTRIDGE', description: 'Insulin Cartridge' },
+    { code: 'PEN', description: 'Insulin Pen' },
+    { code: 'DEVICE', description: 'Medical Device Unit' },
+] as const
+
 export function DrugMasterPage() {
     const [page, setPage] = useState(0)
     const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
@@ -1495,14 +1551,32 @@ function DrugPackEditorDialog({
     mode,
 }: DrugPackEditorDialogProps) {
     const [formState, setFormState] = useState<DrugPackPayload>(initialValues)
+    const [unitOfMeasureDropdownOpen, setUnitOfMeasureDropdownOpen] = useState(false)
+    const [unitOfMeasureQuery, setUnitOfMeasureQuery] = useState('')
     const dialogKey = `${mode}-${initialValues.drugFormId}-${open ? 'open' : 'closed'}`
 
     // Update form state when initialValues changes (e.g., when editing a different pack)
     useEffect(() => {
         if (open) {
             setFormState(initialValues)
+            setUnitOfMeasureQuery('')
         }
     }, [initialValues, open])
+
+    // Filter unit of measure options based on search query
+    const filteredUnitOfMeasureOptions = useMemo(() => {
+        const term = unitOfMeasureQuery.toLowerCase().trim()
+
+        if (!term) {
+            return UNIT_OF_MEASURE_OPTIONS
+        }
+
+        return UNIT_OF_MEASURE_OPTIONS.filter(
+            (option) =>
+                option.code.toLowerCase().includes(term) ||
+                option.description.toLowerCase().includes(term)
+        )
+    }, [unitOfMeasureQuery])
 
     const handleChange = (field: keyof DrugPackPayload, value: string | number | boolean | null) => {
         onError(null)
@@ -1559,12 +1633,51 @@ function DrugPackEditorDialog({
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="uom">Unit of Measure *</Label>
-                        <Input
-                            id="uom"
-                            value={formState.unitOfMeasure}
-                            onChange={(event) => handleChange('unitOfMeasure', event.target.value.toUpperCase())}
-                            placeholder="TAB / ML / AMP"
-                        />
+                        <Select
+                            open={unitOfMeasureDropdownOpen}
+                            onOpenChange={(open) => {
+                                setUnitOfMeasureDropdownOpen(open)
+                                if (!open) {
+                                    setUnitOfMeasureQuery('')
+                                }
+                            }}
+                            value={formState.unitOfMeasure || undefined}
+                            onValueChange={(value) => {
+                                handleChange('unitOfMeasure', value)
+                                setUnitOfMeasureDropdownOpen(false)
+                                setUnitOfMeasureQuery('')
+                            }}
+                        >
+                            <SelectTrigger id="uom">
+                                <SelectValue placeholder="Select unit of measure" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <div className="sticky top-0 z-10 border-b bg-white p-2">
+                                    <Input
+                                        value={unitOfMeasureQuery}
+                                        onChange={(event) => setUnitOfMeasureQuery(event.target.value)}
+                                        onKeyDown={(event) => event.stopPropagation()}
+                                        placeholder="Search units..."
+                                    />
+                                </div>
+                                {filteredUnitOfMeasureOptions.length > 0 ? (
+                                    filteredUnitOfMeasureOptions.map((option) => (
+                                        <SelectItem key={option.code} value={option.code}>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{option.code}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {option.description}
+                                                </span>
+                                            </div>
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                                        No units found
+                                    </div>
+                                )}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="units-per-pack">Units per Pack *</Label>
