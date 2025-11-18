@@ -118,6 +118,12 @@ export const useAppStore = create<AppState>((set) => ({
                             path: '/drug-master',
                         },
                         {
+                            id: 'drug-categories',
+                            label: 'Drug Categories',
+                            icon: 'Layers',
+                            path: '/drug-categories',
+                        },
+                        {
                             id: 'drug-price-lists',
                             label: 'Drug Price Lists',
                             icon: 'DollarSign',
