@@ -24,7 +24,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
@@ -83,6 +82,8 @@ export function DrugMasterPage() {
     const [isDetailsOpen, setIsDetailsOpen] = useState(false)
     const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<Drug | null>(null)
+    const [packDialogOpen, setPackDialogOpen] = useState(false)
+    const [packManagerForm, setPackManagerForm] = useState<DrugForm | null>(null)
 
     const loadDrugs = useCallback(async () => {
         setLoading(true)
@@ -451,7 +452,7 @@ export function DrugMasterPage() {
                 mode={editingDrug ? 'edit' : 'create'}
             />
 
-            <DrugDetailsSheet
+            <DrugDetailsDialog
                 drug={selectedDrug}
                 open={isDetailsOpen}
                 onOpenChange={(open) => {
@@ -528,6 +529,13 @@ interface DrugFormDialogProps {
 function DrugFormDialog({ open, onOpenChange, onSubmit, loading, error, onError, initialValues, mode }: DrugFormDialogProps) {
     const [formState, setFormState] = useState<DrugPayload>(initialValues)
     const dialogKey = `${mode}-${initialValues.code}-${open ? 'open' : 'closed'}`
+
+    useEffect(() => {
+        if (open) {
+            setFormState(initialValues)
+            onError(null)
+        }
+    }, [open, initialValues])
 
     const handleChange = (field: keyof DrugPayload, value: string | boolean | null) => {
         onError(null)
@@ -951,6 +959,28 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <Dialog
+                open={packDialogOpen}
+                onOpenChange={(open) => {
+                    setPackDialogOpen(open)
+                    if (!open) {
+                        setPackManagerForm(null)
+                    }
+                }}
+            >
+                <DialogContent className="max-w-5xl">
+                    {packManagerForm && (
+                        <DrugPacksPanel
+                            form={packManagerForm}
+                            onClose={() => {
+                                setPackDialogOpen(false)
+                                setPackManagerForm(null)
+                            }}
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
@@ -978,6 +1008,13 @@ function DrugFormEditorDialog({
 }: DrugFormEditorDialogProps) {
     const [formState, setFormState] = useState<DrugFormPayload>(initialValues)
     const dialogKey = `${mode}-${initialValues.drugId}-${open ? 'open' : 'closed'}`
+
+    useEffect(() => {
+        if (open) {
+            setFormState(initialValues)
+            onError(null)
+        }
+    }, [open, initialValues])
 
     const handleChange = (field: keyof DrugFormPayload, value: string | number | boolean | null) => {
         onError(null)
@@ -1370,6 +1407,13 @@ function DrugPackEditorDialog({
     const [formState, setFormState] = useState<DrugPackPayload>(initialValues)
     const dialogKey = `${mode}-${initialValues.drugFormId}-${open ? 'open' : 'closed'}`
 
+    useEffect(() => {
+        if (open) {
+            setFormState(initialValues)
+            onError(null)
+        }
+    }, [open, initialValues])
+
     const handleChange = (field: keyof DrugPackPayload, value: string | number | boolean | null) => {
         onError(null)
         setFormState((prev) => ({ ...prev, [field]: value }))
@@ -1523,7 +1567,7 @@ function DrugPackEditorDialog({
     )
 }
 
-interface DrugDetailsSheetProps {
+interface DrugDetailsDialogProps {
     drug: Drug | null
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -1532,87 +1576,87 @@ interface DrugDetailsSheetProps {
     deleting: boolean
 }
 
-function DrugDetailsSheet({ drug, open, onOpenChange, onEdit, onDeleteRequest, deleting }: DrugDetailsSheetProps) {
-    if (!drug) return null
-
+function DrugDetailsDialog({ drug, open, onOpenChange, onEdit, onDeleteRequest, deleting }: DrugDetailsDialogProps) {
     return (
-        <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
-                <SheetHeader className="space-y-1">
-                    <SheetTitle className="flex items-center gap-2">
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            {drug && (
+                <DialogContent className="max-w-4xl w-full overflow-y-auto">
+                    <DialogHeader className="space-y-1">
+                        <DialogTitle className="flex items-center gap-2">
                         <Pill className="h-5 w-5 text-tpa-primary" /> {drug.genericNameEn || 'Drug details'}
-                    </SheetTitle>
-                    <SheetDescription>Review the master data for this drug.</SheetDescription>
-                </SheetHeader>
+                        </DialogTitle>
+                        <DialogDescription>Review the master data for this drug.</DialogDescription>
+                    </DialogHeader>
 
-                <Tabs defaultValue="overview" className="mt-6">
-                    <TabsList className="grid grid-cols-2 w-full">
-                        <TabsTrigger value="overview">Overview</TabsTrigger>
-                        <TabsTrigger value="forms">Forms</TabsTrigger>
-                    </TabsList>
+                    <Tabs defaultValue="overview" className="mt-6">
+                        <TabsList className="grid grid-cols-2 w-full">
+                            <TabsTrigger value="overview">Overview</TabsTrigger>
+                            <TabsTrigger value="forms">Forms</TabsTrigger>
+                        </TabsList>
 
-                    <TabsContent value="overview" className="mt-4 space-y-4">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <DetailItem label="Code" value={drug.code} />
-                            <DetailItem label="ATC Code" value={drug.atcCode || '—'} />
-                            <DetailItem label="Generic (EN)" value={drug.genericNameEn || '—'} />
-                            <DetailItem label="Generic (AR)" value={drug.genericNameAr || '—'} rtl />
-                            <DetailItem label="Brand (EN)" value={drug.brandNameEn || '—'} />
-                            <DetailItem label="Brand (AR)" value={drug.brandNameAr || '—'} rtl />
-                            <DetailItem
-                                label="Validity"
-                                value={`${drug.validFrom ? formatDate(drug.validFrom) : '—'} → ${
-                                    drug.validTo ? formatDate(drug.validTo) : 'Open-ended'
-                                }`}
-                            />
-                            <DetailItem label="Created By" value={drug.createdBy || '—'} />
-                        </div>
-
-                        <div className="space-y-2">
-                            <p className="text-xs font-medium text-gray-500">Flags</p>
-                            <div className="flex flex-wrap gap-2">
-                                {drug.isOtc && (
-                                    <Badge icon={BadgeCheck} label="OTC" className="bg-green-100 text-green-800" />
-                                )}
-                                {drug.isControlled && (
-                                    <Badge icon={ShieldCheck} label="Controlled" className="bg-amber-100 text-amber-800" />
-                                )}
-                                {drug.allowGenericSubstitution ? (
-                                    <Badge icon={Layers} label="Substitution allowed" className="bg-blue-100 text-blue-800" />
-                                ) : (
-                                    <Badge icon={Layers} label="No substitution" className="bg-gray-100 text-gray-700" />
-                                )}
-                                <Badge
-                                    icon={CalendarRange}
-                                    label={drug.isActive ? 'Active' : 'Inactive'}
-                                    className={drug.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}
+                        <TabsContent value="overview" className="mt-4 space-y-4">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                <DetailItem label="Code" value={drug.code} />
+                                <DetailItem label="ATC Code" value={drug.atcCode || '—'} />
+                                <DetailItem label="Generic (EN)" value={drug.genericNameEn || '—'} />
+                                <DetailItem label="Generic (AR)" value={drug.genericNameAr || '—'} rtl />
+                                <DetailItem label="Brand (EN)" value={drug.brandNameEn || '—'} />
+                                <DetailItem label="Brand (AR)" value={drug.brandNameAr || '—'} rtl />
+                                <DetailItem
+                                    label="Validity"
+                                    value={`${drug.validFrom ? formatDate(drug.validFrom) : '—'} → ${
+                                        drug.validTo ? formatDate(drug.validTo) : 'Open-ended'
+                                    }`}
                                 />
+                                <DetailItem label="Created By" value={drug.createdBy || '—'} />
                             </div>
-                        </div>
 
-                        <div className="space-y-2">
-                            <p className="text-xs font-medium text-gray-500">Description</p>
-                            <p className="rounded-md border bg-gray-50 p-3 text-sm text-gray-700">
-                                {drug.description || 'No description provided'}
-                            </p>
-                        </div>
-                    </TabsContent>
+                            <div className="space-y-2">
+                                <p className="text-xs font-medium text-gray-500">Flags</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {drug.isOtc && (
+                                        <Badge icon={BadgeCheck} label="OTC" className="bg-green-100 text-green-800" />
+                                    )}
+                                    {drug.isControlled && (
+                                        <Badge icon={ShieldCheck} label="Controlled" className="bg-amber-100 text-amber-800" />
+                                    )}
+                                    {drug.allowGenericSubstitution ? (
+                                        <Badge icon={Layers} label="Substitution allowed" className="bg-blue-100 text-blue-800" />
+                                    ) : (
+                                        <Badge icon={Layers} label="No substitution" className="bg-gray-100 text-gray-700" />
+                                    )}
+                                    <Badge
+                                        icon={CalendarRange}
+                                        label={drug.isActive ? 'Active' : 'Inactive'}
+                                        className={drug.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}
+                                    />
+                                </div>
+                            </div>
 
-                    <TabsContent value="forms" className="mt-4">
-                        <DrugFormsPanel drugId={drug.id} />
-                    </TabsContent>
-                </Tabs>
+                            <div className="space-y-2">
+                                <p className="text-xs font-medium text-gray-500">Description</p>
+                                <p className="rounded-md border bg-gray-50 p-3 text-sm text-gray-700">
+                                    {drug.description || 'No description provided'}
+                                </p>
+                            </div>
+                        </TabsContent>
 
-                <div className="mt-6 flex items-center justify-between gap-3">
-                    <Button variant="outline" onClick={onEdit}>
-                        <Pencil className="h-4 w-4 mr-2" /> Edit
-                    </Button>
-                    <Button variant="destructive" onClick={() => onDeleteRequest(drug)} disabled={deleting}>
-                        <Trash2 className="h-4 w-4 mr-2" /> {deleting ? 'Deleting...' : 'Delete'}
-                    </Button>
-                </div>
-            </SheetContent>
-        </Sheet>
+                        <TabsContent value="forms" className="mt-4">
+                            <DrugFormsPanel drugId={drug.id} />
+                        </TabsContent>
+                    </Tabs>
+
+                    <div className="mt-6 flex items-center justify-between gap-3">
+                        <Button variant="outline" onClick={onEdit}>
+                            <Pencil className="h-4 w-4 mr-2" /> Edit
+                        </Button>
+                        <Button variant="destructive" onClick={() => onDeleteRequest(drug)} disabled={deleting}>
+                            <Trash2 className="h-4 w-4 mr-2" /> {deleting ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </div>
+                </DialogContent>
+            )}
+        </Dialog>
     )
 }
 
