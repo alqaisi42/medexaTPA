@@ -8,6 +8,7 @@ import {
     Filter,
     Layers,
     Loader2,
+    Package,
     Pencil,
     Pill,
     Plus,
@@ -28,7 +29,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
 import { createDrugForm, deleteDrugForm, fetchDrugForms, updateDrugForm } from '@/lib/api/drug-forms'
-import { Drug, DrugForm, DrugFormPayload, DrugPayload } from '@/types'
+import { createDrugPack, deleteDrugPack, fetchDrugPacksByForm, updateDrugPack } from '@/lib/api/drug-packs'
+import { Drug, DrugForm, DrugFormPayload, DrugPack, DrugPackPayload, DrugPayload } from '@/types'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50]
 
@@ -486,6 +488,28 @@ export function DrugMasterPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <Dialog
+                open={packDialogOpen}
+                onOpenChange={(open) => {
+                    setPackDialogOpen(open)
+                    if (!open) {
+                        setPackManagerForm(null)
+                    }
+                }}
+            >
+                <DialogContent className="max-w-5xl">
+                    {packManagerForm && (
+                        <DrugPacksPanel
+                            form={packManagerForm}
+                            onClose={() => {
+                                setPackDialogOpen(false)
+                                setPackManagerForm(null)
+                            }}
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
@@ -695,6 +719,19 @@ const EMPTY_DRUG_FORM: DrugFormPayload = {
     isActive: true,
 }
 
+const EMPTY_DRUG_PACK: DrugPackPayload = {
+    drugFormId: 0,
+    packCode: '',
+    unitOfMeasure: '',
+    unitsPerPack: 0,
+    minDispenseQuantity: 0,
+    maxDispenseQuantity: 0,
+    isSplitAllowed: false,
+    validFrom: null,
+    validTo: null,
+    isActive: true,
+}
+
 interface DrugFormsPanelProps {
     drugId: number
 }
@@ -709,6 +746,8 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
     const [editingForm, setEditingForm] = useState<DrugForm | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<DrugForm | null>(null)
     const [deletingId, setDeletingId] = useState<number | null>(null)
+    const [packManagerForm, setPackManagerForm] = useState<DrugForm | null>(null)
+    const [packDialogOpen, setPackDialogOpen] = useState(false)
 
     const loadForms = useCallback(async () => {
         if (!drugId) return
@@ -740,6 +779,11 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
         setEditingForm(form)
         setFormError(null)
         setDialogOpen(true)
+    }
+
+    const handleManagePacks = (form: DrugForm) => {
+        setPackManagerForm(form)
+        setPackDialogOpen(true)
     }
 
     const handleSubmit = async (payload: DrugFormPayload) => {
@@ -857,11 +901,14 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
                                             {form.isActive ? 'Active' : 'Inactive'}
                                         </span>
                                     </TableCell>
-                                    <TableCell className="text-center">
-                                        <div className="flex items-center justify-center gap-2">
-                                            <Button variant="outline" size="icon" onClick={() => handleEdit(form)}>
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
+                                <TableCell className="text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Button variant="secondary" size="icon" onClick={() => handleManagePacks(form)}>
+                                            <Package className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="outline" size="icon" onClick={() => handleEdit(form)}>
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
                                             <Button variant="destructive" size="icon" onClick={() => setDeleteTarget(form)}>
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
@@ -1060,6 +1107,422 @@ function DrugFormEditorDialog({
     )
 }
 
+interface DrugPacksPanelProps {
+    form: DrugForm
+    onClose: () => void
+}
+
+function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
+    const [packs, setPacks] = useState<DrugPack[]>([])
+    const [loading, setLoading] = useState(false)
+    const [saving, setSaving] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [formError, setFormError] = useState<string | null>(null)
+    const [dialogOpen, setDialogOpen] = useState(false)
+    const [editingPack, setEditingPack] = useState<DrugPack | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<DrugPack | null>(null)
+    const [deletingId, setDeletingId] = useState<number | null>(null)
+
+    const loadPacks = useCallback(async () => {
+        if (!form.id) return
+        setLoading(true)
+        setError(null)
+        try {
+            const data = await fetchDrugPacksByForm(form.id)
+            setPacks(data)
+        } catch (requestError) {
+            console.error(requestError)
+            setError(requestError instanceof Error ? requestError.message : 'Unable to load drug packs')
+            setPacks([])
+        } finally {
+            setLoading(false)
+        }
+    }, [form.id])
+
+    useEffect(() => {
+        void loadPacks()
+    }, [loadPacks])
+
+    const handleCreate = () => {
+        setEditingPack(null)
+        setFormError(null)
+        setDialogOpen(true)
+    }
+
+    const handleEdit = (pack: DrugPack) => {
+        setEditingPack(pack)
+        setFormError(null)
+        setDialogOpen(true)
+    }
+
+    const handleSubmit = async (payload: DrugPackPayload) => {
+        setSaving(true)
+        setFormError(null)
+        try {
+            if (editingPack) {
+                await updateDrugPack(editingPack.id, payload)
+            } else {
+                await createDrugPack(payload)
+            }
+            setDialogOpen(false)
+            await loadPacks()
+        } catch (submitError) {
+            console.error(submitError)
+            setFormError(submitError instanceof Error ? submitError.message : 'Unable to save drug pack')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return
+        setDeletingId(deleteTarget.id)
+        try {
+            await deleteDrugPack(deleteTarget.id)
+            setDeleteTarget(null)
+            await loadPacks()
+        } catch (deleteError) {
+            console.error(deleteError)
+            setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete drug pack')
+        } finally {
+            setDeletingId(null)
+        }
+    }
+
+    const actionInProgress = loading || saving || deletingId !== null
+    const initialValues = useMemo<DrugPackPayload>(() => {
+        if (editingPack) {
+            return mapDrugPackToPayload(editingPack, form.id)
+        }
+        return { ...EMPTY_DRUG_PACK, drugFormId: form.id }
+    }, [editingPack, form.id])
+
+    return (
+        <div className="space-y-4">
+            <div className="flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-wider text-gray-500">Dosage Form</p>
+                        <div className="flex items-center gap-3">
+                            <span className="text-lg font-semibold">{form.dosageForm}</span>
+                            {form.isDefaultForm && <Badge icon={BadgeCheck} label="Default" className="bg-blue-100 text-blue-800" />}
+                            <Badge
+                                icon={Layers}
+                                label={`${form.strengthValue || ''} ${form.strengthUnit || ''}`.trim() || 'Strength not set'}
+                                className="bg-gray-100 text-gray-700"
+                            />
+                            <Badge icon={ShieldCheck} label={form.route || 'Route'} className="bg-amber-50 text-amber-800" />
+                        </div>
+                        <p className="text-sm text-gray-600">
+                            Manage pack definitions for this form to control dispensing quantities.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" onClick={onClose}>
+                            Close
+                        </Button>
+                        <Button className="bg-tpa-primary hover:bg-tpa-accent" onClick={handleCreate}>
+                            <Plus className="h-4 w-4 mr-2" /> Add Pack
+                        </Button>
+                    </div>
+                </div>
+                {error && <p className="text-sm text-red-600">{error}</p>}
+            </div>
+
+            <div className="rounded-lg border bg-white">
+                <div className="flex items-center justify-between border-b px-4 py-2">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Package className="h-4 w-4" /> Pack Configurations
+                    </div>
+                    {loading && (
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading packs...
+                        </div>
+                    )}
+                </div>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Pack Code</TableHead>
+                            <TableHead className="text-center">UOM</TableHead>
+                            <TableHead className="text-center">Units/Pack</TableHead>
+                            <TableHead className="text-center">Min / Max Qty</TableHead>
+                            <TableHead className="text-center">Split</TableHead>
+                            <TableHead className="text-center">Validity</TableHead>
+                            <TableHead className="text-center">Status</TableHead>
+                            <TableHead className="text-center">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {packs.length === 0 && !loading ? (
+                            <TableRow>
+                                <TableCell colSpan={8} className="text-center text-sm text-gray-500 py-6">
+                                    No packs defined for this form yet.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            packs.map((pack) => (
+                                <TableRow key={pack.id} className="hover:bg-gray-50">
+                                    <TableCell className="font-semibold">{pack.packCode || '—'}</TableCell>
+                                    <TableCell className="text-center">{pack.unitOfMeasure || '—'}</TableCell>
+                                    <TableCell className="text-center">{pack.unitsPerPack || '—'}</TableCell>
+                                    <TableCell className="text-center text-sm">
+                                        <span className="font-medium">{pack.minDispenseQuantity || 0}</span>
+                                        <span className="text-gray-500"> / {pack.maxDispenseQuantity || 0}</span>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <span
+                                            className={cn(
+                                                'inline-flex items-center justify-center rounded-full px-2 py-1 text-xs font-semibold',
+                                                pack.isSplitAllowed ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700',
+                                            )}
+                                        >
+                                            {pack.isSplitAllowed ? 'Allowed' : 'Not allowed'}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-center text-sm">
+                                        {pack.validFrom ? formatDate(pack.validFrom) : '—'}
+                                        <span className="block text-gray-500">
+                                            {pack.validTo ? formatDate(pack.validTo) : 'Open-ended'}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <span
+                                            className={cn(
+                                                'inline-flex items-center justify-center rounded-full px-2 py-1 text-xs font-semibold',
+                                                pack.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700',
+                                            )}
+                                        >
+                                            {pack.isActive ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <Button variant="outline" size="icon" onClick={() => handleEdit(pack)}>
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="destructive" size="icon" onClick={() => setDeleteTarget(pack)}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+
+            <DrugPackEditorDialog
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+                onSubmit={handleSubmit}
+                loading={saving}
+                error={formError}
+                onError={setFormError}
+                initialValues={initialValues}
+                mode={editingPack ? 'edit' : 'create'}
+            />
+
+            <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete Pack</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete the {deleteTarget?.packCode ?? 'pack'}? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={actionInProgress}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleDelete} disabled={actionInProgress}>
+                            {actionInProgress ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    )
+}
+
+interface DrugPackEditorDialogProps {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    onSubmit: (payload: DrugPackPayload) => Promise<void>
+    loading: boolean
+    error: string | null
+    onError: (message: string | null) => void
+    initialValues: DrugPackPayload
+    mode: 'create' | 'edit'
+}
+
+function DrugPackEditorDialog({
+    open,
+    onOpenChange,
+    onSubmit,
+    loading,
+    error,
+    onError,
+    initialValues,
+    mode,
+}: DrugPackEditorDialogProps) {
+    const [formState, setFormState] = useState<DrugPackPayload>(initialValues)
+    const dialogKey = `${mode}-${initialValues.drugFormId}-${open ? 'open' : 'closed'}`
+
+    const handleChange = (field: keyof DrugPackPayload, value: string | number | boolean | null) => {
+        onError(null)
+        setFormState((prev) => ({ ...prev, [field]: value }))
+    }
+
+    const handleSave = async () => {
+        onError(null)
+
+        if (!formState.packCode.trim() || !formState.unitOfMeasure.trim()) {
+            return onError('Pack code and unit of measure are required.')
+        }
+
+        if (!Number.isFinite(formState.unitsPerPack) || formState.unitsPerPack <= 0) {
+            return onError('Units per pack must be greater than zero.')
+        }
+
+        if (!Number.isFinite(formState.minDispenseQuantity) || !Number.isFinite(formState.maxDispenseQuantity)) {
+            return onError('Min and max dispense quantities are required.')
+        }
+
+        if (formState.minDispenseQuantity < 0 || formState.maxDispenseQuantity <= 0) {
+            return onError('Dispense quantities must be positive.')
+        }
+
+        if (formState.minDispenseQuantity > formState.maxDispenseQuantity) {
+            return onError('Min quantity cannot exceed max quantity.')
+        }
+
+        await onSubmit({
+            ...formState,
+            packCode: formState.packCode.trim(),
+            unitOfMeasure: formState.unitOfMeasure.trim(),
+        })
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange} key={dialogKey}>
+            <DialogContent className="max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>{mode === 'edit' ? 'Update pack' : 'Add pack'}</DialogTitle>
+                    <DialogDescription>Define pack properties for this dosage form.</DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="pack-code">Pack Code *</Label>
+                        <Input
+                            id="pack-code"
+                            value={formState.packCode}
+                            onChange={(event) => handleChange('packCode', event.target.value.toUpperCase())}
+                            placeholder="PANADOL-500-TAB-20"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="uom">Unit of Measure *</Label>
+                        <Input
+                            id="uom"
+                            value={formState.unitOfMeasure}
+                            onChange={(event) => handleChange('unitOfMeasure', event.target.value.toUpperCase())}
+                            placeholder="TAB / ML / AMP"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="units-per-pack">Units per Pack *</Label>
+                        <Input
+                            id="units-per-pack"
+                            type="number"
+                            min="0"
+                            value={formState.unitsPerPack}
+                            onChange={(event) => handleChange('unitsPerPack', Number(event.target.value))}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Dispense Quantity *</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <Input
+                                id="min-qty"
+                                type="number"
+                                min="0"
+                                value={formState.minDispenseQuantity}
+                                onChange={(event) => handleChange('minDispenseQuantity', Number(event.target.value))}
+                                placeholder="Min"
+                            />
+                            <Input
+                                id="max-qty"
+                                type="number"
+                                min="0"
+                                value={formState.maxDispenseQuantity}
+                                onChange={(event) => handleChange('maxDispenseQuantity', Number(event.target.value))}
+                                placeholder="Max"
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="pack-valid-from">Valid From</Label>
+                        <Input
+                            id="pack-valid-from"
+                            type="date"
+                            value={formState.validFrom ?? ''}
+                            onChange={(event) => handleChange('validFrom', event.target.value || null)}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="pack-valid-to">Valid To</Label>
+                        <Input
+                            id="pack-valid-to"
+                            type="date"
+                            value={formState.validTo ?? ''}
+                            onChange={(event) => handleChange('validTo', event.target.value || null)}
+                        />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                        <Label>Flags</Label>
+                        <div className="flex flex-wrap gap-6 items-center">
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    id="split-allowed"
+                                    checked={formState.isSplitAllowed}
+                                    onCheckedChange={(checked) => handleChange('isSplitAllowed', checked)}
+                                />
+                                <Label htmlFor="split-allowed">Split allowed</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    id="pack-active"
+                                    checked={formState.isActive}
+                                    onCheckedChange={(checked) => handleChange('isActive', checked)}
+                                />
+                                <Label htmlFor="pack-active">Active</Label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {error && <p className="text-sm text-red-600">{error}</p>}
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={() => void handleSave()}
+                        className="bg-tpa-primary hover:bg-tpa-accent"
+                        disabled={loading}
+                    >
+                        {loading ? 'Saving...' : mode === 'edit' ? 'Update pack' : 'Create pack'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 interface DrugDetailsSheetProps {
     drug: Drug | null
     open: boolean
@@ -1192,6 +1655,21 @@ function mapDrugFormToPayload(form: DrugForm, drugId: number): DrugFormPayload {
         validFrom: form.validFrom,
         validTo: form.validTo,
         isActive: form.isActive,
+    }
+}
+
+function mapDrugPackToPayload(pack: DrugPack, drugFormId: number): DrugPackPayload {
+    return {
+        drugFormId,
+        packCode: pack.packCode,
+        unitOfMeasure: pack.unitOfMeasure,
+        unitsPerPack: pack.unitsPerPack,
+        minDispenseQuantity: pack.minDispenseQuantity,
+        maxDispenseQuantity: pack.maxDispenseQuantity,
+        isSplitAllowed: pack.isSplitAllowed,
+        validFrom: pack.validFrom,
+        validTo: pack.validTo,
+        isActive: pack.isActive,
     }
 }
 
