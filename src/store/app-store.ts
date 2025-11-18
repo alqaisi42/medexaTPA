@@ -111,6 +111,18 @@ export const useAppStore = create<AppState>((set) => ({
                             icon: 'Grid3X3',
                             path: '/combination-builder',
                         },
+                        {
+                            id: 'drug-master',
+                            label: 'Drug Master',
+                            icon: 'Pill',
+                            path: '/drug-master',
+                        },
+                        {
+                            id: 'drug-price-lists',
+                            label: 'Drug Price Lists',
+                            icon: 'DollarSign',
+                            path: '/drug-price-lists',
+                        },
                     ],
                 },
                 {
