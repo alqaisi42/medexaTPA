@@ -117,6 +117,12 @@ export const useAppStore = create<AppState>((set) => ({
                             icon: 'Pill',
                             path: '/drug-master',
                         },
+                        {
+                            id: 'drug-price-lists',
+                            label: 'Drug Price Lists',
+                            icon: 'DollarSign',
+                            path: '/drug-price-lists',
+                        },
                     ],
                 },
                 {
