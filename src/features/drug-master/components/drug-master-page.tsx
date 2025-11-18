@@ -148,6 +148,98 @@ const UNIT_OF_MEASURE_OPTIONS = [
     { code: 'DEVICE', description: 'Medical Device Unit' },
 ] as const
 
+// Dosage Form Lookup List
+const DOSAGE_FORM_OPTIONS = [
+    // Solid Forms
+    { code: 'TAB', description: 'Tablet' },
+    { code: 'CAP', description: 'Capsule' },
+    { code: 'PILL', description: 'Pill' },
+    { code: 'ODT', description: 'Orally Disintegrating Tablet' },
+    { code: 'CHEW', description: 'Chewable Tablet' },
+    { code: 'GRAN', description: 'Granules' },
+    { code: 'POWDER', description: 'Powder' },
+    { code: 'SUPP', description: 'Suppository' },
+    // Liquid Forms
+    { code: 'SYRUP', description: 'Syrup' },
+    { code: 'SUSP', description: 'Suspension' },
+    { code: 'SOLN', description: 'Solution' },
+    { code: 'DROPS', description: 'Oral Drops' },
+    { code: 'ELIXIR', description: 'Elixir' },
+    { code: 'TINCTURE', description: 'Tincture' },
+    // Injectables
+    { code: 'AMP', description: 'Ampoule' },
+    { code: 'VIAL', description: 'Vial' },
+    { code: 'PFS', description: 'Pre-Filled Syringe' },
+    { code: 'INJ', description: 'Injection' },
+    // Topical
+    { code: 'CREAM', description: 'Cream' },
+    { code: 'OINT', description: 'Ointment' },
+    { code: 'GEL', description: 'Gel' },
+    { code: 'LOTION', description: 'Lotion' },
+    { code: 'SPRAY', description: 'Spray' },
+    { code: 'PATCH', description: 'Transdermal Patch' },
+    // Inhalation
+    { code: 'MDI', description: 'Metered-Dose Inhaler' },
+    { code: 'DPI', description: 'Dry-Powder Inhaler' },
+    { code: 'NEB', description: 'Nebulizer Solution' },
+    { code: 'PUFF', description: 'Puff' },
+    // Eye/Ear
+    { code: 'EYE_DROP', description: 'Eye Drop' },
+    { code: 'EAR_DROP', description: 'Ear Drop' },
+    { code: 'OPHTH_GEL', description: 'Ophthalmic Gel' },
+    { code: 'OPHTH_OINT', description: 'Ophthalmic Ointment' },
+] as const
+
+// Route of Administration Lookup List
+const ROUTE_OPTIONS = [
+    // Enteral Routes
+    { code: 'ORAL', description: 'Oral' },
+    { code: 'SUBLINGUAL', description: 'Sublingual' },
+    { code: 'BUCCAL', description: 'Buccal' },
+    // Parenteral Routes
+    { code: 'IV', description: 'Intravenous' },
+    { code: 'IM', description: 'Intramuscular' },
+    { code: 'SC', description: 'Subcutaneous' },
+    { code: 'ID', description: 'Intradermal' },
+    { code: 'IA', description: 'Intra-Arterial' },
+    { code: 'IT', description: 'Intrathecal' },
+    { code: 'EPIDURAL', description: 'Epidural' },
+    // Topical Routes
+    { code: 'TOPICAL', description: 'Topical' },
+    { code: 'TRANSDERMAL', description: 'Transdermal' },
+    { code: 'CUTANEOUS', description: 'Cutaneous' },
+    // Respiratory Routes
+    { code: 'INHALATION', description: 'Inhalation' },
+    { code: 'NASAL', description: 'Nasal' },
+    // Ophthalmic/Otic
+    { code: 'OPHTHALMIC', description: 'Ophthalmic' },
+    { code: 'OTIC', description: 'Otic' },
+    // Other
+    { code: 'RECTAL', description: 'Rectal' },
+    { code: 'VAGINAL', description: 'Vaginal' },
+    { code: 'URETHRAL', description: 'Urethral' },
+] as const
+
+// Strength Unit Lookup List
+const STRENGTH_UNIT_OPTIONS = [
+    // Weight Units
+    { code: 'MG', description: 'Milligram' },
+    { code: 'G', description: 'Gram' },
+    { code: 'MCG', description: 'Microgram' },
+    // Volume Units
+    { code: 'ML', description: 'Milliliter' },
+    { code: 'L', description: 'Liter' },
+    // International Units
+    { code: 'IU', description: 'International Units' },
+    // Concentration Formats
+    { code: 'MG/ML', description: 'Milligram per Milliliter' },
+    { code: 'MCG/ML', description: 'Microgram per Milliliter' },
+    { code: '%', description: 'Percentage' },
+    // Other Common Units
+    { code: 'MEQ', description: 'Milliequivalent' },
+    { code: 'UNITS', description: 'Units (insulin or hormone)' },
+] as const
+
 export function DrugMasterPage() {
     const [page, setPage] = useState(0)
     const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
@@ -1118,14 +1210,62 @@ function DrugFormEditorDialog({
     mode,
 }: DrugFormEditorDialogProps) {
     const [formState, setFormState] = useState<DrugFormPayload>(initialValues)
+    const [dosageFormDropdownOpen, setDosageFormDropdownOpen] = useState(false)
+    const [dosageFormQuery, setDosageFormQuery] = useState('')
+    const [routeDropdownOpen, setRouteDropdownOpen] = useState(false)
+    const [routeQuery, setRouteQuery] = useState('')
+    const [strengthUnitDropdownOpen, setStrengthUnitDropdownOpen] = useState(false)
+    const [strengthUnitQuery, setStrengthUnitQuery] = useState('')
     const dialogKey = `${mode}-${initialValues.drugId}-${open ? 'open' : 'closed'}`
 
     // Update form state when initialValues changes (e.g., when editing a different form)
     useEffect(() => {
         if (open) {
             setFormState(initialValues)
+            setDosageFormQuery('')
+            setRouteQuery('')
+            setStrengthUnitQuery('')
         }
     }, [initialValues, open])
+
+    // Filter dosage form options based on search query
+    const filteredDosageFormOptions = useMemo(() => {
+        const term = dosageFormQuery.toLowerCase().trim()
+        if (!term) {
+            return DOSAGE_FORM_OPTIONS
+        }
+        return DOSAGE_FORM_OPTIONS.filter(
+            (option) =>
+                option.code.toLowerCase().includes(term) ||
+                option.description.toLowerCase().includes(term)
+        )
+    }, [dosageFormQuery])
+
+    // Filter route options based on search query
+    const filteredRouteOptions = useMemo(() => {
+        const term = routeQuery.toLowerCase().trim()
+        if (!term) {
+            return ROUTE_OPTIONS
+        }
+        return ROUTE_OPTIONS.filter(
+            (option) =>
+                option.code.toLowerCase().includes(term) ||
+                option.description.toLowerCase().includes(term)
+        )
+    }, [routeQuery])
+
+    // Filter strength unit options based on search query
+    const filteredStrengthUnitOptions = useMemo(() => {
+        const term = strengthUnitQuery.toLowerCase().trim()
+        if (!term) {
+            return STRENGTH_UNIT_OPTIONS
+        }
+        return STRENGTH_UNIT_OPTIONS.filter(
+            (option) =>
+                option.code.toLowerCase().includes(term) ||
+                option.description.toLowerCase().includes(term)
+        )
+    }, [strengthUnitQuery])
 
     const handleChange = (field: keyof DrugFormPayload, value: string | number | boolean | null) => {
         onError(null)
@@ -1160,21 +1300,97 @@ function DrugFormEditorDialog({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label htmlFor="dosage-form">Dosage Form *</Label>
-                        <Input
-                            id="dosage-form"
-                            value={formState.dosageForm}
-                            onChange={(event) => handleChange('dosageForm', event.target.value.toUpperCase())}
-                            placeholder="TAB / CAP / SYRUP"
-                        />
+                        <Select
+                            open={dosageFormDropdownOpen}
+                            onOpenChange={(open) => {
+                                setDosageFormDropdownOpen(open)
+                                if (!open) {
+                                    setDosageFormQuery('')
+                                }
+                            }}
+                            value={formState.dosageForm || undefined}
+                            onValueChange={(value) => {
+                                handleChange('dosageForm', value)
+                                setDosageFormDropdownOpen(false)
+                                setDosageFormQuery('')
+                            }}
+                        >
+                            <SelectTrigger id="dosage-form">
+                                <SelectValue placeholder="Select dosage form" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <div className="sticky top-0 z-10 border-b bg-white p-2">
+                                    <Input
+                                        value={dosageFormQuery}
+                                        onChange={(event) => setDosageFormQuery(event.target.value)}
+                                        onKeyDown={(event) => event.stopPropagation()}
+                                        placeholder="Search dosage forms..."
+                                    />
+                                </div>
+                                {filteredDosageFormOptions.length > 0 ? (
+                                    filteredDosageFormOptions.map((option) => (
+                                        <SelectItem key={option.code} value={option.code}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium">{option.code}</span>
+                                                <span className="text-muted-foreground">-</span>
+                                                <span className="text-muted-foreground">{option.description}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                                        No dosage forms found
+                                    </div>
+                                )}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="route">Route *</Label>
-                        <Input
-                            id="route"
-                            value={formState.route}
-                            onChange={(event) => handleChange('route', event.target.value.toUpperCase())}
-                            placeholder="ORAL / IV / IM"
-                        />
+                        <Select
+                            open={routeDropdownOpen}
+                            onOpenChange={(open) => {
+                                setRouteDropdownOpen(open)
+                                if (!open) {
+                                    setRouteQuery('')
+                                }
+                            }}
+                            value={formState.route || undefined}
+                            onValueChange={(value) => {
+                                handleChange('route', value)
+                                setRouteDropdownOpen(false)
+                                setRouteQuery('')
+                            }}
+                        >
+                            <SelectTrigger id="route">
+                                <SelectValue placeholder="Select route" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <div className="sticky top-0 z-10 border-b bg-white p-2">
+                                    <Input
+                                        value={routeQuery}
+                                        onChange={(event) => setRouteQuery(event.target.value)}
+                                        onKeyDown={(event) => event.stopPropagation()}
+                                        placeholder="Search routes..."
+                                    />
+                                </div>
+                                {filteredRouteOptions.length > 0 ? (
+                                    filteredRouteOptions.map((option) => (
+                                        <SelectItem key={option.code} value={option.code}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium">{option.code}</span>
+                                                <span className="text-muted-foreground">-</span>
+                                                <span className="text-muted-foreground">{option.description}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                                        No routes found
+                                    </div>
+                                )}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="strength-value">Strength Value *</Label>
@@ -1188,12 +1404,50 @@ function DrugFormEditorDialog({
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="strength-unit">Strength Unit *</Label>
-                        <Input
-                            id="strength-unit"
-                            value={formState.strengthUnit}
-                            onChange={(event) => handleChange('strengthUnit', event.target.value.toUpperCase())}
-                            placeholder="MG / ML"
-                        />
+                        <Select
+                            open={strengthUnitDropdownOpen}
+                            onOpenChange={(open) => {
+                                setStrengthUnitDropdownOpen(open)
+                                if (!open) {
+                                    setStrengthUnitQuery('')
+                                }
+                            }}
+                            value={formState.strengthUnit || undefined}
+                            onValueChange={(value) => {
+                                handleChange('strengthUnit', value)
+                                setStrengthUnitDropdownOpen(false)
+                                setStrengthUnitQuery('')
+                            }}
+                        >
+                            <SelectTrigger id="strength-unit">
+                                <SelectValue placeholder="Select strength unit" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <div className="sticky top-0 z-10 border-b bg-white p-2">
+                                    <Input
+                                        value={strengthUnitQuery}
+                                        onChange={(event) => setStrengthUnitQuery(event.target.value)}
+                                        onKeyDown={(event) => event.stopPropagation()}
+                                        placeholder="Search strength units..."
+                                    />
+                                </div>
+                                {filteredStrengthUnitOptions.length > 0 ? (
+                                    filteredStrengthUnitOptions.map((option) => (
+                                        <SelectItem key={option.code} value={option.code}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium">{option.code}</span>
+                                                <span className="text-muted-foreground">-</span>
+                                                <span className="text-muted-foreground">{option.description}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                                        No strength units found
+                                    </div>
+                                )}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="form-valid-from">Valid From</Label>
@@ -1663,11 +1917,10 @@ function DrugPackEditorDialog({
                                 {filteredUnitOfMeasureOptions.length > 0 ? (
                                     filteredUnitOfMeasureOptions.map((option) => (
                                         <SelectItem key={option.code} value={option.code}>
-                                            <div className="flex flex-col">
+                                            <div className="flex items-center gap-2">
                                                 <span className="font-medium">{option.code}</span>
-                                                <span className="text-xs text-muted-foreground">
-                                                    {option.description}
-                                                </span>
+                                                <span className="text-muted-foreground">-</span>
+                                                <span className="text-muted-foreground">{option.description}</span>
                                             </div>
                                         </SelectItem>
                                     ))
