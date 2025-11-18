@@ -1,4 +1,4 @@
-const targetBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const targetBaseUrl = process.env.API_BASE_URL?.replace(/\/$/, '') ?? ''
 
 export async function forwardDrugPricesRequest(path: string, init?: RequestInit) {
     const targetUrl = `${targetBaseUrl}${path}`

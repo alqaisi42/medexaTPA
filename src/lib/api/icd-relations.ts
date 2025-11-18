@@ -7,7 +7,7 @@ import {
     PaginatedResponse,
 } from '@/types'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const API_BASE_URL = process.env.API_BASE_URL?.replace(/\/$/, '') ?? ''
 const RELATIONS_API_BASE_PATH = API_BASE_URL ? '/api/v1' : '/api'
 
 const headers = {

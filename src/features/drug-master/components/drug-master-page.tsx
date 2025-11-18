@@ -25,12 +25,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
-import { createDrugForm, deleteDrugForm, fetchDrugForms, updateDrugForm } from '@/lib/api/drug-forms'
-import { createDrugPack, deleteDrugPack, fetchDrugPacksByForm, updateDrugPack } from '@/lib/api/drug-packs'
+import { createDrugForm, deleteDrugForm, fetchDrugForms, getDrugFormById, updateDrugForm } from '@/lib/api/drug-forms'
+import { createDrugPack, deleteDrugPack, fetchDrugPacksByForm, getDrugPackById, updateDrugPack } from '@/lib/api/drug-packs'
 import {
     createDrugPrice,
     deleteDrugPrice,
@@ -108,6 +107,7 @@ export function DrugMasterPage() {
     const [isFormOpen, setIsFormOpen] = useState(false)
     const [editingDrug, setEditingDrug] = useState<Drug | null>(null)
     const [formError, setFormError] = useState<string | null>(null)
+    const [loadingEditDrug, setLoadingEditDrug] = useState(false)
 
     const [isDetailsOpen, setIsDetailsOpen] = useState(false)
     const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null)
@@ -138,8 +138,8 @@ export function DrugMasterPage() {
             const term = searchTerm.trim().toLowerCase()
             const matchesSearch = term
                 ? [drug.code, drug.genericNameEn, drug.brandNameEn, drug.atcCode]
-                      .filter(Boolean)
-                      .some((value) => value.toLowerCase().includes(term))
+                    .filter(Boolean)
+                    .some((value) => value.toLowerCase().includes(term))
                 : true
 
             const matchesStatus =
@@ -160,10 +160,19 @@ export function DrugMasterPage() {
         setIsFormOpen(true)
     }
 
-    const handleEdit = (drug: Drug) => {
-        setEditingDrug(drug)
+    const handleEdit = async (drug: Drug) => {
+        setLoadingEditDrug(true)
         setFormError(null)
-        setIsFormOpen(true)
+        try {
+            const freshDrug = await getDrugById(drug.id)
+            setEditingDrug(freshDrug)
+            setIsFormOpen(true)
+        } catch (editError) {
+            console.error(editError)
+            setFormError(editError instanceof Error ? editError.message : 'Unable to load drug data for editing')
+        } finally {
+            setLoadingEditDrug(false)
+        }
     }
 
     const handleSubmit = async (payload: DrugPayload) => {
@@ -450,8 +459,17 @@ export function DrugMasterPage() {
                                             <Button variant="outline" size="icon" onClick={() => handleViewDetails(drug)}>
                                                 <Eye className="h-4 w-4" />
                                             </Button>
-                                            <Button variant="outline" size="icon" onClick={() => handleEdit(drug)}>
-                                                <Pencil className="h-4 w-4" />
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => void handleEdit(drug)}
+                                                disabled={loadingEditDrug}
+                                            >
+                                                {loadingEditDrug && editingDrug?.id === drug.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Pencil className="h-4 w-4" />
+                                                )}
                                             </Button>
                                             <Button
                                                 variant="destructive"
@@ -471,7 +489,13 @@ export function DrugMasterPage() {
 
             <DrugFormDialog
                 open={isFormOpen}
-                onOpenChange={setIsFormOpen}
+                onOpenChange={(open) => {
+                    setIsFormOpen(open)
+                    if (!open) {
+                        setEditingDrug(null)
+                        setFormError(null)
+                    }
+                }}
                 onSubmit={handleSubmit}
                 loading={saving}
                 error={formError}
@@ -480,7 +504,7 @@ export function DrugMasterPage() {
                 mode={editingDrug ? 'edit' : 'create'}
             />
 
-            <DrugDetailsSheet
+            <DrugDetailsDialog
                 drug={selectedDrug}
                 open={isDetailsOpen}
                 onOpenChange={(open) => {
@@ -517,28 +541,6 @@ export function DrugMasterPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            <Dialog
-                open={packDialogOpen}
-                onOpenChange={(open) => {
-                    setPackDialogOpen(open)
-                    if (!open) {
-                        setPackManagerForm(null)
-                    }
-                }}
-            >
-                <DialogContent className="max-w-5xl">
-                    {packManagerForm && (
-                        <DrugPacksPanel
-                            form={packManagerForm}
-                            onClose={() => {
-                                setPackDialogOpen(false)
-                                setPackManagerForm(null)
-                            }}
-                        />
-                    )}
-                </DialogContent>
-            </Dialog>
         </div>
     )
 }
@@ -557,6 +559,13 @@ interface DrugFormDialogProps {
 function DrugFormDialog({ open, onOpenChange, onSubmit, loading, error, onError, initialValues, mode }: DrugFormDialogProps) {
     const [formState, setFormState] = useState<DrugPayload>(initialValues)
     const dialogKey = `${mode}-${initialValues.code}-${open ? 'open' : 'closed'}`
+
+    // Update form state when initialValues changes (e.g., when editing a different drug)
+    useEffect(() => {
+        if (open) {
+            setFormState(initialValues)
+        }
+    }, [initialValues, open])
 
     const handleChange = (field: keyof DrugPayload, value: string | boolean | null) => {
         onError(null)
@@ -773,6 +782,7 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
     const [formError, setFormError] = useState<string | null>(null)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingForm, setEditingForm] = useState<DrugForm | null>(null)
+    const [loadingEditForm, setLoadingEditForm] = useState(false)
     const [deleteTarget, setDeleteTarget] = useState<DrugForm | null>(null)
     const [deletingId, setDeletingId] = useState<number | null>(null)
     const [packManagerForm, setPackManagerForm] = useState<DrugForm | null>(null)
@@ -804,10 +814,19 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
         setDialogOpen(true)
     }
 
-    const handleEdit = (form: DrugForm) => {
-        setEditingForm(form)
+    const handleEdit = async (form: DrugForm) => {
+        setLoadingEditForm(true)
         setFormError(null)
-        setDialogOpen(true)
+        try {
+            const freshForm = await getDrugFormById(form.id)
+            setEditingForm(freshForm)
+            setDialogOpen(true)
+        } catch (editError) {
+            console.error(editError)
+            setFormError(editError instanceof Error ? editError.message : 'Unable to load form data for editing')
+        } finally {
+            setLoadingEditForm(false)
+        }
     }
 
     const handleManagePacks = (form: DrugForm) => {
@@ -930,14 +949,23 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
                                             {form.isActive ? 'Active' : 'Inactive'}
                                         </span>
                                     </TableCell>
-                                <TableCell className="text-center">
-                                    <div className="flex items-center justify-center gap-2">
-                                        <Button variant="secondary" size="icon" onClick={() => handleManagePacks(form)}>
-                                            <Package className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="outline" size="icon" onClick={() => handleEdit(form)}>
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
+                                    <TableCell className="text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <Button variant="secondary" size="icon" onClick={() => handleManagePacks(form)}>
+                                                <Package className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => void handleEdit(form)}
+                                                disabled={loadingEditForm}
+                                            >
+                                                {loadingEditForm && editingForm?.id === form.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Pencil className="h-4 w-4" />
+                                                )}
+                                            </Button>
                                             <Button variant="destructive" size="icon" onClick={() => setDeleteTarget(form)}>
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
@@ -952,7 +980,13 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
 
             <DrugFormEditorDialog
                 open={dialogOpen}
-                onOpenChange={setDialogOpen}
+                onOpenChange={(open) => {
+                    setDialogOpen(open)
+                    if (!open) {
+                        setEditingForm(null)
+                        setFormError(null)
+                    }
+                }}
                 onSubmit={handleSubmit}
                 loading={saving}
                 error={formError}
@@ -978,6 +1012,28 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
                             {actionInProgress ? 'Deleting...' : 'Delete'}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={packDialogOpen}
+                onOpenChange={(open) => {
+                    setPackDialogOpen(open)
+                    if (!open) {
+                        setPackManagerForm(null)
+                    }
+                }}
+            >
+                <DialogContent className="max-w-5xl">
+                    {packManagerForm && (
+                        <DrugPacksPanel
+                            form={packManagerForm}
+                            onClose={() => {
+                                setPackDialogOpen(false)
+                                setPackManagerForm(null)
+                            }}
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
         </div>
@@ -1007,6 +1063,13 @@ function DrugFormEditorDialog({
 }: DrugFormEditorDialogProps) {
     const [formState, setFormState] = useState<DrugFormPayload>(initialValues)
     const dialogKey = `${mode}-${initialValues.drugId}-${open ? 'open' : 'closed'}`
+
+    // Update form state when initialValues changes (e.g., when editing a different form)
+    useEffect(() => {
+        if (open) {
+            setFormState(initialValues)
+        }
+    }, [initialValues, open])
 
     const handleChange = (field: keyof DrugFormPayload, value: string | number | boolean | null) => {
         onError(null)
@@ -1149,6 +1212,7 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
     const [formError, setFormError] = useState<string | null>(null)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingPack, setEditingPack] = useState<DrugPack | null>(null)
+    const [loadingEditPack, setLoadingEditPack] = useState(false)
     const [deleteTarget, setDeleteTarget] = useState<DrugPack | null>(null)
     const [deletingId, setDeletingId] = useState<number | null>(null)
     const [priceDialogPack, setPriceDialogPack] = useState<DrugPack | null>(null)
@@ -1179,10 +1243,19 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
         setDialogOpen(true)
     }
 
-    const handleEdit = (pack: DrugPack) => {
-        setEditingPack(pack)
+    const handleEdit = async (pack: DrugPack) => {
+        setLoadingEditPack(true)
         setFormError(null)
-        setDialogOpen(true)
+        try {
+            const freshPack = await getDrugPackById(pack.id)
+            setEditingPack(freshPack)
+            setDialogOpen(true)
+        } catch (editError) {
+            console.error(editError)
+            setFormError(editError instanceof Error ? editError.message : 'Unable to load pack data for editing')
+        } finally {
+            setLoadingEditPack(false)
+        }
     }
 
     const handleSubmit = async (payload: DrugPackPayload) => {
@@ -1328,8 +1401,17 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <div className="flex items-center justify-center gap-2">
-                                            <Button variant="outline" size="icon" onClick={() => handleEdit(pack)}>
-                                                <Pencil className="h-4 w-4" />
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => void handleEdit(pack)}
+                                                disabled={loadingEditPack}
+                                            >
+                                                {loadingEditPack && editingPack?.id === pack.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Pencil className="h-4 w-4" />
+                                                )}
                                             </Button>
                                             <Button variant="outline" size="icon" onClick={() => setPriceDialogPack(pack)}>
                                                 <Banknote className="h-4 w-4" />
@@ -1348,7 +1430,13 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
 
             <DrugPackEditorDialog
                 open={dialogOpen}
-                onOpenChange={setDialogOpen}
+                onOpenChange={(open) => {
+                    setDialogOpen(open)
+                    if (!open) {
+                        setEditingPack(null)
+                        setFormError(null)
+                    }
+                }}
                 onSubmit={handleSubmit}
                 loading={saving}
                 error={formError}
@@ -1408,6 +1496,13 @@ function DrugPackEditorDialog({
 }: DrugPackEditorDialogProps) {
     const [formState, setFormState] = useState<DrugPackPayload>(initialValues)
     const dialogKey = `${mode}-${initialValues.drugFormId}-${open ? 'open' : 'closed'}`
+
+    // Update form state when initialValues changes (e.g., when editing a different pack)
+    useEffect(() => {
+        if (open) {
+            setFormState(initialValues)
+        }
+    }, [initialValues, open])
 
     const handleChange = (field: keyof DrugPackPayload, value: string | number | boolean | null) => {
         onError(null)
@@ -1937,7 +2032,7 @@ function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
     )
 }
 
-interface DrugDetailsSheetProps {
+interface DrugDetailsDialogProps {
     drug: Drug | null
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -1946,18 +2041,18 @@ interface DrugDetailsSheetProps {
     deleting: boolean
 }
 
-function DrugDetailsSheet({ drug, open, onOpenChange, onEdit, onDeleteRequest, deleting }: DrugDetailsSheetProps) {
+function DrugDetailsDialog({ drug, open, onOpenChange, onEdit, onDeleteRequest, deleting }: DrugDetailsDialogProps) {
     if (!drug) return null
 
     return (
-        <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
-                <SheetHeader className="space-y-1">
-                    <SheetTitle className="flex items-center gap-2">
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader className="space-y-1">
+                    <DialogTitle className="flex items-center gap-2">
                         <Pill className="h-5 w-5 text-tpa-primary" /> {drug.genericNameEn || 'Drug details'}
-                    </SheetTitle>
-                    <SheetDescription>Review the master data for this drug.</SheetDescription>
-                </SheetHeader>
+                    </DialogTitle>
+                    <DialogDescription>Review the master data for this drug.</DialogDescription>
+                </DialogHeader>
 
                 <Tabs defaultValue="overview" className="mt-6">
                     <TabsList className="grid grid-cols-2 w-full">
@@ -1975,9 +2070,8 @@ function DrugDetailsSheet({ drug, open, onOpenChange, onEdit, onDeleteRequest, d
                             <DetailItem label="Brand (AR)" value={drug.brandNameAr || '—'} rtl />
                             <DetailItem
                                 label="Validity"
-                                value={`${drug.validFrom ? formatDate(drug.validFrom) : '—'} → ${
-                                    drug.validTo ? formatDate(drug.validTo) : 'Open-ended'
-                                }`}
+                                value={`${drug.validFrom ? formatDate(drug.validFrom) : '—'} → ${drug.validTo ? formatDate(drug.validTo) : 'Open-ended'
+                                    }`}
                             />
                             <DetailItem label="Created By" value={drug.createdBy || '—'} />
                         </div>
@@ -2017,16 +2111,18 @@ function DrugDetailsSheet({ drug, open, onOpenChange, onEdit, onDeleteRequest, d
                     </TabsContent>
                 </Tabs>
 
-                <div className="mt-6 flex items-center justify-between gap-3">
-                    <Button variant="outline" onClick={onEdit}>
-                        <Pencil className="h-4 w-4 mr-2" /> Edit
-                    </Button>
-                    <Button variant="destructive" onClick={() => onDeleteRequest(drug)} disabled={deleting}>
-                        <Trash2 className="h-4 w-4 mr-2" /> {deleting ? 'Deleting...' : 'Delete'}
-                    </Button>
-                </div>
-            </SheetContent>
-        </Sheet>
+                <DialogFooter>
+                    <div className="flex items-center justify-between w-full gap-3">
+                        <Button variant="outline" onClick={onEdit}>
+                            <Pencil className="h-4 w-4 mr-2" /> Edit
+                        </Button>
+                        <Button variant="destructive" onClick={() => onDeleteRequest(drug)} disabled={deleting}>
+                            <Trash2 className="h-4 w-4 mr-2" /> {deleting ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </div>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
 
@@ -2066,8 +2162,8 @@ function mapDrugFormToPayload(form: DrugForm, drugId: number): DrugFormPayload {
         strengthValue: form.strengthValue,
         strengthUnit: form.strengthUnit,
         isDefaultForm: form.isDefaultForm,
-        validFrom: form.validFrom,
-        validTo: form.validTo,
+        validFrom: formatDateForInput(form.validFrom),
+        validTo: formatDateForInput(form.validTo),
         isActive: form.isActive,
     }
 }
@@ -2081,9 +2177,21 @@ function mapDrugPackToPayload(pack: DrugPack, drugFormId: number): DrugPackPaylo
         minDispenseQuantity: pack.minDispenseQuantity,
         maxDispenseQuantity: pack.maxDispenseQuantity,
         isSplitAllowed: pack.isSplitAllowed,
-        validFrom: pack.validFrom,
-        validTo: pack.validTo,
+        validFrom: formatDateForInput(pack.validFrom),
+        validTo: formatDateForInput(pack.validTo),
         isActive: pack.isActive,
+    }
+}
+
+// Helper function to format date string for date input (YYYY-MM-DD)
+function formatDateForInput(date: string | null): string | null {
+    if (!date) return null
+    try {
+        const dateObj = new Date(date)
+        if (isNaN(dateObj.getTime())) return null
+        return dateObj.toISOString().split('T')[0]
+    } catch {
+        return null
     }
 }
 
@@ -2099,8 +2207,8 @@ function mapDrugToPayload(drug: Drug): DrugPayload {
         isControlled: drug.isControlled,
         isOtc: drug.isOtc,
         allowGenericSubstitution: drug.allowGenericSubstitution,
-        validFrom: drug.validFrom,
-        validTo: drug.validTo,
+        validFrom: formatDateForInput(drug.validFrom),
+        validTo: formatDateForInput(drug.validTo),
         isActive: drug.isActive,
     }
 }

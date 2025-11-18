@@ -1,6 +1,6 @@
 import { Drug, DrugPayload, PaginatedResponse } from '@/types'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const API_BASE_URL = process.env.API_BASE_URL?.replace(/\/$/, '') ?? ''
 const API_PREFIX = API_BASE_URL ? '/api/v1' : '/api'
 const BASE_PATH = `${API_PREFIX}/drugs`
 
@@ -104,10 +104,21 @@ export async function fetchDrugs(params: FetchDrugsParams = {}): Promise<Paginat
 }
 
 export async function getDrugById(id: number): Promise<Drug> {
-    const response = await fetch(buildUrl(`/${id}`), { cache: 'no-store' })
+    const url = buildUrl(`/${id}`)
+    const response = await fetch(url, { cache: 'no-store' })
 
     if (!response.ok) {
-        throw new Error('Unable to load drug details')
+        let errorMessage = 'Unable to load drug details'
+        try {
+            const errorData = await response.json()
+            if (errorData && typeof errorData === 'object' && 'message' in errorData) {
+                errorMessage = String(errorData.message)
+            }
+        } catch {
+            // If response is not JSON, use status text
+            errorMessage = response.statusText || `HTTP ${response.status}: Unable to load drug details`
+        }
+        throw new Error(errorMessage)
     }
 
     const payload = await response.json()
