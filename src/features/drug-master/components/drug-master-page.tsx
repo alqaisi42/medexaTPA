@@ -24,9 +24,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
-import { Drug, DrugPayload } from '@/types'
+import { createDrugForm, deleteDrugForm, fetchDrugForms, updateDrugForm } from '@/lib/api/drug-forms'
+import { Drug, DrugForm, DrugFormPayload, DrugPayload } from '@/types'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50]
 
@@ -681,6 +683,383 @@ function DrugFormDialog({ open, onOpenChange, onSubmit, loading, error, onError,
     )
 }
 
+const EMPTY_DRUG_FORM: DrugFormPayload = {
+    drugId: 0,
+    dosageForm: '',
+    route: '',
+    strengthValue: 0,
+    strengthUnit: '',
+    isDefaultForm: false,
+    validFrom: null,
+    validTo: null,
+    isActive: true,
+}
+
+interface DrugFormsPanelProps {
+    drugId: number
+}
+
+function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
+    const [forms, setForms] = useState<DrugForm[]>([])
+    const [loading, setLoading] = useState(false)
+    const [saving, setSaving] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [formError, setFormError] = useState<string | null>(null)
+    const [dialogOpen, setDialogOpen] = useState(false)
+    const [editingForm, setEditingForm] = useState<DrugForm | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<DrugForm | null>(null)
+    const [deletingId, setDeletingId] = useState<number | null>(null)
+
+    const loadForms = useCallback(async () => {
+        if (!drugId) return
+        setLoading(true)
+        setError(null)
+        try {
+            const data = await fetchDrugForms(drugId)
+            setForms(data)
+        } catch (requestError) {
+            console.error(requestError)
+            setError(requestError instanceof Error ? requestError.message : 'Unable to load drug forms')
+            setForms([])
+        } finally {
+            setLoading(false)
+        }
+    }, [drugId])
+
+    useEffect(() => {
+        void loadForms()
+    }, [loadForms])
+
+    const handleCreate = () => {
+        setEditingForm(null)
+        setFormError(null)
+        setDialogOpen(true)
+    }
+
+    const handleEdit = (form: DrugForm) => {
+        setEditingForm(form)
+        setFormError(null)
+        setDialogOpen(true)
+    }
+
+    const handleSubmit = async (payload: DrugFormPayload) => {
+        setSaving(true)
+        setFormError(null)
+        try {
+            if (editingForm) {
+                await updateDrugForm(editingForm.id, payload)
+            } else {
+                await createDrugForm(payload)
+            }
+            setDialogOpen(false)
+            await loadForms()
+        } catch (submitError) {
+            console.error(submitError)
+            setFormError(submitError instanceof Error ? submitError.message : 'Unable to save drug form')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return
+        setDeletingId(deleteTarget.id)
+        try {
+            await deleteDrugForm(deleteTarget.id)
+            setDeleteTarget(null)
+            await loadForms()
+        } catch (deleteError) {
+            console.error(deleteError)
+            setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete drug form')
+        } finally {
+            setDeletingId(null)
+        }
+    }
+
+    const initialValues = editingForm ? mapDrugFormToPayload(editingForm, drugId) : { ...EMPTY_DRUG_FORM, drugId }
+    const actionInProgress = saving || deletingId !== null
+
+    return (
+        <div className="bg-gray-50 border rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                    <p className="text-sm font-semibold text-gray-800">Dosage Forms</p>
+                    <p className="text-xs text-gray-600">Manage available strengths and routes for this drug.</p>
+                </div>
+                <Button size="sm" className="bg-tpa-primary hover:bg-tpa-accent" onClick={handleCreate}>
+                    <Plus className="h-4 w-4 mr-2" /> Add Form
+                </Button>
+            </div>
+
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
+            <div className="bg-white rounded-md shadow border overflow-hidden">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Dosage Form</TableHead>
+                            <TableHead>Route</TableHead>
+                            <TableHead>Strength</TableHead>
+                            <TableHead className="text-center">Default</TableHead>
+                            <TableHead className="text-center">Validity</TableHead>
+                            <TableHead className="text-center">Status</TableHead>
+                            <TableHead className="text-center">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            <TableRow>
+                                <TableCell colSpan={7} className="text-center py-6 text-sm text-gray-500">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" /> Loading forms...
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ) : forms.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={7} className="text-center py-6 text-sm text-gray-500">
+                                    No dosage forms defined yet.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            forms.map((form) => (
+                                <TableRow key={form.id} className="hover:bg-gray-50">
+                                    <TableCell className="font-medium">{form.dosageForm || '—'}</TableCell>
+                                    <TableCell>{form.route || '—'}</TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-1">
+                                            <span className="font-semibold">{form.strengthValue || '—'}</span>
+                                            <span className="text-sm text-gray-600">{form.strengthUnit || ''}</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        {form.isDefaultForm ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-2 py-1 text-xs font-semibold">
+                                                <BadgeCheck className="h-3 w-3" /> Default
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-500">—</span>
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="text-center text-sm">
+                                        {form.validFrom ? formatDate(form.validFrom) : '—'}
+                                        <span className="block text-gray-500">
+                                            {form.validTo ? formatDate(form.validTo) : 'Open-ended'}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <span
+                                            className={cn(
+                                                'inline-flex items-center justify-center rounded-full px-2 py-1 text-xs font-semibold',
+                                                form.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700',
+                                            )}
+                                        >
+                                            {form.isActive ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <Button variant="outline" size="icon" onClick={() => handleEdit(form)}>
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="destructive" size="icon" onClick={() => setDeleteTarget(form)}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+
+            <DrugFormEditorDialog
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+                onSubmit={handleSubmit}
+                loading={saving}
+                error={formError}
+                onError={setFormError}
+                initialValues={initialValues}
+                mode={editingForm ? 'edit' : 'create'}
+            />
+
+            <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete Form</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete the {deleteTarget?.dosageForm ?? 'form'} entry? This action cannot be
+                            undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={actionInProgress}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleDelete} disabled={actionInProgress}>
+                            {actionInProgress ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    )
+}
+
+interface DrugFormEditorDialogProps {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    onSubmit: (payload: DrugFormPayload) => Promise<void>
+    loading: boolean
+    error: string | null
+    onError: (message: string | null) => void
+    initialValues: DrugFormPayload
+    mode: 'create' | 'edit'
+}
+
+function DrugFormEditorDialog({
+    open,
+    onOpenChange,
+    onSubmit,
+    loading,
+    error,
+    onError,
+    initialValues,
+    mode,
+}: DrugFormEditorDialogProps) {
+    const [formState, setFormState] = useState<DrugFormPayload>(initialValues)
+    const dialogKey = `${mode}-${initialValues.drugId}-${open ? 'open' : 'closed'}`
+
+    const handleChange = (field: keyof DrugFormPayload, value: string | number | boolean | null) => {
+        onError(null)
+        setFormState((prev) => ({ ...prev, [field]: value }))
+    }
+
+    const handleSave = async () => {
+        onError(null)
+        if (!formState.dosageForm.trim() || !formState.route.trim() || !formState.strengthUnit.trim()) {
+            return onError('Dosage form, route, and strength unit are required.')
+        }
+        if (!Number.isFinite(formState.strengthValue) || formState.strengthValue <= 0) {
+            return onError('Strength value must be greater than zero.')
+        }
+
+        await onSubmit({
+            ...formState,
+            dosageForm: formState.dosageForm.trim(),
+            route: formState.route.trim(),
+            strengthUnit: formState.strengthUnit.trim(),
+        })
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange} key={dialogKey}>
+            <DialogContent className="max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>{mode === 'edit' ? 'Update form' : 'Add form'}</DialogTitle>
+                    <DialogDescription>Define the dosage form, route, and strength for this drug.</DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="dosage-form">Dosage Form *</Label>
+                        <Input
+                            id="dosage-form"
+                            value={formState.dosageForm}
+                            onChange={(event) => handleChange('dosageForm', event.target.value.toUpperCase())}
+                            placeholder="TAB / CAP / SYRUP"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="route">Route *</Label>
+                        <Input
+                            id="route"
+                            value={formState.route}
+                            onChange={(event) => handleChange('route', event.target.value.toUpperCase())}
+                            placeholder="ORAL / IV / IM"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="strength-value">Strength Value *</Label>
+                        <Input
+                            id="strength-value"
+                            type="number"
+                            min="0"
+                            value={formState.strengthValue}
+                            onChange={(event) => handleChange('strengthValue', Number(event.target.value))}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="strength-unit">Strength Unit *</Label>
+                        <Input
+                            id="strength-unit"
+                            value={formState.strengthUnit}
+                            onChange={(event) => handleChange('strengthUnit', event.target.value.toUpperCase())}
+                            placeholder="MG / ML"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="form-valid-from">Valid From</Label>
+                        <Input
+                            id="form-valid-from"
+                            type="date"
+                            value={formState.validFrom ?? ''}
+                            onChange={(event) => handleChange('validFrom', event.target.value || null)}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="form-valid-to">Valid To</Label>
+                        <Input
+                            id="form-valid-to"
+                            type="date"
+                            value={formState.validTo ?? ''}
+                            onChange={(event) => handleChange('validTo', event.target.value || null)}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Flags</Label>
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    id="default-form"
+                                    checked={formState.isDefaultForm}
+                                    onCheckedChange={(checked) => handleChange('isDefaultForm', checked)}
+                                />
+                                <Label htmlFor="default-form">Default form</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    id="form-active"
+                                    checked={formState.isActive}
+                                    onCheckedChange={(checked) => handleChange('isActive', checked)}
+                                />
+                                <Label htmlFor="form-active">Active</Label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {error && <p className="text-sm text-red-600">{error}</p>}
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={() => void handleSave()}
+                        className="bg-tpa-primary hover:bg-tpa-accent"
+                        disabled={loading}
+                    >
+                        {loading ? 'Saving...' : mode === 'edit' ? 'Update form' : 'Create form'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 interface DrugDetailsSheetProps {
     drug: Drug | null
     open: boolean
@@ -703,52 +1082,63 @@ function DrugDetailsSheet({ drug, open, onOpenChange, onEdit, onDeleteRequest, d
                     <SheetDescription>Review the master data for this drug.</SheetDescription>
                 </SheetHeader>
 
-                <div className="mt-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        <DetailItem label="Code" value={drug.code} />
-                        <DetailItem label="ATC Code" value={drug.atcCode || '—'} />
-                        <DetailItem label="Generic (EN)" value={drug.genericNameEn || '—'} />
-                        <DetailItem label="Generic (AR)" value={drug.genericNameAr || '—'} rtl />
-                        <DetailItem label="Brand (EN)" value={drug.brandNameEn || '—'} />
-                        <DetailItem label="Brand (AR)" value={drug.brandNameAr || '—'} rtl />
-                        <DetailItem
-                            label="Validity"
-                            value={`${drug.validFrom ? formatDate(drug.validFrom) : '—'} → ${
-                                drug.validTo ? formatDate(drug.validTo) : 'Open-ended'
-                            }`}
-                        />
-                        <DetailItem label="Created By" value={drug.createdBy || '—'} />
-                    </div>
+                <Tabs defaultValue="overview" className="mt-6">
+                    <TabsList className="grid grid-cols-2 w-full">
+                        <TabsTrigger value="overview">Overview</TabsTrigger>
+                        <TabsTrigger value="forms">Forms</TabsTrigger>
+                    </TabsList>
 
-                    <div className="space-y-2">
-                        <p className="text-xs font-medium text-gray-500">Flags</p>
-                        <div className="flex flex-wrap gap-2">
-                            {drug.isOtc && (
-                                <Badge icon={BadgeCheck} label="OTC" className="bg-green-100 text-green-800" />
-                            )}
-                            {drug.isControlled && (
-                                <Badge icon={ShieldCheck} label="Controlled" className="bg-amber-100 text-amber-800" />
-                            )}
-                            {drug.allowGenericSubstitution ? (
-                                <Badge icon={Layers} label="Substitution allowed" className="bg-blue-100 text-blue-800" />
-                            ) : (
-                                <Badge icon={Layers} label="No substitution" className="bg-gray-100 text-gray-700" />
-                            )}
-                            <Badge
-                                icon={CalendarRange}
-                                label={drug.isActive ? 'Active' : 'Inactive'}
-                                className={drug.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}
+                    <TabsContent value="overview" className="mt-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <DetailItem label="Code" value={drug.code} />
+                            <DetailItem label="ATC Code" value={drug.atcCode || '—'} />
+                            <DetailItem label="Generic (EN)" value={drug.genericNameEn || '—'} />
+                            <DetailItem label="Generic (AR)" value={drug.genericNameAr || '—'} rtl />
+                            <DetailItem label="Brand (EN)" value={drug.brandNameEn || '—'} />
+                            <DetailItem label="Brand (AR)" value={drug.brandNameAr || '—'} rtl />
+                            <DetailItem
+                                label="Validity"
+                                value={`${drug.validFrom ? formatDate(drug.validFrom) : '—'} → ${
+                                    drug.validTo ? formatDate(drug.validTo) : 'Open-ended'
+                                }`}
                             />
+                            <DetailItem label="Created By" value={drug.createdBy || '—'} />
                         </div>
-                    </div>
 
-                    <div className="space-y-2">
-                        <p className="text-xs font-medium text-gray-500">Description</p>
-                        <p className="rounded-md border bg-gray-50 p-3 text-sm text-gray-700">
-                            {drug.description || 'No description provided'}
-                        </p>
-                    </div>
-                </div>
+                        <div className="space-y-2">
+                            <p className="text-xs font-medium text-gray-500">Flags</p>
+                            <div className="flex flex-wrap gap-2">
+                                {drug.isOtc && (
+                                    <Badge icon={BadgeCheck} label="OTC" className="bg-green-100 text-green-800" />
+                                )}
+                                {drug.isControlled && (
+                                    <Badge icon={ShieldCheck} label="Controlled" className="bg-amber-100 text-amber-800" />
+                                )}
+                                {drug.allowGenericSubstitution ? (
+                                    <Badge icon={Layers} label="Substitution allowed" className="bg-blue-100 text-blue-800" />
+                                ) : (
+                                    <Badge icon={Layers} label="No substitution" className="bg-gray-100 text-gray-700" />
+                                )}
+                                <Badge
+                                    icon={CalendarRange}
+                                    label={drug.isActive ? 'Active' : 'Inactive'}
+                                    className={drug.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <p className="text-xs font-medium text-gray-500">Description</p>
+                            <p className="rounded-md border bg-gray-50 p-3 text-sm text-gray-700">
+                                {drug.description || 'No description provided'}
+                            </p>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="forms" className="mt-4">
+                        <DrugFormsPanel drugId={drug.id} />
+                    </TabsContent>
+                </Tabs>
 
                 <div className="mt-6 flex items-center justify-between gap-3">
                     <Button variant="outline" onClick={onEdit}>
@@ -789,6 +1179,20 @@ function Badge({
             {label}
         </span>
     )
+}
+
+function mapDrugFormToPayload(form: DrugForm, drugId: number): DrugFormPayload {
+    return {
+        drugId,
+        dosageForm: form.dosageForm,
+        route: form.route,
+        strengthValue: form.strengthValue,
+        strengthUnit: form.strengthUnit,
+        isDefaultForm: form.isDefaultForm,
+        validFrom: form.validFrom,
+        validTo: form.validTo,
+        isActive: form.isActive,
+    }
 }
 
 function mapDrugToPayload(drug: Drug): DrugPayload {
