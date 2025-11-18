@@ -107,7 +107,7 @@ export const useAppStore = create<AppState>((set) => ({
                         },
                         {
                             id: 'combination-builder',
-                            label: 'Combination Builder',
+                            label: 'Rule Combination Builder',
                             icon: 'Grid3X3',
                             path: '/combination-builder',
                         },

@@ -591,9 +591,9 @@ export function CombinationBuilderPage() {
     // @ts-ignore
     return (
         <div className="p-6 space-y-6">
-            <Tabs defaultValue="combinations" className="space-y-6">
-                <TabsList className="grid w-full max-w-2xl grid-cols-2">
-                    <TabsTrigger value="combinations">Combination Builder</TabsTrigger>
+            <Tabs defaultValue="rule_designer" className="space-y-6 w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                    {/*<TabsTrigger value="combinations">Combination Builder</TabsTrigger>*/}
                     <TabsTrigger value="rule_designer">Rule Designer</TabsTrigger>
                 </TabsList>
 

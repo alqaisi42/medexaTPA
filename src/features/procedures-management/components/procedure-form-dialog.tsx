@@ -4,7 +4,15 @@ import {Button} from '@/components/ui/button'
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select'
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 import {Switch} from '@/components/ui/switch'
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs'
 import {cn} from '@/lib/utils'
@@ -22,6 +30,157 @@ const YES_NO_OPTIONS = [
     {label: 'Yes', value: 'true'},
     {label: 'No', value: 'false'},
 ]
+
+const UNIT_OF_MEASURE_OPTIONS = [
+    'SESSION',
+    'VISIT',
+    'UNIT',
+    'TEST',
+    'DAY',
+    'WEEK',
+    'MONTH',
+    'HOUR',
+    'PROCEDURE',
+    'SCAN',
+    'INJECTION',
+    'ITEM',
+    'PACKAGE',
+] as const
+
+const BODY_REGION_GROUPS = [
+    {
+        icon: '🧠',
+        label: 'Head & Brain',
+        options: [
+            'HEAD',
+            'SCALP',
+            'FACE',
+            'FOREHEAD',
+            'EYE',
+            'EYELID',
+            'EAR',
+            'NOSE',
+            'SINUSES',
+            'MOUTH',
+            'TEETH',
+            'TONGUE',
+            'LIPS',
+            'ORAL_CAVITY',
+            'JAW',
+            'BRAIN',
+            'CEREBELLUM',
+        ],
+    },
+    {
+        icon: '🧑‍⚕️',
+        label: 'Neck & Throat',
+        options: ['NECK', 'THROAT', 'PHARYNX', 'LARYNX', 'CERVICAL_SPINE'],
+    },
+    {
+        icon: '🫁',
+        label: 'Chest / Thorax',
+        options: ['CHEST', 'THORAX', 'LUNG', 'HEART', 'MEDIASTINUM', 'RIBS', 'BREAST'],
+    },
+    {
+        icon: '🫀',
+        label: 'Cardiovascular',
+        options: ['AORTA', 'PERIPHERAL_VESSELS', 'CORONARY_ARTERIES'],
+    },
+    {
+        icon: '🧠',
+        label: 'Nervous System',
+        options: [
+            'SPINE',
+            'CERVICAL_SPINE',
+            'THORACIC_SPINE',
+            'LUMBAR_SPINE',
+            'SACRAL_SPINE',
+            'PERIPHERAL_NERVES',
+        ],
+    },
+    {
+        icon: '🫁',
+        label: 'Respiratory',
+        options: ['UPPER_RESPIRATORY', 'LOWER_RESPIRATORY', 'TRACHEA', 'BRONCHI', 'LUNGS'],
+    },
+    {
+        icon: '🫃',
+        label: 'Abdomen & Organs',
+        options: [
+            'ABDOMEN',
+            'ABDOMINAL_WALL',
+            'STOMACH',
+            'LIVER',
+            'SPLEEN',
+            'PANCREAS',
+            'GALLBLADDER',
+            'SMALL_INTESTINE',
+            'LARGE_INTESTINE',
+            'APPENDIX',
+            'RECTUM',
+        ],
+    },
+    {
+        icon: '🛡',
+        label: 'Gastrointestinal Tract',
+        options: ['GI_TRACT', 'ESOPHAGUS'],
+    },
+    {
+        icon: '🫕',
+        label: 'Pelvic Region',
+        options: ['PELVIS', 'BLADDER', 'URETHRA', 'PROSTATE', 'UTERUS', 'OVARIES', 'VAGINA'],
+    },
+    {
+        icon: '🧬',
+        label: 'Urinary System',
+        options: ['KIDNEYS', 'URETERS', 'BLADDER', 'URETHRA'],
+    },
+    {
+        icon: '🧬',
+        label: 'Reproductive (Male)',
+        options: ['TESTES', 'SCROTUM', 'PENIS', 'PROSTATE'],
+    },
+    {
+        icon: '🧬',
+        label: 'Reproductive (Female)',
+        options: ['UTERUS', 'OVARIES', 'FALLOPIAN_TUBES', 'CERVIX', 'BREAST'],
+    },
+    {
+        icon: '🦴',
+        label: 'Upper Limb',
+        options: ['UPPER_LIMB', 'SHOULDER', 'ARM', 'ELBOW', 'FOREARM', 'WRIST', 'HAND', 'FINGERS'],
+    },
+    {
+        icon: '🦵',
+        label: 'Lower Limb',
+        options: ['LOWER_LIMB', 'HIP', 'THIGH', 'KNEE', 'LEG', 'ANKLE', 'FOOT', 'TOES'],
+    },
+    {
+        icon: '🩻',
+        label: 'Musculoskeletal',
+        options: ['BONES', 'JOINTS', 'MUSCLES', 'TENDONS', 'LIGAMENTS'],
+    },
+    {
+        icon: '🩺',
+        label: 'Dermatology / Skin',
+        options: ['SKIN', 'SUBCUTANEOUS_TISSUE', 'NAILS', 'HAIR'],
+    },
+    {
+        icon: '🩸',
+        label: 'Endocrine',
+        options: ['THYROID', 'PARATHYROID', 'ADRENAL_GLANDS'],
+    },
+    {
+        icon: '🩸',
+        label: 'Hematology / Lymphatic',
+        options: ['LYMPH_NODES', 'SPLEEN', 'BLOOD_VESSELS'],
+    },
+    {
+        icon: '🧍',
+        label: 'General Regions',
+        options: ['WHOLE_BODY', 'MULTIPLE_REGIONS', 'SYSTEMIC'],
+    },
+] as const
 
 export interface ProcedureFormDialogProps {
     open: boolean
@@ -96,6 +255,10 @@ export function ProcedureFormDialog({
                                     }: ProcedureFormDialogProps) {
     const [specialtySearch, setSpecialtySearch] = useState('')
     const [providerTypeSearch, setProviderTypeSearch] = useState('')
+    const [unitOfMeasureDropdownOpen, setUnitOfMeasureDropdownOpen] = useState(false)
+    const [unitOfMeasureQuery, setUnitOfMeasureQuery] = useState('')
+    const [bodyRegionDropdownOpen, setBodyRegionDropdownOpen] = useState(false)
+    const [bodyRegionQuery, setBodyRegionQuery] = useState('')
 
     const filteredSpecialties = useMemo(() => {
         const term = specialtySearch.toLowerCase().trim()
@@ -120,6 +283,29 @@ export function ProcedureFormDialog({
             [item.nameEn, item.nameAr, item.code].some((field) => field.toLowerCase().includes(term)),
         )
     }, [providerTypeSearch, providerTypes])
+
+    const filteredUnitOfMeasureOptions = useMemo(() => {
+        const term = unitOfMeasureQuery.toLowerCase().trim()
+
+        if (!term) {
+            return UNIT_OF_MEASURE_OPTIONS
+        }
+
+        return UNIT_OF_MEASURE_OPTIONS.filter((option) => option.toLowerCase().includes(term))
+    }, [unitOfMeasureQuery])
+
+    const filteredBodyRegionGroups = useMemo(() => {
+        const term = bodyRegionQuery.toLowerCase().trim()
+
+        return BODY_REGION_GROUPS.map((group) => {
+            if (!term) {
+                return group
+            }
+
+            const options = group.options.filter((option) => option.toLowerCase().includes(term))
+            return {...group, options}
+        }).filter((group) => group.options.length > 0)
+    }, [bodyRegionQuery])
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -193,17 +379,46 @@ export function ProcedureFormDialog({
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                     <div className="space-y-2">
                                         <Label htmlFor="unitOfMeasure">Unit of Measure *</Label>
-                                        <Input
-                                            id="unitOfMeasure"
-                                            value={formData.unitOfMeasure}
-                                            onChange={(event) =>
-                                                onFormDataChange((prev) => ({
-                                                    ...prev,
-                                                    unitOfMeasure: event.target.value
-                                                }))
-                                            }
-                                            placeholder="E.g. session, visit, unit"
-                                        />
+                                        <Select
+                                            open={unitOfMeasureDropdownOpen}
+                                            onOpenChange={(open) => {
+                                                setUnitOfMeasureDropdownOpen(open)
+                                                if (!open) {
+                                                    setUnitOfMeasureQuery('')
+                                                }
+                                            }}
+                                            value={formData.unitOfMeasure || undefined}
+                                            onValueChange={(value) => {
+                                                onFormDataChange((prev) => ({...prev, unitOfMeasure: value}))
+                                                setUnitOfMeasureDropdownOpen(false)
+                                                setUnitOfMeasureQuery('')
+                                            }}
+                                        >
+                                            <SelectTrigger id="unitOfMeasure">
+                                                <SelectValue placeholder="Select unit of measure"/>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <div className="sticky top-0 z-10 border-b bg-white p-2">
+                                                    <Input
+                                                        value={unitOfMeasureQuery}
+                                                        onChange={(event) => setUnitOfMeasureQuery(event.target.value)}
+                                                        onKeyDown={(event) => event.stopPropagation()}
+                                                        placeholder="Search units"
+                                                    />
+                                                </div>
+                                                {filteredUnitOfMeasureOptions.length > 0 ? (
+                                                    filteredUnitOfMeasureOptions.map((option) => (
+                                                        <SelectItem key={option} value={option}>
+                                                            {option}
+                                                        </SelectItem>
+                                                    ))
+                                                ) : (
+                                                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                                                        No units found
+                                                    </div>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="referencePrice">Reference Price *</Label>
@@ -463,14 +678,54 @@ export function ProcedureFormDialog({
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                     <div className="space-y-2">
                                         <Label htmlFor="bodyRegion">Body Region</Label>
-                                        <Input
-                                            id="bodyRegion"
-                                            value={formData.bodyRegion ?? ''}
-                                            onChange={(event) =>
-                                                onFormDataChange((prev) => ({...prev, bodyRegion: event.target.value}))
-                                            }
-                                            placeholder="E.g. Abdomen, Limb"
-                                        />
+                                        <Select
+                                            open={bodyRegionDropdownOpen}
+                                            onOpenChange={(open) => {
+                                                setBodyRegionDropdownOpen(open)
+                                                if (!open) {
+                                                    setBodyRegionQuery('')
+                                                }
+                                            }}
+                                            value={formData.bodyRegion ?? undefined}
+                                            onValueChange={(value) => {
+                                                onFormDataChange((prev) => ({...prev, bodyRegion: value}))
+                                                setBodyRegionDropdownOpen(false)
+                                                setBodyRegionQuery('')
+                                            }}
+                                        >
+                                            <SelectTrigger id="bodyRegion">
+                                                <SelectValue placeholder="Select body region"/>
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-80">
+                                                <div className="sticky top-0 z-10 border-b bg-white p-2">
+                                                    <Input
+                                                        value={bodyRegionQuery}
+                                                        onChange={(event) => setBodyRegionQuery(event.target.value)}
+                                                        onKeyDown={(event) => event.stopPropagation()}
+                                                        placeholder="Search body regions"
+                                                    />
+                                                </div>
+                                                {filteredBodyRegionGroups.length > 0 ? (
+                                                    filteredBodyRegionGroups.map((group) => (
+                                                        <SelectGroup key={group.label}>
+                                                            <SelectLabel className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+                                                                <span>{group.icon}</span>
+                                                                <span>{group.label}</span>
+                                                            </SelectLabel>
+                                                            {group.options.map((option) => (
+                                                                <SelectItem key={`${group.label}-${option}`} value={option}>
+                                                                    {option}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectGroup>
+                                                    ))
+                                                ) : (
+                                                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                                                        No body regions found
+                                                    </div>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="severityLevel">Severity Level</Label>
