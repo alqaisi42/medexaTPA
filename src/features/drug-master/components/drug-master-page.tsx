@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DrugCategoryMappingManager } from './drug-category-mapping-manager'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
 import { createDrugForm, deleteDrugForm, fetchDrugForms, getDrugFormById, updateDrugForm } from '@/lib/api/drug-forms'
@@ -384,11 +385,21 @@ export function DrugMasterPage() {
                         <p className="text-sm text-gray-600">Maintain the core attributes of all drugs in the system.</p>
                     </div>
                 </div>
-                <Button className="bg-tpa-primary hover:bg-tpa-accent" onClick={handleCreate}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Drug
-                </Button>
             </div>
+
+            <Tabs defaultValue="drugs" className="space-y-6">
+                <TabsList className="grid w-full grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-0">
+                    <TabsTrigger value="drugs">Drugs</TabsTrigger>
+                    <TabsTrigger value="category-mappings">Category Mappings</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="drugs" className="space-y-6">
+                    <div className="flex items-center justify-end">
+                        <Button className="bg-tpa-primary hover:bg-tpa-accent" onClick={handleCreate}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Drug
+                        </Button>
+                    </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="bg-white rounded-lg shadow p-4 lg:col-span-2 space-y-4">
@@ -634,6 +645,12 @@ export function DrugMasterPage() {
                     </TableBody>
                 </Table>
             </div>
+                </TabsContent>
+
+                <TabsContent value="category-mappings" className="space-y-6">
+                    <DrugCategoryMappingManager />
+                </TabsContent>
+            </Tabs>
 
             <DrugFormDialog
                 open={isFormOpen}

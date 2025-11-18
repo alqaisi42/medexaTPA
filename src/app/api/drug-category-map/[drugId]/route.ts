@@ -1,16 +1,19 @@
 import { NextRequest } from 'next/server'
 import { forwardDrugCategoryRequest } from '../../drug-categories/_utils'
 
-export async function GET(request: NextRequest, context: { params: Promise<{ drugId: string }> }) {
-    const { drugId } = await context.params
-
+export async function GET(
+    _req: NextRequest,
+    context: { params: Promise<{ drugId: string }> }
+) {
     try {
-        return await forwardDrugCategoryRequest(`/api/v1/drug-category-map/${drugId}`, undefined, request.nextUrl.searchParams)
+        const { drugId } = await context.params
+
+        return await forwardDrugCategoryRequest(`/api/v1/drug-category-map/${drugId}`)
     } catch (error) {
-        console.error('Failed to proxy drug categories fetch request', error)
+        console.error('Drug category fetch proxy error', error)
         return new Response(JSON.stringify({ message: 'Failed to load drug categories' }), {
             status: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' }
         })
     }
 }

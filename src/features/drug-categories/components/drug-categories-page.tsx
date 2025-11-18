@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { createDrugCategory, deleteDrugCategory, fetchCategoriesTree, updateDrugCategory } from '@/lib/api/drug-categories'
+import { createDrugCategory, deleteDrugCategory, fetchCategoriesTree, fetchChildCategories, updateDrugCategory } from '@/lib/api/drug-categories'
 import { DrugCategoryPayload, DrugCategoryTreeItem } from '@/types'
 
 interface CategoryFormState extends DrugCategoryPayload {}
@@ -99,21 +99,54 @@ interface CategoryNodeProps {
     onAddChild: (category: DrugCategoryTreeItem) => void
     onEdit: (category: DrugCategoryTreeItem) => void
     onDelete: (category: DrugCategoryTreeItem) => void
+    onChildrenLoaded: (categoryId: number, children: DrugCategoryTreeItem[]) => void
+    childrenLoaded: Set<number>
 }
 
-function CategoryNode({ category, onAddChild, onEdit, onDelete }: CategoryNodeProps) {
-    const [expanded, setExpanded] = useState(true)
+function CategoryNode({ category, onAddChild, onEdit, onDelete, onChildrenLoaded, childrenLoaded }: CategoryNodeProps) {
+    const [expanded, setExpanded] = useState(false)
+    const [loadingChildren, setLoadingChildren] = useState(false)
+
+    const handleToggleExpand = async () => {
+        const newExpanded = !expanded
+        setExpanded(newExpanded)
+
+        // If expanding and children haven't been loaded yet, fetch them
+        if (newExpanded && !childrenLoaded.has(category.id) && category.children.length === 0) {
+            setLoadingChildren(true)
+            try {
+                const children = await fetchChildCategories(category.id)
+                // Convert DrugCategory[] to DrugCategoryTreeItem[]
+                const treeChildren: DrugCategoryTreeItem[] = children.map((child) => ({
+                    ...child,
+                    children: [],
+                }))
+                onChildrenLoaded(category.id, treeChildren)
+            } catch (error) {
+                console.error('Failed to load child categories:', error)
+            } finally {
+                setLoadingChildren(false)
+            }
+        }
+    }
 
     return (
         <div className="space-y-2">
             <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 shadow-sm">
                 <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded-md border"
-                    onClick={() => setExpanded((prev) => !prev)}
+                    className="flex h-7 w-7 items-center justify-center rounded-md border disabled:opacity-50"
+                    onClick={handleToggleExpand}
+                    disabled={loadingChildren}
                     aria-label={expanded ? 'Collapse' : 'Expand'}
                 >
-                    {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    {loadingChildren ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    ) : expanded ? (
+                        <ChevronDown className="h-4 w-4" />
+                    ) : (
+                        <ChevronRight className="h-4 w-4" />
+                    )}
                 </button>
                 <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-2 text-sm font-medium">
@@ -134,17 +167,23 @@ function CategoryNode({ category, onAddChild, onEdit, onDelete }: CategoryNodePr
                     </Button>
                 </div>
             </div>
-            {expanded && category.children?.length > 0 && (
+            {expanded && (category.children?.length > 0 || loadingChildren) && (
                 <div className="space-y-2 border-l pl-6">
-                    {category.children.map((child) => (
-                        <CategoryNode
-                            key={child.id}
-                            category={child}
-                            onAddChild={onAddChild}
-                            onEdit={onEdit}
-                            onDelete={onDelete}
-                        />
-                    ))}
+                    {loadingChildren ? (
+                        <p className="text-xs text-muted-foreground py-2">Loading children...</p>
+                    ) : (
+                        category.children.map((child) => (
+                            <CategoryNode
+                                key={child.id}
+                                category={child}
+                                onAddChild={onAddChild}
+                                onEdit={onEdit}
+                                onDelete={onDelete}
+                                onChildrenLoaded={onChildrenLoaded}
+                                childrenLoaded={childrenLoaded}
+                            />
+                        ))
+                    )}
                 </div>
             )}
         </div>
@@ -159,6 +198,7 @@ export function DrugCategoriesPage() {
     const [selectedCategory, setSelectedCategory] = useState<DrugCategoryTreeItem | null>(null)
     const [formState, setFormState] = useState<CategoryFormState>(EMPTY_FORM)
     const [error, setError] = useState<string | null>(null)
+    const [childrenLoaded, setChildrenLoaded] = useState<Set<number>>(new Set())
 
     const refreshTree = async () => {
         setLoading(true)
@@ -166,12 +206,41 @@ export function DrugCategoriesPage() {
             const tree = await fetchCategoriesTree()
             setCategories(tree)
             setError(null)
+            // Mark all categories that already have children as loaded
+            const loaded = new Set<number>()
+            const markLoaded = (items: DrugCategoryTreeItem[]) => {
+                items.forEach((item) => {
+                    if (item.children && item.children.length > 0) {
+                        loaded.add(item.id)
+                        markLoaded(item.children)
+                    }
+                })
+            }
+            markLoaded(tree)
+            setChildrenLoaded(loaded)
         } catch (err) {
             console.error(err)
             setError('Unable to load categories')
         } finally {
             setLoading(false)
         }
+    }
+
+    const handleChildrenLoaded = (categoryId: number, children: DrugCategoryTreeItem[]) => {
+        const updateCategoryInTree = (items: DrugCategoryTreeItem[]): DrugCategoryTreeItem[] => {
+            return items.map((item) => {
+                if (item.id === categoryId) {
+                    return { ...item, children }
+                }
+                if (item.children && item.children.length > 0) {
+                    return { ...item, children: updateCategoryInTree(item.children) }
+                }
+                return item
+            })
+        }
+
+        setCategories((prev) => updateCategoryInTree(prev))
+        setChildrenLoaded((prev) => new Set([...prev, categoryId]))
     }
 
     useEffect(() => {
@@ -252,6 +321,8 @@ export function DrugCategoriesPage() {
                                         onAddChild={openCreateDialog}
                                         onEdit={openEditDialog}
                                         onDelete={handleDelete}
+                                        onChildrenLoaded={handleChildrenLoaded}
+                                        childrenLoaded={childrenLoaded}
                                     />
                                 ))}
                             </div>

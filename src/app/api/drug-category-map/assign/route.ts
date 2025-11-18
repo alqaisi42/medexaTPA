@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { forwardDrugCategoryRequest } from '../drug-categories/_utils'
+import { forwardDrugCategoryRequest } from '../../drug-categories/_utils'
 
 export async function POST(request: NextRequest) {
     try {
