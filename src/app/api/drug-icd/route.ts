@@ -1,0 +1,53 @@
+import { NextRequest } from "next/server"
+
+const apiBaseUrl = process.env.API_BASE_URL
+
+if (!apiBaseUrl) {
+    throw new Error("API_BASE_URL environment variable is not defined.")
+}
+
+function buildUpstreamUrl(path: string) {
+    return new URL(path, apiBaseUrl).toString()
+}
+
+async function forwardRequest(path: string, init?: RequestInit) {
+    const response = await fetch(buildUpstreamUrl(path), {
+        ...init,
+        headers: {
+            Accept: "application/json",
+            ...(init?.headers ?? {}),
+        },
+        cache: "no-store",
+    })
+
+    const text = await response.text()
+    const contentType = response.headers.get("content-type") ?? "application/json"
+    const body = contentType.includes("application/json") && text ? text : text || "{}"
+
+    return new Response(body, {
+        status: response.status,
+        headers: {
+            "Content-Type": contentType.includes("application/json") ? "application/json" : "text/plain",
+        },
+    })
+}
+
+export async function POST(request: NextRequest) {
+    const payload = await request.json()
+
+    try {
+        return await forwardRequest("/api/v1/drug-icd", {
+            method: "POST",
+            body: JSON.stringify(payload),
+            headers: {
+                "Content-Type": "application/json",
+            },
+        })
+    } catch (error) {
+        console.error("Failed to proxy drug ↔ ICD relation creation request", error)
+        return new Response(JSON.stringify({ message: "Failed to link ICD to the drug" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+        })
+    }
+}

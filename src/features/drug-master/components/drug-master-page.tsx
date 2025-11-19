@@ -27,6 +27,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DrugCategoryMappingManager } from './drug-category-mapping-manager'
+import { DrugIcdRelationsPanel } from './drug-icd-relations-panel'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
 import { createDrugForm, deleteDrugForm, fetchDrugForms, getDrugFormById, updateDrugForm } from '@/lib/api/drug-forms'
@@ -2438,9 +2439,10 @@ function DrugDetailsDialog({ drug, open, onOpenChange, onEdit, onDeleteRequest, 
                 </DialogHeader>
 
                 <Tabs defaultValue="overview" className="mt-6">
-                    <TabsList className="grid grid-cols-2 w-full">
+                    <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="overview">Overview</TabsTrigger>
                         <TabsTrigger value="forms">Forms</TabsTrigger>
+                        <TabsTrigger value="icds">ICDs</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="overview" className="mt-4 space-y-4">
@@ -2491,6 +2493,10 @@ function DrugDetailsDialog({ drug, open, onOpenChange, onEdit, onDeleteRequest, 
 
                     <TabsContent value="forms" className="mt-4">
                         <DrugFormsPanel drugId={drug.id} />
+                    </TabsContent>
+
+                    <TabsContent value="icds" className="mt-4">
+                        <DrugIcdRelationsPanel drugId={drug.id} />
                     </TabsContent>
                 </Tabs>
 

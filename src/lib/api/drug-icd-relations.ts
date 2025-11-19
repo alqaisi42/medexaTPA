@@ -1,0 +1,184 @@
+import {
+    CreateDrugIcdRelationPayload,
+    DrugIcdRelation,
+    DrugIcdRelationType,
+    DrugSummary,
+    ICD,
+    UpdateDrugIcdRelationPayload,
+} from '@/types'
+
+const API_BASE_URL = process.env.API_BASE_URL?.replace(/\/$/, '') ?? ''
+const API_PREFIX = API_BASE_URL ? '/api/v1' : '/api'
+const BASE_PATH = `${API_PREFIX}/drug-icd`
+
+function buildUrl(path: string = '') {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    const finalPath = `${BASE_PATH}${normalizedPath === '/' ? '' : normalizedPath}`
+    const baseUrl = API_BASE_URL ? `${API_BASE_URL}${finalPath}` : finalPath
+    return baseUrl
+}
+
+function parseDate(value: unknown): string | null {
+    if (Array.isArray(value) && value.length >= 3) {
+        const [year, month, day] = value
+        if (typeof year === 'number' && typeof month === 'number' && typeof day === 'number') {
+            const monthString = `${month}`.padStart(2, '0')
+            const dayString = `${day}`.padStart(2, '0')
+            return `${year}-${monthString}-${dayString}`
+        }
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+        return value.slice(0, 10)
+    }
+
+    return null
+}
+
+function parseDateTime(value: unknown): string | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return new Date(value * 1000).toISOString()
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+        return value
+    }
+
+    return null
+}
+
+function normalizeRelationType(value: unknown): DrugIcdRelationType {
+    switch (value) {
+        case 'CONTRAINDICATION':
+        case 'PRECAUTION':
+        case 'INDICATION':
+            return value
+        default:
+            return 'INDICATION'
+    }
+}
+
+function normalizeDrugSummary(item: Record<string, unknown> | null | undefined): DrugSummary | null {
+    if (!item) return null
+
+    return {
+        id: typeof item['id'] === 'number' ? item['id'] : Number(item['id']) || 0,
+        code: String(item['code'] ?? ''),
+        genericNameEn: String(item['genericNameEn'] ?? item['generic_name_en'] ?? ''),
+        brandNameEn: String(item['brandNameEn'] ?? item['brand_name_en'] ?? ''),
+    }
+}
+
+function normalizeIcd(item: Record<string, unknown> | null | undefined): ICD | null {
+    if (!item) return null
+
+    const validFrom = parseDate(item['validFrom']) ?? ''
+    const validTo = parseDate(item['validTo']) ?? ''
+
+    return {
+        id: typeof item['id'] === 'number' ? item['id'] : Number(item['id']) || 0,
+        systemCode: String(item['systemCode'] ?? item['system_code'] ?? ''),
+        code: String(item['code'] ?? ''),
+        nameEn: String(item['nameEn'] ?? item['name_en'] ?? ''),
+        nameAr: String(item['nameAr'] ?? item['name_ar'] ?? ''),
+        chapter: String(item['chapter'] ?? ''),
+        block: String(item['block'] ?? ''),
+        isBillable: Boolean(item['isBillable']),
+        validFrom,
+        validTo,
+        severityLevel: String(item['severityLevel'] ?? item['severity_level'] ?? ''),
+        isChronic: Boolean(item['isChronic']),
+        requiresAuthorization: Boolean(item['requiresAuthorization']),
+        standardLosDays:
+            typeof item['standardLosDays'] === 'number'
+                ? item['standardLosDays']
+                : Number(item['standardLosDays']) || 0,
+        isActive: Boolean(item['isActive'] ?? true),
+        complicationRisk: item['complicationRisk'] ? String(item['complicationRisk']) : undefined,
+        createdAt: parseDateTime(item['createdAt']) ?? undefined,
+        updatedAt: parseDateTime(item['updatedAt']) ?? undefined,
+        createdBy: item['createdBy'] ? String(item['createdBy']) : undefined,
+        updatedBy: item['updatedBy'] ? String(item['updatedBy']) : undefined,
+        effectiveFrom: parseDateTime(item['effectiveFrom']) ?? undefined,
+        effectiveTo: parseDateTime(item['effectiveTo']) ?? undefined,
+    }
+}
+
+function normalizeRelation(item: Record<string, unknown>): DrugIcdRelation {
+    return {
+        id: typeof item['id'] === 'number' ? item['id'] : Number(item['id']) || 0,
+        drug: normalizeDrugSummary((item['drug'] as Record<string, unknown>) ?? null),
+        icd: normalizeIcd((item['icd'] as Record<string, unknown>) ?? null),
+        relationType: normalizeRelationType(item['relationType']),
+        notes: typeof item['notes'] === 'string' ? item['notes'] : null,
+        validFrom: parseDate(item['validFrom']),
+        validTo: parseDate(item['validTo']),
+        isActive: Boolean(item['isActive'] ?? true),
+        createdAt: parseDateTime(item['createdAt']),
+        updatedAt: parseDateTime(item['updatedAt']),
+    }
+}
+
+export async function fetchDrugIcdRelations(drugId: number): Promise<DrugIcdRelation[]> {
+    if (!drugId) {
+        return []
+    }
+
+    const response = await fetch(buildUrl(`/${drugId}`), { cache: 'no-store' })
+
+    if (!response.ok) {
+        throw new Error('Unable to load ICD relations for this drug')
+    }
+
+    const payload = await response.json()
+    if (!Array.isArray(payload)) {
+        return []
+    }
+
+    return payload.map((item) => normalizeRelation(item))
+}
+
+export async function createDrugIcdRelation(payload: CreateDrugIcdRelationPayload): Promise<DrugIcdRelation> {
+    const response = await fetch(buildUrl(), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+        throw new Error('Unable to link ICD to this drug')
+    }
+
+    const body = await response.json()
+    return normalizeRelation(body)
+}
+
+export async function updateDrugIcdRelation(
+    id: number,
+    payload: UpdateDrugIcdRelationPayload,
+): Promise<DrugIcdRelation> {
+    const response = await fetch(buildUrl(`/${id}`), {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+        throw new Error('Unable to update ICD relation for this drug')
+    }
+
+    const body = await response.json()
+    return normalizeRelation(body)
+}
+
+export async function deleteDrugIcdRelation(id: number): Promise<void> {
+    const response = await fetch(buildUrl(`/${id}`), { method: 'DELETE' })
+
+    if (!response.ok) {
+        throw new Error('Unable to delete ICD relation')
+    }
+}
