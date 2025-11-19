@@ -1,9 +1,12 @@
 import {
     CreateDrugIcdRelationPayload,
     DrugIcdRelation,
+    DrugIcdRelationResponse,
     DrugIcdRelationType,
     DrugSummary,
     ICD,
+    RawDrugDetails,
+    RawIcdDetails,
     UpdateDrugIcdRelationPayload,
 } from '@/types'
 
@@ -58,64 +61,64 @@ function normalizeRelationType(value: unknown): DrugIcdRelationType {
     }
 }
 
-function normalizeDrugSummary(item: Record<string, unknown> | null | undefined): DrugSummary | null {
+function normalizeDrugSummary(item: RawDrugDetails | null | undefined): DrugSummary | null {
     if (!item) return null
 
     return {
-        id: typeof item['id'] === 'number' ? item['id'] : Number(item['id']) || 0,
-        code: String(item['code'] ?? ''),
-        genericNameEn: String(item['genericNameEn'] ?? item['generic_name_en'] ?? ''),
-        brandNameEn: String(item['brandNameEn'] ?? item['brand_name_en'] ?? ''),
+        id: typeof item.id === 'number' ? item.id : Number(item?.id) || 0,
+        code: String(item.code ?? ''),
+        genericNameEn: String(item.genericNameEn ?? item.generic_name_en ?? ''),
+        brandNameEn: String(item.brandNameEn ?? item.brand_name_en ?? ''),
     }
 }
 
-function normalizeIcd(item: Record<string, unknown> | null | undefined): ICD | null {
+function normalizeIcd(item: RawIcdDetails | null | undefined): ICD | null {
     if (!item) return null
 
-    const validFrom = parseDate(item['validFrom']) ?? ''
-    const validTo = parseDate(item['validTo']) ?? ''
+    const validFrom = parseDate(item.validFrom) ?? ''
+    const validTo = parseDate(item.validTo) ?? ''
 
     return {
-        id: typeof item['id'] === 'number' ? item['id'] : Number(item['id']) || 0,
-        systemCode: String(item['systemCode'] ?? item['system_code'] ?? ''),
-        code: String(item['code'] ?? ''),
-        nameEn: String(item['nameEn'] ?? item['name_en'] ?? ''),
-        nameAr: String(item['nameAr'] ?? item['name_ar'] ?? ''),
-        chapter: String(item['chapter'] ?? ''),
-        block: String(item['block'] ?? ''),
-        isBillable: Boolean(item['isBillable']),
+        id: typeof item.id === 'number' ? item.id : Number(item?.id) || 0,
+        systemCode: String(item.systemCode ?? item.system_code ?? ''),
+        code: String(item.code ?? ''),
+        nameEn: String(item.nameEn ?? item.name_en ?? ''),
+        nameAr: String(item.nameAr ?? item.name_ar ?? ''),
+        chapter: String(item.chapter ?? ''),
+        block: String(item.block ?? ''),
+        isBillable: Boolean(item.isBillable),
         validFrom,
         validTo,
-        severityLevel: String(item['severityLevel'] ?? item['severity_level'] ?? ''),
-        isChronic: Boolean(item['isChronic']),
-        requiresAuthorization: Boolean(item['requiresAuthorization']),
+        severityLevel: String(item.severityLevel ?? item.severity_level ?? ''),
+        isChronic: Boolean(item.isChronic),
+        requiresAuthorization: Boolean(item.requiresAuthorization),
         standardLosDays:
-            typeof item['standardLosDays'] === 'number'
-                ? item['standardLosDays']
-                : Number(item['standardLosDays']) || 0,
-        isActive: Boolean(item['isActive'] ?? true),
-        complicationRisk: item['complicationRisk'] ? String(item['complicationRisk']) : undefined,
-        createdAt: parseDateTime(item['createdAt']) ?? undefined,
-        updatedAt: parseDateTime(item['updatedAt']) ?? undefined,
-        createdBy: item['createdBy'] ? String(item['createdBy']) : undefined,
-        updatedBy: item['updatedBy'] ? String(item['updatedBy']) : undefined,
-        effectiveFrom: parseDateTime(item['effectiveFrom']) ?? undefined,
-        effectiveTo: parseDateTime(item['effectiveTo']) ?? undefined,
+            typeof item.standardLosDays === 'number'
+                ? item.standardLosDays
+                : Number(item.standardLosDays) || 0,
+        isActive: Boolean(item.isActive ?? true),
+        complicationRisk: item.complicationRisk ? String(item.complicationRisk) : undefined,
+        createdAt: parseDateTime(item.createdAt) ?? undefined,
+        updatedAt: parseDateTime(item.updatedAt) ?? undefined,
+        createdBy: item.createdBy ? String(item.createdBy) : undefined,
+        updatedBy: item.updatedBy ? String(item.updatedBy) : undefined,
+        effectiveFrom: parseDateTime(item.effectiveFrom) ?? undefined,
+        effectiveTo: parseDateTime(item.effectiveTo) ?? undefined,
     }
 }
 
-function normalizeRelation(item: Record<string, unknown>): DrugIcdRelation {
+function normalizeRelation(item: DrugIcdRelationResponse): DrugIcdRelation {
     return {
-        id: typeof item['id'] === 'number' ? item['id'] : Number(item['id']) || 0,
-        drug: normalizeDrugSummary((item['drug'] as Record<string, unknown>) ?? null),
-        icd: normalizeIcd((item['icd'] as Record<string, unknown>) ?? null),
-        relationType: normalizeRelationType(item['relationType']),
-        notes: typeof item['notes'] === 'string' ? item['notes'] : null,
-        validFrom: parseDate(item['validFrom']),
-        validTo: parseDate(item['validTo']),
-        isActive: Boolean(item['isActive'] ?? true),
-        createdAt: parseDateTime(item['createdAt']),
-        updatedAt: parseDateTime(item['updatedAt']),
+        id: typeof item.id === 'number' ? item.id : Number(item?.id) || 0,
+        drug: normalizeDrugSummary(item.drug ?? null),
+        icd: normalizeIcd(item.icd ?? null),
+        relationType: normalizeRelationType(item.relationType),
+        notes: typeof item.notes === 'string' ? item.notes : null,
+        validFrom: parseDate(item.validFrom),
+        validTo: parseDate(item.validTo),
+        isActive: Boolean(item.isActive ?? true),
+        createdAt: parseDateTime(item.createdAt),
+        updatedAt: parseDateTime(item.updatedAt),
     }
 }
 
@@ -130,12 +133,12 @@ export async function fetchDrugIcdRelations(drugId: number): Promise<DrugIcdRela
         throw new Error('Unable to load ICD relations for this drug')
     }
 
-    const payload = await response.json()
+    const payload = (await response.json()) as unknown
     if (!Array.isArray(payload)) {
         return []
     }
 
-    return payload.map((item) => normalizeRelation(item))
+    return payload.map((item) => normalizeRelation(item as DrugIcdRelationResponse))
 }
 
 export async function createDrugIcdRelation(payload: CreateDrugIcdRelationPayload): Promise<DrugIcdRelation> {
@@ -151,7 +154,7 @@ export async function createDrugIcdRelation(payload: CreateDrugIcdRelationPayloa
         throw new Error('Unable to link ICD to this drug')
     }
 
-    const body = await response.json()
+    const body = (await response.json()) as DrugIcdRelationResponse
     return normalizeRelation(body)
 }
 
@@ -171,7 +174,7 @@ export async function updateDrugIcdRelation(
         throw new Error('Unable to update ICD relation for this drug')
     }
 
-    const body = await response.json()
+    const body = (await response.json()) as DrugIcdRelationResponse
     return normalizeRelation(body)
 }
 
