@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DrugCategoryMappingManager } from './drug-category-mapping-manager'
 import { DrugIcdRelationsPanel } from './drug-icd-relations-panel'
+import { PackRulesDialog } from './pack-rules-dialog'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
 import { createDrugForm, deleteDrugForm, fetchDrugForms, getDrugFormById, updateDrugForm } from '@/lib/api/drug-forms'
@@ -1544,6 +1545,7 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
     const [deleteTarget, setDeleteTarget] = useState<DrugPack | null>(null)
     const [deletingId, setDeletingId] = useState<number | null>(null)
     const [priceDialogPack, setPriceDialogPack] = useState<DrugPack | null>(null)
+    const [rulesDialogPack, setRulesDialogPack] = useState<DrugPack | null>(null)
 
     const loadPacks = useCallback(async () => {
         if (!form.id) return
@@ -1729,6 +1731,9 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <div className="flex items-center justify-center gap-2">
+                                            <Button variant="outline" size="icon" onClick={() => setRulesDialogPack(pack)} title="Manage rules">
+                                                <ShieldCheck className="h-4 w-4" />
+                                            </Button>
                                             <Button
                                                 variant="outline"
                                                 size="icon"
@@ -1778,6 +1783,8 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
                 onClose={() => setPriceDialogPack(null)}
                 onUpdated={() => void loadPacks()}
             />
+
+            <PackRulesDialog pack={rulesDialogPack} onClose={() => setRulesDialogPack(null)} />
 
             <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
                 <DialogContent>
