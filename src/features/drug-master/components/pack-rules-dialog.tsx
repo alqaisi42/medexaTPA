@@ -33,6 +33,17 @@ import {
     updateDrugRule,
 } from '@/lib/api/drug-rules'
 import {
+    computeDosageRecommendation,
+    createDosageRule as createDosageRuleApi,
+    deactivateDosageRule as deactivateDosageRuleApi,
+    deleteDosageRule as deleteDosageRuleApi,
+    fetchDosageRulesByPack,
+    updateDosageRule as updateDosageRuleApi,
+} from '@/lib/api/drug-dosage-rules'
+import { evaluateDrugDecision } from '@/lib/api/drug-decision'
+import {
+    DosageRecommendationResponse,
+    DosageRule,
     DrugPack,
     DrugRule,
     DrugRuleCondition,
@@ -40,6 +51,7 @@ import {
     DrugRuleFactor,
     DrugRuleOperator,
     DrugRuleType,
+    DrugDecisionEvaluationResponse,
 } from '@/types'
 
 const RULE_TYPES: { value: DrugRuleType; label: string; helper: string }[] = [
@@ -84,6 +96,31 @@ interface RuleFormState {
     eligibility: boolean
 }
 
+interface FrequencyDraft {
+    id: string
+    frequencyCode: string
+    timesPerDay: string
+    intervalHours: string
+    timingNotes: string
+    specialInstructions: string
+}
+
+interface DosageRuleFormState {
+    ruleName: string
+    dosageAmount: string
+    dosageUnit: string
+    notes: string
+    priority: string
+    validFrom: string
+    validTo: string
+}
+
+interface DecisionRequestState {
+    priceListId: string
+    requestedQuantity: string
+    requestedDate: string
+}
+
 interface PackRulesDialogProps {
     pack: DrugPack | null
     onClose: () => void
@@ -118,6 +155,29 @@ function buildEvaluationFactorDraft(factors: DrugRuleFactor[]): EvaluationFactor
     }
 }
 
+function buildFrequencyDraft(): FrequencyDraft {
+    return {
+        id: generateDraftId(),
+        frequencyCode: '',
+        timesPerDay: '',
+        intervalHours: '',
+        timingNotes: '',
+        specialInstructions: '',
+    }
+}
+
+function buildInitialDosageForm(): DosageRuleFormState {
+    return {
+        ruleName: '',
+        dosageAmount: '',
+        dosageUnit: '',
+        notes: '',
+        priority: '',
+        validFrom: '',
+        validTo: '',
+    }
+}
+
 function mapConditionToDraft(condition: DrugRuleCondition): ConditionDraft {
     return {
         id: generateDraftId(),
@@ -127,6 +187,20 @@ function mapConditionToDraft(condition: DrugRuleCondition): ConditionDraft {
         valueFrom: condition.valueFrom ?? '',
         valueTo: condition.valueTo ?? '',
         multiValueInput: condition.values ? condition.values.join(', ') : '',
+    }
+}
+
+function mapFrequencyToDraft(frequency: DosageRule['frequencies'][number]): FrequencyDraft {
+    return {
+        id: generateDraftId(),
+        frequencyCode: frequency.frequencyCode,
+        timesPerDay: frequency.timesPerDay !== null && frequency.timesPerDay !== undefined ? String(frequency.timesPerDay) : '',
+        intervalHours:
+            frequency.intervalHours !== null && frequency.intervalHours !== undefined
+                ? String(frequency.intervalHours)
+                : '',
+        timingNotes: frequency.timingNotes ?? '',
+        specialInstructions: frequency.specialInstructions ?? '',
     }
 }
 
@@ -157,7 +231,7 @@ function buildInitialRuleForm(): RuleFormState {
 }
 
 export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
-    const [activeTab, setActiveTab] = useState<'rules' | 'builder' | 'evaluate' | 'factors'>('rules')
+    const [activeTab, setActiveTab] = useState<'rules' | 'builder' | 'evaluate' | 'factors' | 'dosage'>('rules')
     const [loadingRules, setLoadingRules] = useState(false)
     const [rules, setRules] = useState<DrugRule[]>([])
     const [rulesError, setRulesError] = useState<string | null>(null)
@@ -182,6 +256,35 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
     const [evaluating, setEvaluating] = useState(false)
     const [evaluationError, setEvaluationError] = useState<string | null>(null)
 
+    const [dosageRules, setDosageRules] = useState<DosageRule[]>([])
+    const [loadingDosageRules, setLoadingDosageRules] = useState(false)
+    const [dosageRulesError, setDosageRulesError] = useState<string | null>(null)
+    const [showDosageActiveOnly, setShowDosageActiveOnly] = useState(true)
+    const [dosageForm, setDosageForm] = useState<DosageRuleFormState>(buildInitialDosageForm())
+    const [dosageConditions, setDosageConditions] = useState<ConditionDraft[]>([])
+    const [dosageFrequencies, setDosageFrequencies] = useState<FrequencyDraft[]>([])
+    const [dosageFormError, setDosageFormError] = useState<string | null>(null)
+    const [savingDosageRule, setSavingDosageRule] = useState(false)
+    const [editingDosageRule, setEditingDosageRule] = useState<DosageRule | null>(null)
+    const [deletingDosageRuleId, setDeletingDosageRuleId] = useState<number | null>(null)
+    const [deactivatingDosageRuleId, setDeactivatingDosageRuleId] = useState<number | null>(null)
+
+    const [dosageRecommendationDate, setDosageRecommendationDate] = useState(() => new Date().toISOString().slice(0, 10))
+    const [dosageScenarioFactors, setDosageScenarioFactors] = useState<EvaluationFactorDraft[]>([])
+    const [dosageRecommendationResult, setDosageRecommendationResult] = useState<DosageRecommendationResponse | null>(null)
+    const [recommendingDosage, setRecommendingDosage] = useState(false)
+    const [dosageRecommendationError, setDosageRecommendationError] = useState<string | null>(null)
+
+    const [decisionRequest, setDecisionRequest] = useState<DecisionRequestState>(() => ({
+        priceListId: '',
+        requestedQuantity: '',
+        requestedDate: new Date().toISOString().slice(0, 10),
+    }))
+    const [decisionFactors, setDecisionFactors] = useState<EvaluationFactorDraft[]>([])
+    const [decisionResult, setDecisionResult] = useState<DrugDecisionEvaluationResponse | null>(null)
+    const [decisionError, setDecisionError] = useState<string | null>(null)
+    const [evaluatingDecision, setEvaluatingDecision] = useState(false)
+
     const dialogOpen = Boolean(pack)
 
     const loadRules = useCallback(async () => {
@@ -197,6 +300,22 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
             setRulesError(error instanceof Error ? error.message : 'Unable to load rules')
         } finally {
             setLoadingRules(false)
+        }
+    }, [pack])
+
+    const loadDosageRules = useCallback(async () => {
+        if (!pack) return
+        setLoadingDosageRules(true)
+        setDosageRulesError(null)
+        try {
+            const data = await fetchDosageRulesByPack(pack.id)
+            setDosageRules(data)
+        } catch (error) {
+            console.error(error)
+            setDosageRules([])
+            setDosageRulesError(error instanceof Error ? error.message : 'Unable to load dosage rules')
+        } finally {
+            setLoadingDosageRules(false)
         }
     }, [pack])
 
@@ -219,6 +338,7 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         if (!pack) return
         void loadRules()
         void loadFactors()
+        void loadDosageRules()
         setRuleForm(buildInitialRuleForm())
         setConditions([])
         setEditingRule(null)
@@ -226,8 +346,21 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         setEvaluationResult(null)
         setEvaluationError(null)
         setEvaluationFactors([buildEvaluationFactorDraft([])])
+        setDosageForm(buildInitialDosageForm())
+        setDosageConditions([])
+        setDosageFrequencies([])
+        setEditingDosageRule(null)
+        setDosageFormError(null)
+        setDosageRecommendationResult(null)
+        setDosageRecommendationError(null)
+        setDosageScenarioFactors([buildEvaluationFactorDraft([])])
+        setDecisionFactors([buildEvaluationFactorDraft([])])
+        setDecisionResult(null)
+        setDecisionError(null)
+        setDecisionRequest({ priceListId: '', requestedQuantity: '', requestedDate: new Date().toISOString().slice(0, 10) })
+        setDosageRecommendationDate(new Date().toISOString().slice(0, 10))
         setActiveTab('rules')
-    }, [pack, loadRules, loadFactors])
+    }, [pack, loadRules, loadFactors, loadDosageRules])
 
     useEffect(() => {
         if (conditions.length === 0 && factors.length > 0) {
@@ -243,11 +376,41 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         ) {
             setEvaluationFactors([buildEvaluationFactorDraft(factors)])
         }
-    }, [conditions.length, evaluationFactors, factors])
+        if (dosageConditions.length === 0 && factors.length > 0) {
+            setDosageConditions([buildEmptyCondition(factors)])
+        }
+        if (dosageFrequencies.length === 0) {
+            setDosageFrequencies([buildFrequencyDraft()])
+        }
+        if (dosageScenarioFactors.length === 0 && factors.length > 0) {
+            setDosageScenarioFactors([buildEvaluationFactorDraft(factors)])
+        }
+        if (decisionFactors.length === 0 && factors.length > 0) {
+            setDecisionFactors([buildEvaluationFactorDraft(factors)])
+        }
+        if (factors.length > 0 && dosageScenarioFactors.length === 1 && !dosageScenarioFactors[0]?.factorCode) {
+            setDosageScenarioFactors([buildEvaluationFactorDraft(factors)])
+        }
+        if (factors.length > 0 && decisionFactors.length === 1 && !decisionFactors[0]?.factorCode) {
+            setDecisionFactors([buildEvaluationFactorDraft(factors)])
+        }
+    }, [
+        conditions.length,
+        evaluationFactors,
+        factors,
+        dosageConditions.length,
+        dosageFrequencies.length,
+        dosageScenarioFactors,
+        decisionFactors,
+    ])
 
     const visibleRules = useMemo(() => {
         return showActiveOnly ? rules.filter((rule) => rule.isActive) : rules
     }, [rules, showActiveOnly])
+
+    const visibleDosageRules = useMemo(() => {
+        return showDosageActiveOnly ? dosageRules.filter((rule) => rule.isActive) : dosageRules
+    }, [dosageRules, showDosageActiveOnly])
 
     const handleRuleFormChange = (field: keyof RuleFormState, value: string | boolean) => {
         setRuleForm((prev) => ({ ...prev, [field]: value }))
@@ -278,6 +441,49 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         setRuleFormError(null)
     }
 
+    const handleDosageFormChange = (field: keyof DosageRuleFormState, value: string) => {
+        setDosageForm((prev) => ({ ...prev, [field]: value }))
+        setDosageFormError(null)
+    }
+
+    const handleDosageConditionChange = (id: string, updates: Partial<ConditionDraft>) => {
+        setDosageConditions((prev) => prev.map((condition) => (condition.id === id ? { ...condition, ...updates } : condition)))
+        setDosageFormError(null)
+    }
+
+    const handleAddDosageCondition = () => {
+        if (factors.length === 0) {
+            setDosageFormError('Define factors before adding conditions.')
+            return
+        }
+        setDosageConditions((prev) => [...prev, buildEmptyCondition(factors)])
+    }
+
+    const handleRemoveDosageCondition = (id: string) => {
+        setDosageConditions((prev) => (prev.length === 1 ? prev : prev.filter((condition) => condition.id !== id)))
+    }
+
+    const handleFrequencyChange = (id: string, updates: Partial<FrequencyDraft>) => {
+        setDosageFrequencies((prev) => prev.map((frequency) => (frequency.id === id ? { ...frequency, ...updates } : frequency)))
+        setDosageFormError(null)
+    }
+
+    const handleAddFrequency = () => {
+        setDosageFrequencies((prev) => [...prev, buildFrequencyDraft()])
+    }
+
+    const handleRemoveFrequency = (id: string) => {
+        setDosageFrequencies((prev) => (prev.length === 1 ? prev : prev.filter((frequency) => frequency.id !== id)))
+    }
+
+    const resetDosageForm = () => {
+        setDosageForm(buildInitialDosageForm())
+        setDosageConditions(factors.length > 0 ? [buildEmptyCondition(factors)] : [])
+        setDosageFrequencies([buildFrequencyDraft()])
+        setEditingDosageRule(null)
+        setDosageFormError(null)
+    }
+
     const buildConditionPayload = (draft: ConditionDraft): DrugRuleCondition => {
         const values = draft.multiValueInput
             .split(',')
@@ -294,6 +500,16 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
             valueFrom: draft.operator === 'BETWEEN' ? draft.valueFrom || null : null,
             valueTo: draft.operator === 'BETWEEN' ? draft.valueTo || null : null,
             values: draft.operator === 'IN' ? values : undefined,
+        }
+    }
+
+    const buildFrequencyPayload = (draft: FrequencyDraft) => {
+        return {
+            frequencyCode: draft.frequencyCode.trim(),
+            timesPerDay: draft.timesPerDay !== '' ? Number(draft.timesPerDay) : null,
+            intervalHours: draft.intervalHours !== '' ? Number(draft.intervalHours) : null,
+            timingNotes: draft.timingNotes.trim() || null,
+            specialInstructions: draft.specialInstructions.trim() || null,
         }
     }
 
@@ -344,6 +560,65 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         }
     }
 
+    const handleSaveDosageRule = async () => {
+        if (!pack) return
+        if (!dosageForm.ruleName.trim()) {
+            setDosageFormError('Rule name is required.')
+            return
+        }
+        if (!dosageForm.dosageAmount.trim()) {
+            setDosageFormError('Dosage amount is required.')
+            return
+        }
+        if (!dosageForm.dosageUnit.trim()) {
+            setDosageFormError('Dosage unit is required.')
+            return
+        }
+        if (dosageConditions.length === 0) {
+            setDosageFormError('Add at least one condition to this rule.')
+            return
+        }
+        if (dosageConditions.some((condition) => !condition.factorCode)) {
+            setDosageFormError('Each condition must target a factor.')
+            return
+        }
+        if (dosageFrequencies.length === 0 || dosageFrequencies.some((frequency) => !frequency.frequencyCode.trim())) {
+            setDosageFormError('Provide at least one frequency with a code.')
+            return
+        }
+
+        const payload = {
+            drugPackId: pack.id,
+            ruleName: dosageForm.ruleName.trim(),
+            dosageAmount: Number(dosageForm.dosageAmount) || 0,
+            dosageUnit: dosageForm.dosageUnit.trim(),
+            notes: dosageForm.notes.trim() || null,
+            priority: Number(dosageForm.priority) || 0,
+            validFrom: dosageForm.validFrom || null,
+            validTo: dosageForm.validTo || null,
+            conditions: dosageConditions.map((condition) => buildConditionPayload(condition)),
+            frequencies: dosageFrequencies.map((frequency) => buildFrequencyPayload(frequency)),
+        }
+
+        setSavingDosageRule(true)
+        setDosageFormError(null)
+        try {
+            if (editingDosageRule) {
+                await updateDosageRuleApi(editingDosageRule.id, payload)
+            } else {
+                await createDosageRuleApi(payload)
+            }
+            await loadDosageRules()
+            resetDosageForm()
+            setActiveTab('dosage')
+        } catch (error) {
+            console.error(error)
+            setDosageFormError(error instanceof Error ? error.message : 'Unable to save dosage rule')
+        } finally {
+            setSavingDosageRule(false)
+        }
+    }
+
     const handleEditRule = (rule: DrugRule) => {
         setActiveTab('builder')
         setEditingRule(rule)
@@ -360,6 +635,53 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         })
         setConditions(rule.conditions.length > 0 ? rule.conditions.map((condition) => mapConditionToDraft(condition)) : [])
         setRuleFormError(null)
+    }
+
+    const handleEditDosageRule = (rule: DosageRule) => {
+        setActiveTab('dosage')
+        setEditingDosageRule(rule)
+        setDosageForm({
+            ruleName: rule.ruleName,
+            dosageAmount: String(rule.dosageAmount ?? ''),
+            dosageUnit: rule.dosageUnit ?? '',
+            notes: rule.notes ?? '',
+            priority: String(rule.priority ?? ''),
+            validFrom: rule.validFrom ?? '',
+            validTo: rule.validTo ?? '',
+        })
+        setDosageConditions(
+            rule.conditions.length > 0 ? rule.conditions.map((condition) => mapConditionToDraft(condition)) : [],
+        )
+        setDosageFrequencies(
+            rule.frequencies.length > 0 ? rule.frequencies.map((frequency) => mapFrequencyToDraft(frequency)) : [],
+        )
+        setDosageFormError(null)
+    }
+
+    const handleDeleteDosageRule = async (rule: DosageRule) => {
+        setDeletingDosageRuleId(rule.id)
+        try {
+            await deleteDosageRuleApi(rule.id)
+            await loadDosageRules()
+        } catch (error) {
+            console.error(error)
+            setDosageRulesError(error instanceof Error ? error.message : 'Unable to delete dosage rule')
+        } finally {
+            setDeletingDosageRuleId(null)
+        }
+    }
+
+    const handleDeactivateDosageRule = async (rule: DosageRule) => {
+        setDeactivatingDosageRuleId(rule.id)
+        try {
+            await deactivateDosageRuleApi(rule.id)
+            await loadDosageRules()
+        } catch (error) {
+            console.error(error)
+            setDosageRulesError(error instanceof Error ? error.message : 'Unable to deactivate dosage rule')
+        } finally {
+            setDeactivatingDosageRuleId(null)
+        }
     }
 
     const handleDeactivateRule = async (rule: DrugRule) => {
@@ -401,6 +723,35 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         }
     }
 
+    const handleRecommendDosage = async () => {
+        if (!pack) return
+        if (!dosageRecommendationDate) {
+            setDosageRecommendationError('Recommendation date is required.')
+            return
+        }
+        const payloadFactors: Record<string, string> = {}
+        dosageScenarioFactors.forEach((factor) => {
+            if (factor.factorCode && factor.value.trim()) {
+                payloadFactors[factor.factorCode] = factor.value.trim()
+            }
+        })
+        setRecommendingDosage(true)
+        setDosageRecommendationError(null)
+        setDosageRecommendationResult(null)
+        try {
+            const result = await computeDosageRecommendation(pack.id, {
+                date: dosageRecommendationDate,
+                factors: payloadFactors,
+            })
+            setDosageRecommendationResult(result)
+        } catch (error) {
+            console.error(error)
+            setDosageRecommendationError(error instanceof Error ? error.message : 'Unable to compute dosage recommendation')
+        } finally {
+            setRecommendingDosage(false)
+        }
+    }
+
     const handleAddEvaluationFactor = () => {
         if (factors.length === 0) {
             setEvaluationError('Create rule factors before evaluating scenarios.')
@@ -409,9 +760,76 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         setEvaluationFactors((prev) => [...prev, buildEvaluationFactorDraft(factors)])
     }
 
+    const handleAddDosageScenarioFactor = () => {
+        if (factors.length === 0) {
+            setDosageRecommendationError('Create factors before simulating dosage scenarios.')
+            return
+        }
+        setDosageScenarioFactors((prev) => [...prev, buildEvaluationFactorDraft(factors)])
+    }
+
+    const handleAddDecisionFactor = () => {
+        if (factors.length === 0) {
+            setDecisionError('Create rule factors before running the decision engine.')
+            return
+        }
+        setDecisionFactors((prev) => [...prev, buildEvaluationFactorDraft(factors)])
+    }
+
     const handleEvaluationFactorChange = (id: string, updates: Partial<EvaluationFactorDraft>) => {
         setEvaluationFactors((prev) => prev.map((factor) => (factor.id === id ? { ...factor, ...updates } : factor)))
         setEvaluationError(null)
+    }
+
+    const handleDosageScenarioFactorChange = (id: string, updates: Partial<EvaluationFactorDraft>) => {
+        setDosageScenarioFactors((prev) => prev.map((factor) => (factor.id === id ? { ...factor, ...updates } : factor)))
+        setDosageRecommendationError(null)
+    }
+
+    const handleDecisionFactorChange = (id: string, updates: Partial<EvaluationFactorDraft>) => {
+        setDecisionFactors((prev) => prev.map((factor) => (factor.id === id ? { ...factor, ...updates } : factor)))
+        setDecisionError(null)
+    }
+
+    const handleDecisionRequestChange = (field: keyof DecisionRequestState, value: string) => {
+        setDecisionRequest((prev) => ({ ...prev, [field]: value }))
+        setDecisionError(null)
+    }
+
+    const handleEvaluateDecision = async () => {
+        if (!pack) return
+        if (!decisionRequest.priceListId.trim() || !decisionRequest.requestedQuantity.trim()) {
+            setDecisionError('Price list and requested quantity are required.')
+            return
+        }
+        if (!decisionRequest.requestedDate) {
+            setDecisionError('Requested date is required.')
+            return
+        }
+        const factorPayload: Record<string, string> = {}
+        decisionFactors.forEach((factor) => {
+            if (factor.factorCode && factor.value.trim()) {
+                factorPayload[factor.factorCode] = factor.value.trim()
+            }
+        })
+        setEvaluatingDecision(true)
+        setDecisionError(null)
+        setDecisionResult(null)
+        try {
+            const result = await evaluateDrugDecision({
+                drugPackId: pack.id,
+                priceListId: Number(decisionRequest.priceListId),
+                requestedQuantity: Number(decisionRequest.requestedQuantity),
+                factors: factorPayload,
+                requestedDate: decisionRequest.requestedDate,
+            })
+            setDecisionResult(result)
+        } catch (error) {
+            console.error(error)
+            setDecisionError(error instanceof Error ? error.message : 'Unable to evaluate drug decision')
+        } finally {
+            setEvaluatingDecision(false)
+        }
     }
 
     const handleCreateFactor = async () => {
@@ -462,11 +880,12 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                 )}
 
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid w-full grid-cols-5">
                         <TabsTrigger value="rules">Rules</TabsTrigger>
                         <TabsTrigger value="builder">Builder</TabsTrigger>
                         <TabsTrigger value="evaluate">Evaluate</TabsTrigger>
                         <TabsTrigger value="factors">Factors</TabsTrigger>
+                        <TabsTrigger value="dosage">Dosage rules</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="rules" className="space-y-4">
@@ -1001,6 +1420,631 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                 <Button className="bg-tpa-primary hover:bg-tpa-accent" onClick={() => void handleCreateFactor()} disabled={savingFactor}>
                                     {savingFactor ? 'Saving...' : 'Save factor'}
                                 </Button>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="dosage" className="space-y-6">
+                        <div className="grid gap-6 lg:grid-cols-2">
+                            <div className="space-y-4">
+                                <div className="rounded-lg border p-4 space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-4">
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-800">Configured dosage rules</p>
+                                            <p className="text-xs text-gray-600">Build recommendations for adults, pediatrics, renal dosing, and more.</p>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                <Switch
+                                                    id="dosage-active-only"
+                                                    checked={showDosageActiveOnly}
+                                                    onCheckedChange={(checked) => setShowDosageActiveOnly(checked)}
+                                                />
+                                                <Label htmlFor="dosage-active-only" className="text-xs text-gray-600">
+                                                    Active only
+                                                </Label>
+                                            </div>
+                                            <Button variant="outline" size="sm" onClick={resetDosageForm}>
+                                                <Plus className="h-4 w-4 mr-2" /> New rule
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    {dosageRulesError && <p className="text-sm text-red-600">{dosageRulesError}</p>}
+                                    {loadingDosageRules ? (
+                                        <p className="text-sm text-gray-500">
+                                            <Loader2 className="h-4 w-4 animate-spin inline mr-2" /> Loading dosage rules...
+                                        </p>
+                                    ) : (
+                                        <div className="overflow-x-auto">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>Rule</TableHead>
+                                                        <TableHead>Dosage</TableHead>
+                                                        <TableHead className="text-center">Frequencies</TableHead>
+                                                        <TableHead className="text-center">Status</TableHead>
+                                                        <TableHead className="text-center">Actions</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {visibleDosageRules.length === 0 ? (
+                                                        <TableRow>
+                                                            <TableCell colSpan={5} className="text-center text-sm text-gray-500">
+                                                                {dosageRules.length === 0
+                                                                    ? 'No dosage rules yet. Use the builder to create the first one.'
+                                                                    : 'No rules match the current filter.'}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ) : (
+                                                        visibleDosageRules.map((rule) => (
+                                                            <TableRow key={rule.id}>
+                                                                <TableCell>
+                                                                    <div className="font-semibold text-gray-900">{rule.ruleName}</div>
+                                                                    <div className="text-xs text-gray-500">
+                                                                        Priority #{rule.priority ?? '—'} • Valid {rule.validFrom ? formatDate(rule.validFrom) : '—'} →{' '}
+                                                                        {rule.validTo ? formatDate(rule.validTo) : 'Open-ended'}
+                                                                    </div>
+                                                                    {rule.notes && <p className="text-xs text-gray-600 mt-1">{rule.notes}</p>}
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <p className="font-medium text-sm">
+                                                                        {rule.dosageAmount} {rule.dosageUnit}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-500">{rule.conditions.length} condition(s)</p>
+                                                                </TableCell>
+                                                                <TableCell className="text-center text-sm font-semibold">
+                                                                    {rule.frequencies.length}
+                                                                </TableCell>
+                                                                <TableCell className="text-center">
+                                                                    <span
+                                                                        className={cn(
+                                                                            'inline-flex rounded-full px-2 py-1 text-xs font-semibold',
+                                                                            rule.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700',
+                                                                        )}
+                                                                    >
+                                                                        {rule.isActive ? 'Active' : 'Inactive'}
+                                                                    </span>
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <div className="flex items-center justify-center gap-2">
+                                                                        <Button variant="outline" size="icon" onClick={() => handleEditDosageRule(rule)}>
+                                                                            <Pencil className="h-4 w-4" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="icon"
+                                                                            disabled={!rule.isActive || deactivatingDosageRuleId === rule.id}
+                                                                            onClick={() => void handleDeactivateDosageRule(rule)}
+                                                                            title="Deactivate rule"
+                                                                        >
+                                                                            {deactivatingDosageRuleId === rule.id ? (
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : (
+                                                                                <ShieldCheck className="h-4 w-4" />
+                                                                            )}
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="destructive"
+                                                                            size="icon"
+                                                                            disabled={deletingDosageRuleId === rule.id}
+                                                                            onClick={() => void handleDeleteDosageRule(rule)}
+                                                                        >
+                                                                            {deletingDosageRuleId === rule.id ? (
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : (
+                                                                                <Trash2 className="h-4 w-4" />
+                                                                            )}
+                                                                        </Button>
+                                                                    </div>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))
+                                                    )}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-lg border p-4 space-y-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                                        <Sparkles className="h-4 w-4" /> Dosage recommendation sandbox
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dosage-date">Requested date</Label>
+                                            <Input
+                                                id="dosage-date"
+                                                type="date"
+                                                value={dosageRecommendationDate}
+                                                onChange={(event) => setDosageRecommendationDate(event.target.value)}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2 text-sm text-gray-500 flex items-end">
+                                            Provide scenario factors to see which rule wins and what schedule is suggested.
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-sm font-semibold">Scenario factors</Label>
+                                            <Button size="sm" variant="outline" onClick={handleAddDosageScenarioFactor}>
+                                                <Plus className="h-4 w-4 mr-2" /> Add factor
+                                            </Button>
+                                        </div>
+                                        {dosageScenarioFactors.map((factor) => (
+                                            <div key={factor.id} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <Select
+                                                    value={factor.factorCode || undefined}
+                                                    onValueChange={(value) => handleDosageScenarioFactorChange(factor.id, { factorCode: value })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Factor" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {factors.map((item) => (
+                                                            <SelectItem key={item.code} value={item.code}>
+                                                                {item.code} — {item.description}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <Input
+                                                    placeholder="Value"
+                                                    value={factor.value}
+                                                    onChange={(event) => handleDosageScenarioFactorChange(factor.id, { value: event.target.value })}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {dosageRecommendationError && (
+                                        <p className="text-sm text-red-600">{dosageRecommendationError}</p>
+                                    )}
+                                    <Button className="bg-tpa-primary hover:bg-tpa-accent" onClick={() => void handleRecommendDosage()} disabled={recommendingDosage}>
+                                        {recommendingDosage ? 'Calculating...' : 'Compute recommendation'}
+                                    </Button>
+                                    {dosageRecommendationResult && (
+                                        <div className="rounded-lg border bg-slate-50 p-4 space-y-2 text-sm">
+                                            <div className="flex items-center gap-2 font-semibold">
+                                                {dosageRecommendationResult.foundRule ? (
+                                                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                                ) : (
+                                                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                                                )}
+                                                {dosageRecommendationResult.foundRule ? 'Matching rule' : 'No rule matched'}
+                                            </div>
+                                            {dosageRecommendationResult.foundRule && (
+                                                <>
+                                                    <p className="font-semibold text-gray-900">{dosageRecommendationResult.ruleName}</p>
+                                                    <p>
+                                                        <span className="font-semibold">Dosage:</span>{' '}
+                                                        {dosageRecommendationResult.dosageAmount ?? '—'} {dosageRecommendationResult.dosageUnit ?? ''}
+                                                    </p>
+                                                    {dosageRecommendationResult.notes && (
+                                                        <p className="text-xs text-gray-600">{dosageRecommendationResult.notes}</p>
+                                                    )}
+                                                    <div>
+                                                        <p className="font-semibold text-sm">Frequencies</p>
+                                                        <ul className="list-disc list-inside text-xs text-gray-600">
+                                                            {dosageRecommendationResult.frequencies.length === 0 && <li>No frequency entries.</li>}
+                                                            {dosageRecommendationResult.frequencies.map((frequency, index) => (
+                                                                <li key={`${frequency.frequencyCode}-${index}`}>
+                                                                    {frequency.frequencyCode} — {frequency.timesPerDay ?? '—'}x/day, every {frequency.intervalHours ?? '—'} h.{' '}
+                                                                    {frequency.timingNotes}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                </>
+                                            )}
+                                            {dosageRecommendationResult.reasons.length > 0 && (
+                                                <div>
+                                                    <p className="font-semibold text-sm">Reasons</p>
+                                                    <ul className="list-disc list-inside text-xs text-gray-600">
+                                                        {dosageRecommendationResult.reasons.map((reason, index) => (
+                                                            <li key={`${reason}-${index}`}>{reason}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-lg border p-4 space-y-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                                        <Target className="h-4 w-4" /> Clinical decision engine
+                                    </div>
+                                    <div className="grid gap-3 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="decision-price-list">Price list</Label>
+                                            <Input
+                                                id="decision-price-list"
+                                                type="number"
+                                                min="0"
+                                                value={decisionRequest.priceListId}
+                                                onChange={(event) => handleDecisionRequestChange('priceListId', event.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="decision-quantity">Requested quantity</Label>
+                                            <Input
+                                                id="decision-quantity"
+                                                type="number"
+                                                min="0"
+                                                value={decisionRequest.requestedQuantity}
+                                                onChange={(event) => handleDecisionRequestChange('requestedQuantity', event.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="decision-date">Requested date</Label>
+                                            <Input
+                                                id="decision-date"
+                                                type="date"
+                                                value={decisionRequest.requestedDate}
+                                                onChange={(event) => handleDecisionRequestChange('requestedDate', event.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-sm font-semibold">Factors</Label>
+                                            <Button size="sm" variant="outline" onClick={handleAddDecisionFactor}>
+                                                <Plus className="h-4 w-4 mr-2" /> Add factor
+                                            </Button>
+                                        </div>
+                                        {decisionFactors.map((factor) => (
+                                            <div key={factor.id} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <Select
+                                                    value={factor.factorCode || undefined}
+                                                    onValueChange={(value) => handleDecisionFactorChange(factor.id, { factorCode: value })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Factor" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {factors.map((item) => (
+                                                            <SelectItem key={item.code} value={item.code}>
+                                                                {item.code} — {item.description}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <Input
+                                                    placeholder="Value"
+                                                    value={factor.value}
+                                                    onChange={(event) => handleDecisionFactorChange(factor.id, { value: event.target.value })}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {decisionError && <p className="text-sm text-red-600">{decisionError}</p>}
+                                    <Button variant="outline" onClick={() => void handleEvaluateDecision()} disabled={evaluatingDecision}>
+                                        {evaluatingDecision ? 'Evaluating...' : 'Evaluate drug decision'}
+                                    </Button>
+                                    {decisionResult && (
+                                        <div className="rounded-lg border bg-white p-4 space-y-3 text-sm">
+                                            <div className="flex items-center gap-2 font-semibold">
+                                                {decisionResult.eligible ? (
+                                                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                                ) : (
+                                                    <AlertCircle className="h-4 w-4 text-red-500" />
+                                                )}
+                                                {decisionResult.eligible ? 'Eligible for dispensing' : 'Not eligible'}
+                                            </div>
+                                            {decisionResult.reasons.length > 0 && (
+                                                <div>
+                                                    <p className="font-semibold">Reasons</p>
+                                                    <ul className="list-disc list-inside text-xs text-gray-600">
+                                                        {decisionResult.reasons.map((reason, index) => (
+                                                            <li key={`${reason}-${index}`}>{reason}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                            {decisionResult.pricing && (
+                                                <div className="grid gap-1 text-xs text-gray-600">
+                                                    <p>
+                                                        <span className="font-semibold">Base unit:</span> {decisionResult.pricing.baseUnitPrice ?? '—'}
+                                                    </p>
+                                                    <p>
+                                                        <span className="font-semibold">Final unit:</span> {decisionResult.pricing.finalUnitPrice ?? '—'}
+                                                    </p>
+                                                    <p>
+                                                        <span className="font-semibold">Total (final):</span> {decisionResult.pricing.finalTotalPrice ?? '—'}
+                                                    </p>
+                                                    <p>
+                                                        <span className="font-semibold">Quantity enforced:</span> {decisionResult.pricing.quantityAfterEnforcement ?? '—'} / {decisionResult.pricing.maxAllowedQuantity ?? '—'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {decisionResult.dosage && (
+                                                <div className="space-y-1">
+                                                    <p className="font-semibold">Dosage guidance</p>
+                                                    <p>
+                                                        {decisionResult.dosage.dosageAmount ?? '—'} {decisionResult.dosage.dosageUnit ?? ''} — {decisionResult.dosage.ruleName}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {decisionResult.warnings.length > 0 && (
+                                                <div>
+                                                    <p className="font-semibold">Warnings</p>
+                                                    <ul className="list-disc list-inside text-xs text-amber-600">
+                                                        {decisionResult.warnings.map((warning, index) => (
+                                                            <li key={`${warning}-${index}`}>{warning}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                            {decisionResult.clinicalNotes.length > 0 && (
+                                                <div>
+                                                    <p className="font-semibold">Clinical notes</p>
+                                                    <ul className="list-disc list-inside text-xs text-gray-600">
+                                                        {decisionResult.clinicalNotes.map((note, index) => (
+                                                            <li key={`${note}-${index}`}>{note}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="rounded-lg border p-4 space-y-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                                        <FlaskConical className="h-4 w-4" /> Dosage rule builder
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dosage-rule-name">Rule name</Label>
+                                            <Input
+                                                id="dosage-rule-name"
+                                                value={dosageForm.ruleName}
+                                                onChange={(event) => handleDosageFormChange('ruleName', event.target.value)}
+                                                placeholder="Adult maintenance dose"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dosage-priority">Priority</Label>
+                                            <Input
+                                                id="dosage-priority"
+                                                type="number"
+                                                min="0"
+                                                value={dosageForm.priority}
+                                                onChange={(event) => handleDosageFormChange('priority', event.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dosage-valid-from">Valid from</Label>
+                                            <Input
+                                                id="dosage-valid-from"
+                                                type="date"
+                                                value={dosageForm.validFrom}
+                                                onChange={(event) => handleDosageFormChange('validFrom', event.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dosage-valid-to">Valid to</Label>
+                                            <Input
+                                                id="dosage-valid-to"
+                                                type="date"
+                                                value={dosageForm.validTo}
+                                                onChange={(event) => handleDosageFormChange('validTo', event.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dosage-amount">Dosage amount</Label>
+                                            <Input
+                                                id="dosage-amount"
+                                                type="number"
+                                                min="0"
+                                                value={dosageForm.dosageAmount}
+                                                onChange={(event) => handleDosageFormChange('dosageAmount', event.target.value)}
+                                                placeholder="e.g. 500"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dosage-unit">Dosage unit</Label>
+                                            <Input
+                                                id="dosage-unit"
+                                                value={dosageForm.dosageUnit}
+                                                onChange={(event) => handleDosageFormChange('dosageUnit', event.target.value)}
+                                                placeholder="mg, ml, units..."
+                                            />
+                                        </div>
+                                        <div className="space-y-2 md:col-span-2">
+                                            <Label htmlFor="dosage-notes">Notes</Label>
+                                            <Textarea
+                                                id="dosage-notes"
+                                                rows={3}
+                                                value={dosageForm.notes}
+                                                onChange={(event) => handleDosageFormChange('notes', event.target.value)}
+                                                placeholder="Administration notes, renal adjustments, etc."
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-lg border p-4 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-800">Conditions</p>
+                                            <p className="text-xs text-gray-600">Combine multiple criteria using AND logic.</p>
+                                        </div>
+                                        <Button size="sm" variant="outline" onClick={handleAddDosageCondition}>
+                                            <Plus className="h-4 w-4 mr-2" /> Add condition
+                                        </Button>
+                                    </div>
+                                    {dosageConditions.length === 0 ? (
+                                        <p className="text-sm text-gray-500">No conditions yet.</p>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {dosageConditions.map((condition) => (
+                                                <div key={condition.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 rounded-lg border p-3">
+                                                    <div className="space-y-2">
+                                                        <Label>Factor</Label>
+                                                        <Select
+                                                            value={condition.factorCode || undefined}
+                                                            onValueChange={(value) => handleDosageConditionChange(condition.id, { factorCode: value })}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select factor" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {factors.map((factor) => (
+                                                                    <SelectItem key={factor.code} value={factor.code}>
+                                                                        {factor.code} — {factor.description}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Operator</Label>
+                                                        <Select
+                                                            value={condition.operator}
+                                                            onValueChange={(value) =>
+                                                                handleDosageConditionChange(condition.id, { operator: value as DrugRuleOperator })
+                                                            }
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Operator" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {OPERATORS.map((operator) => (
+                                                                    <SelectItem key={operator.value} value={operator.value}>
+                                                                        {operator.label}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    {condition.operator === 'BETWEEN' ? (
+                                                        <>
+                                                            <div className="space-y-2">
+                                                                <Label>From</Label>
+                                                                <Input
+                                                                    value={condition.valueFrom}
+                                                                    onChange={(event) => handleDosageConditionChange(condition.id, { valueFrom: event.target.value })}
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label>To</Label>
+                                                                <Input
+                                                                    value={condition.valueTo}
+                                                                    onChange={(event) => handleDosageConditionChange(condition.id, { valueTo: event.target.value })}
+                                                                />
+                                                            </div>
+                                                        </>
+                                                    ) : condition.operator === 'IN' ? (
+                                                        <div className="space-y-2 md:col-span-2">
+                                                            <Label>Values</Label>
+                                                            <Input
+                                                                placeholder="Value1, Value2, Value3"
+                                                                value={condition.multiValueInput}
+                                                                onChange={(event) => handleDosageConditionChange(condition.id, { multiValueInput: event.target.value })}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-2 md:col-span-2">
+                                                            <Label>Value</Label>
+                                                            <Input
+                                                                value={condition.valueExact}
+                                                                onChange={(event) => handleDosageConditionChange(condition.id, { valueExact: event.target.value })}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div className="flex items-end justify-end">
+                                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveDosageCondition(condition.id)}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-lg border p-4 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-800">Frequencies</p>
+                                            <p className="text-xs text-gray-600">Define how often patients take the dose.</p>
+                                        </div>
+                                        <Button size="sm" variant="outline" onClick={handleAddFrequency}>
+                                            <Plus className="h-4 w-4 mr-2" /> Add frequency
+                                        </Button>
+                                    </div>
+                                    {dosageFrequencies.length === 0 ? (
+                                        <p className="text-sm text-gray-500">No frequency rows yet.</p>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {dosageFrequencies.map((frequency) => (
+                                                <div key={frequency.id} className="grid grid-cols-1 md:grid-cols-6 gap-3 rounded-lg border p-3">
+                                                    <div className="space-y-2">
+                                                        <Label>Code</Label>
+                                                        <Input
+                                                            value={frequency.frequencyCode}
+                                                            onChange={(event) => handleFrequencyChange(frequency.id, { frequencyCode: event.target.value })}
+                                                            placeholder="BID / Q8H"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Times / day</Label>
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            value={frequency.timesPerDay}
+                                                            onChange={(event) => handleFrequencyChange(frequency.id, { timesPerDay: event.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Interval (h)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            value={frequency.intervalHours}
+                                                            onChange={(event) => handleFrequencyChange(frequency.id, { intervalHours: event.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2 md:col-span-2">
+                                                        <Label>Timing notes</Label>
+                                                        <Input
+                                                            value={frequency.timingNotes}
+                                                            onChange={(event) => handleFrequencyChange(frequency.id, { timingNotes: event.target.value })}
+                                                            placeholder="Before meals, with water..."
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Instructions</Label>
+                                                        <Input
+                                                            value={frequency.specialInstructions}
+                                                            onChange={(event) => handleFrequencyChange(frequency.id, { specialInstructions: event.target.value })}
+                                                            placeholder="Hold if BP < 90"
+                                                        />
+                                                    </div>
+                                                    <div className="flex items-end justify-end md:col-span-6">
+                                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveFrequency(frequency.id)}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {dosageFormError && <p className="text-sm text-red-600">{dosageFormError}</p>}
+
+                                <div className="flex flex-wrap justify-end gap-3">
+                                    <Button variant="outline" onClick={resetDosageForm} disabled={savingDosageRule}>
+                                        Reset form
+                                    </Button>
+                                    <Button className="bg-tpa-primary hover:bg-tpa-accent" onClick={() => void handleSaveDosageRule()} disabled={savingDosageRule}>
+                                        {savingDosageRule ? 'Saving...' : editingDosageRule ? 'Update dosage rule' : 'Save dosage rule'}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </TabsContent>
