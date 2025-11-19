@@ -79,7 +79,17 @@ export function MainLayout({ children }: MainLayoutProps) {
 
     useEffect(() => {
         const activeTab = tabs.find((tab) => tab.id === activeTabId)
-        if (activeTab?.component && activeTab.component !== pathname) {
+        if (!activeTab?.component || !pathname) {
+            return
+        }
+
+        const normalize = (path: string) => path.replace(/\/+$/, '') || '/'
+        const normalizedComponent = normalize(activeTab.component)
+        const normalizedPathname = normalize(pathname)
+        const isWithinActiveTab =
+            normalizedPathname === normalizedComponent || normalizedPathname.startsWith(`${normalizedComponent}/`)
+
+        if (!isWithinActiveTab) {
             router.push(activeTab.component)
         }
     }, [activeTabId, tabs, pathname, router])

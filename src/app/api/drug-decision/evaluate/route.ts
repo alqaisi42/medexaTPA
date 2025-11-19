@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { forwardApiRequest } from '../../../_proxy'
+import { forwardApiRequest } from '../../_proxy'
 
 export async function POST(request: NextRequest) {
     try {

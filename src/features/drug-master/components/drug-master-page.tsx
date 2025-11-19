@@ -1,6 +1,7 @@
 'use client'
 
-import { type ComponentType, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
     BadgeCheck,
     Banknote,
@@ -27,8 +28,6 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DrugCategoryMappingManager } from './drug-category-mapping-manager'
-import { DrugIcdRelationsPanel } from './drug-icd-relations-panel'
-import { PackRulesDialog } from './pack-rules-dialog'
 import { cn, formatDate } from '@/lib/utils'
 import { createDrug, deleteDrug, fetchDrugs, getDrugById, updateDrug } from '@/lib/api/drugs'
 import { createDrugForm, deleteDrugForm, fetchDrugForms, getDrugFormById, updateDrugForm } from '@/lib/api/drug-forms'
@@ -244,6 +243,7 @@ const STRENGTH_UNIT_OPTIONS = [
 ] as const
 
 export function DrugMasterPage() {
+    const router = useRouter()
     const [page, setPage] = useState(0)
     const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
     const [totalPages, setTotalPages] = useState(1)
@@ -260,8 +260,6 @@ export function DrugMasterPage() {
     const [formError, setFormError] = useState<string | null>(null)
     const [loadingEditDrug, setLoadingEditDrug] = useState(false)
 
-    const [isDetailsOpen, setIsDetailsOpen] = useState(false)
-    const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<Drug | null>(null)
 
     const loadDrugs = useCallback(async () => {
@@ -346,15 +344,8 @@ export function DrugMasterPage() {
         }
     }
 
-    const handleViewDetails = async (drug: Drug) => {
-        setSelectedDrug(drug)
-        setIsDetailsOpen(true)
-        try {
-            const fresh = await getDrugById(drug.id)
-            setSelectedDrug(fresh)
-        } catch (detailsError) {
-            console.error(detailsError)
-        }
+    const handleViewDetails = (drug: Drug) => {
+        router.push(`/drug-master/${drug.id}`)
     }
 
     const handleDelete = async () => {
@@ -363,7 +354,6 @@ export function DrugMasterPage() {
         try {
             await deleteDrug(deleteTarget.id)
             setDeleteTarget(null)
-            setIsDetailsOpen(false)
             await loadDrugs()
         } catch (deleteError) {
             console.error(deleteError)
@@ -671,25 +661,6 @@ export function DrugMasterPage() {
                 mode={editingDrug ? 'edit' : 'create'}
             />
 
-            <DrugDetailsDialog
-                drug={selectedDrug}
-                open={isDetailsOpen}
-                onOpenChange={(open) => {
-                    setIsDetailsOpen(open)
-                    if (!open) {
-                        setSelectedDrug(null)
-                    }
-                }}
-                onEdit={() => {
-                    if (selectedDrug) {
-                        handleEdit(selectedDrug)
-                        setIsDetailsOpen(false)
-                    }
-                }}
-                onDeleteRequest={(drug) => setDeleteTarget(drug)}
-                deleting={deletingId !== null}
-            />
-
             <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
                 <DialogContent>
                     <DialogHeader>
@@ -723,7 +694,7 @@ interface DrugFormDialogProps {
     mode: 'create' | 'edit'
 }
 
-function DrugFormDialog({ open, onOpenChange, onSubmit, loading, error, onError, initialValues, mode }: DrugFormDialogProps) {
+export function DrugFormDialog({ open, onOpenChange, onSubmit, loading, error, onError, initialValues, mode }: DrugFormDialogProps) {
     const [formState, setFormState] = useState<DrugPayload>(initialValues)
     const dialogKey = `${mode}-${initialValues.code}-${open ? 'open' : 'closed'}`
 
@@ -941,7 +912,8 @@ interface DrugFormsPanelProps {
     drugId: number
 }
 
-function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
+export function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
+    const router = useRouter()
     const [forms, setForms] = useState<DrugForm[]>([])
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -952,8 +924,6 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
     const [loadingEditForm, setLoadingEditForm] = useState(false)
     const [deleteTarget, setDeleteTarget] = useState<DrugForm | null>(null)
     const [deletingId, setDeletingId] = useState<number | null>(null)
-    const [packManagerForm, setPackManagerForm] = useState<DrugForm | null>(null)
-    const [packDialogOpen, setPackDialogOpen] = useState(false)
 
     const loadForms = useCallback(async () => {
         if (!drugId) return
@@ -997,8 +967,7 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
     }
 
     const handleManagePacks = (form: DrugForm) => {
-        setPackManagerForm(form)
-        setPackDialogOpen(true)
+        router.push(`/drug-master/${drugId}/forms/${form.id}/packs`)
     }
 
     const handleSubmit = async (payload: DrugFormPayload) => {
@@ -1182,27 +1151,6 @@ function DrugFormsPanel({ drugId }: DrugFormsPanelProps) {
                 </DialogContent>
             </Dialog>
 
-            <Dialog
-                open={packDialogOpen}
-                onOpenChange={(open) => {
-                    setPackDialogOpen(open)
-                    if (!open) {
-                        setPackManagerForm(null)
-                    }
-                }}
-            >
-                <DialogContent className="max-w-5xl">
-                    {packManagerForm && (
-                        <DrugPacksPanel
-                            form={packManagerForm}
-                            onClose={() => {
-                                setPackDialogOpen(false)
-                                setPackManagerForm(null)
-                            }}
-                        />
-                    )}
-                </DialogContent>
-            </Dialog>
         </div>
     )
 }
@@ -1529,11 +1477,13 @@ function DrugFormEditorDialog({
 }
 
 interface DrugPacksPanelProps {
+    drugId: number
     form: DrugForm
-    onClose: () => void
+    onClose?: () => void
 }
 
-function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
+export function DrugPacksPanel({ drugId, form, onClose }: DrugPacksPanelProps) {
+    const router = useRouter()
     const [packs, setPacks] = useState<DrugPack[]>([])
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -1544,8 +1494,6 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
     const [loadingEditPack, setLoadingEditPack] = useState(false)
     const [deleteTarget, setDeleteTarget] = useState<DrugPack | null>(null)
     const [deletingId, setDeletingId] = useState<number | null>(null)
-    const [priceDialogPack, setPriceDialogPack] = useState<DrugPack | null>(null)
-    const [rulesDialogPack, setRulesDialogPack] = useState<DrugPack | null>(null)
 
     const loadPacks = useCallback(async () => {
         if (!form.id) return
@@ -1630,6 +1578,14 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
         return { ...EMPTY_DRUG_PACK, drugFormId: form.id }
     }, [editingPack, form.id])
 
+    const handleManagePricing = (pack: DrugPack) => {
+        router.push(`/drug-master/${drugId}/forms/${form.id}/packs/${pack.id}/pricing`)
+    }
+
+    const handleManageRules = (pack: DrugPack) => {
+        router.push(`/drug-master/${drugId}/forms/${form.id}/packs/${pack.id}/rules`)
+    }
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col gap-2">
@@ -1638,22 +1594,30 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
                         <p className="text-xs uppercase tracking-wider text-gray-500">Dosage Form</p>
                         <div className="flex items-center gap-3">
                             <span className="text-lg font-semibold">{form.dosageForm}</span>
-                            {form.isDefaultForm && <Badge icon={BadgeCheck} label="Default" className="bg-blue-100 text-blue-800" />}
-                            <Badge
-                                icon={Layers}
-                                label={`${form.strengthValue || ''} ${form.strengthUnit || ''}`.trim() || 'Strength not set'}
-                                className="bg-gray-100 text-gray-700"
-                            />
-                            <Badge icon={ShieldCheck} label={form.route || 'Route'} className="bg-amber-50 text-amber-800" />
+                            {form.isDefaultForm && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800">
+                                    <BadgeCheck className="h-3 w-3" /> Default
+                                </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                                <Layers className="h-3 w-3" />
+                                {`${form.strengthValue || ''} ${form.strengthUnit || ''}`.trim() || 'Strength not set'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+                                <ShieldCheck className="h-3 w-3" />
+                                {form.route || 'Route'}
+                            </span>
                         </div>
                         <p className="text-sm text-gray-600">
                             Manage pack definitions for this form to control dispensing quantities.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" onClick={onClose}>
-                            Close
-                        </Button>
+                        {onClose && (
+                            <Button variant="outline" onClick={onClose}>
+                                Close
+                            </Button>
+                        )}
                         <Button className="bg-tpa-primary hover:bg-tpa-accent" onClick={handleCreate}>
                             <Plus className="h-4 w-4 mr-2" /> Add Pack
                         </Button>
@@ -1731,7 +1695,7 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <div className="flex items-center justify-center gap-2">
-                                            <Button variant="outline" size="icon" onClick={() => setRulesDialogPack(pack)} title="Manage rules">
+                                            <Button variant="outline" size="icon" onClick={() => handleManageRules(pack)} title="Manage rules">
                                                 <ShieldCheck className="h-4 w-4" />
                                             </Button>
                                             <Button
@@ -1746,7 +1710,7 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
                                                     <Pencil className="h-4 w-4" />
                                                 )}
                                             </Button>
-                                            <Button variant="outline" size="icon" onClick={() => setPriceDialogPack(pack)}>
+                                            <Button variant="outline" size="icon" onClick={() => handleManagePricing(pack)}>
                                                 <Banknote className="h-4 w-4" />
                                             </Button>
                                             <Button variant="destructive" size="icon" onClick={() => setDeleteTarget(pack)}>
@@ -1777,14 +1741,6 @@ function DrugPacksPanel({ form, onClose }: DrugPacksPanelProps) {
                 initialValues={initialValues}
                 mode={editingPack ? 'edit' : 'create'}
             />
-
-            <PackPricesDialog
-                pack={priceDialogPack}
-                onClose={() => setPriceDialogPack(null)}
-                onUpdated={() => void loadPacks()}
-            />
-
-            <PackRulesDialog pack={rulesDialogPack} onClose={() => setRulesDialogPack(null)} />
 
             <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
                 <DialogContent>
@@ -2048,13 +2004,13 @@ function DrugPackEditorDialog({
     )
 }
 
-interface PackPricesDialogProps {
+interface PackPricingPanelProps {
     pack: DrugPack | null
-    onClose: () => void
-    onUpdated: () => void
+    onBack?: () => void
+    onUpdated?: () => void
 }
 
-function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
+export function PackPricingPanel({ pack, onBack, onUpdated }: PackPricingPanelProps) {
     const [prices, setPrices] = useState<DrugPrice[]>([])
     const [priceLists, setPriceLists] = useState<DrugPriceList[]>([])
     const [loading, setLoading] = useState(false)
@@ -2063,8 +2019,6 @@ function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
     const [formError, setFormError] = useState<string | null>(null)
     const [editingPrice, setEditingPrice] = useState<DrugPrice | null>(null)
     const [showHistory, setShowHistory] = useState(false)
-
-    const dialogOpen = Boolean(pack)
 
     const loadData = useCallback(async () => {
         if (!pack) return
@@ -2134,7 +2088,7 @@ function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
             }
             setEditingPrice(null)
             await loadData()
-            onUpdated()
+            onUpdated?.()
         } catch (submitError) {
             console.error(submitError)
             setFormError(submitError instanceof Error ? submitError.message : 'Unable to save price')
@@ -2148,7 +2102,7 @@ function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
         try {
             await deleteDrugPrice(priceId)
             await loadData()
-            onUpdated()
+            onUpdated?.()
         } catch (deleteError) {
             console.error(deleteError)
             setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete price')
@@ -2170,22 +2124,39 @@ function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
         return [active.sort(sortByStart), history.sort(sortByStart)]
     }, [prices, today])
 
+    if (!pack) {
+        return null
+    }
+
     return (
-        <Dialog open={dialogOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-4xl">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Banknote className="h-5 w-5" /> Pricing for {pack?.packCode}
-                    </DialogTitle>
-                    <DialogDescription>
-                        Attach prices per price list and track effective ranges for pack dispensing.
-                    </DialogDescription>
-                </DialogHeader>
-
+        <div className="space-y-6">
+            <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Pack pricing</p>
+                        <div className="flex items-center gap-3">
+                            <span className="text-lg font-semibold">{pack.packCode}</span>
+                            <span className="text-sm text-gray-600">
+                                {pack.unitOfMeasure} • {pack.unitsPerPack} units
+                            </span>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                            Attach prices per price list and track effective ranges for pack dispensing.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {onBack && (
+                            <Button variant="outline" onClick={onBack}>
+                                Back
+                            </Button>
+                        )}
+                    </div>
+                </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
+            </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    <div className="lg:col-span-1 space-y-4 rounded-lg border p-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-1 space-y-4 rounded-lg border p-4">
                         <div className="space-y-1">
                             <p className="text-xs uppercase tracking-wide text-gray-500">Pack Details</p>
                             <p className="text-lg font-semibold">{pack?.packCode}</p>
@@ -2297,9 +2268,9 @@ function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
                                 {saving ? 'Saving...' : editingPrice ? 'Update price' : 'Add price'}
                             </Button>
                         </div>
-                    </div>
+                </div>
 
-                    <div className="lg:col-span-2 space-y-4">
+                <div className="lg:col-span-2 space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 text-sm text-gray-600">
                                 <CalendarRange className="h-4 w-4" /> Active & future prices
@@ -2410,143 +2381,9 @@ function PackPricesDialog({ pack, onClose, onUpdated }: PackPricesDialogProps) {
                                 </Table>
                             </div>
                         )}
-                    </div>
                 </div>
-
-                <DialogFooter>
-                    <Button variant="outline" onClick={onClose} disabled={saving}>
-                        Close
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-interface DrugDetailsDialogProps {
-    drug: Drug | null
-    open: boolean
-    onOpenChange: (open: boolean) => void
-    onEdit: () => void
-    onDeleteRequest: (drug: Drug) => void
-    deleting: boolean
-}
-
-function DrugDetailsDialog({ drug, open, onOpenChange, onEdit, onDeleteRequest, deleting }: DrugDetailsDialogProps) {
-    if (!drug) return null
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader className="space-y-1">
-                    <DialogTitle className="flex items-center gap-2">
-                        <Pill className="h-5 w-5 text-tpa-primary" /> {drug.genericNameEn || 'Drug details'}
-                    </DialogTitle>
-                    <DialogDescription>Review the master data for this drug.</DialogDescription>
-                </DialogHeader>
-
-                <Tabs defaultValue="overview" className="mt-6">
-                    <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="overview">Overview</TabsTrigger>
-                        <TabsTrigger value="forms">Forms</TabsTrigger>
-                        <TabsTrigger value="icds">ICDs</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="overview" className="mt-4 space-y-4">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <DetailItem label="Code" value={drug.code} />
-                            <DetailItem label="ATC Code" value={drug.atcCode || '—'} />
-                            <DetailItem label="Generic (EN)" value={drug.genericNameEn || '—'} />
-                            <DetailItem label="Generic (AR)" value={drug.genericNameAr || '—'} rtl />
-                            <DetailItem label="Brand (EN)" value={drug.brandNameEn || '—'} />
-                            <DetailItem label="Brand (AR)" value={drug.brandNameAr || '—'} rtl />
-                            <DetailItem
-                                label="Validity"
-                                value={`${drug.validFrom ? formatDate(drug.validFrom) : '—'} → ${drug.validTo ? formatDate(drug.validTo) : 'Open-ended'
-                                    }`}
-                            />
-                            <DetailItem label="Created By" value={drug.createdBy || '—'} />
-                        </div>
-
-                        <div className="space-y-2">
-                            <p className="text-xs font-medium text-gray-500">Flags</p>
-                            <div className="flex flex-wrap gap-2">
-                                {drug.isOtc && (
-                                    <Badge icon={BadgeCheck} label="OTC" className="bg-green-100 text-green-800" />
-                                )}
-                                {drug.isControlled && (
-                                    <Badge icon={ShieldCheck} label="Controlled" className="bg-amber-100 text-amber-800" />
-                                )}
-                                {drug.allowGenericSubstitution ? (
-                                    <Badge icon={Layers} label="Substitution allowed" className="bg-blue-100 text-blue-800" />
-                                ) : (
-                                    <Badge icon={Layers} label="No substitution" className="bg-gray-100 text-gray-700" />
-                                )}
-                                <Badge
-                                    icon={CalendarRange}
-                                    label={drug.isActive ? 'Active' : 'Inactive'}
-                                    className={drug.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <p className="text-xs font-medium text-gray-500">Description</p>
-                            <p className="rounded-md border bg-gray-50 p-3 text-sm text-gray-700">
-                                {drug.description || 'No description provided'}
-                            </p>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="forms" className="mt-4">
-                        <DrugFormsPanel drugId={drug.id} />
-                    </TabsContent>
-
-                    <TabsContent value="icds" className="mt-4">
-                        <DrugIcdRelationsPanel drugId={drug.id} />
-                    </TabsContent>
-                </Tabs>
-
-                <DialogFooter>
-                    <div className="flex items-center justify-between w-full gap-3">
-                        <Button variant="outline" onClick={onEdit}>
-                            <Pencil className="h-4 w-4 mr-2" /> Edit
-                        </Button>
-                        <Button variant="destructive" onClick={() => onDeleteRequest(drug)} disabled={deleting}>
-                            <Trash2 className="h-4 w-4 mr-2" /> {deleting ? 'Deleting...' : 'Delete'}
-                        </Button>
-                    </div>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-function DetailItem({ label, value, rtl = false }: { label: string; value: string; rtl?: boolean }) {
-    return (
-        <div className="flex flex-col space-y-1">
-            <span className="text-xs font-semibold text-gray-500">{label}</span>
-            <span className={cn('text-sm text-gray-800', rtl && 'text-right')} dir={rtl ? 'rtl' : undefined}>
-                {value}
-            </span>
+            </div>
         </div>
-    )
-}
-
-function Badge({
-    label,
-    icon: Icon,
-    className,
-}: {
-    label: string
-    icon: ComponentType<{ className?: string }>
-    className?: string
-}) {
-    return (
-        <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold', className)}>
-            <Icon className="h-3 w-3" />
-            {label}
-        </span>
     )
 }
 
@@ -2591,7 +2428,7 @@ function formatDateForInput(date: string | null): string | null {
     }
 }
 
-function mapDrugToPayload(drug: Drug): DrugPayload {
+export function mapDrugToPayload(drug: Drug): DrugPayload {
     return {
         code: drug.code,
         genericNameEn: drug.genericNameEn,

@@ -3,7 +3,7 @@ import { forwardApiRequest } from '../_proxy'
 
 export async function GET(request: NextRequest) {
     try {
-        return await forwardApiRequest('/api/v1/drug-dosage-rules', undefined, request.nextUrl.searchParams)
+        return await forwardApiRequest('/api/v1/drug-rules', undefined, request.nextUrl.searchParams)
     } catch (error) {
         console.error('Failed to proxy dosage rules list request', error)
         return new Response(JSON.stringify({ message: 'Failed to load dosage rules' }), {
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     try {
         const payload = await request.json()
         return await forwardApiRequest(
-            '/api/v1/drug-dosage-rules',
+            '/api/v1/drug-rules',
             {
                 method: 'POST',
                 body: JSON.stringify(payload),

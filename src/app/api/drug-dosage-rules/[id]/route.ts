@@ -3,7 +3,7 @@ import { forwardApiRequest } from '../../_proxy'
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
     try {
-        return await forwardApiRequest(`/api/v1/drug-dosage-rules/${params.id}`)
+        return await forwardApiRequest(`/api/v1/drug-rules/${params.id}`)
     } catch (error) {
         console.error('Failed to proxy dosage rule details request', error)
         return new Response(JSON.stringify({ message: 'Failed to load dosage rule' }), {
@@ -16,7 +16,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
     try {
         const payload = await request.json()
-        return await forwardApiRequest(`/api/v1/drug-dosage-rules/${params.id}`, {
+        return await forwardApiRequest(`/api/v1/drug-rules/${params.id}`, {
             method: 'PUT',
             body: JSON.stringify(payload),
             headers: { 'Content-Type': 'application/json' },
@@ -32,7 +32,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
     try {
-        return await forwardApiRequest(`/api/v1/drug-dosage-rules/${params.id}`, { method: 'DELETE' })
+        return await forwardApiRequest(`/api/v1/drug-rules/${params.id}`, { method: 'DELETE' })
     } catch (error) {
         console.error('Failed to proxy dosage rule delete request', error)
         return new Response(JSON.stringify({ message: 'Failed to delete dosage rule' }), {

@@ -7,6 +7,7 @@ import {
     ClipboardList,
     FlaskConical,
     Loader2,
+    Pencil,
     Plus,
     RefreshCcw,
     ShieldCheck,
@@ -14,7 +15,6 @@ import {
     Target,
     Trash2,
 } from 'lucide-react'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,15 +44,17 @@ import { evaluateDrugDecision } from '@/lib/api/drug-decision'
 import {
     DosageRecommendationResponse,
     DosageRule,
+    DrugDecisionEvaluationResponse,
     DrugPack,
+    DrugPriceList,
     DrugRule,
     DrugRuleCondition,
     DrugRuleEvaluationResponse,
     DrugRuleFactor,
     DrugRuleOperator,
     DrugRuleType,
-    DrugDecisionEvaluationResponse,
 } from '@/types'
+import { fetchDrugPriceLists } from '@/lib/api/drug-price-lists'
 
 const RULE_TYPES: { value: DrugRuleType; label: string; helper: string }[] = [
     { value: 'AGE_ELIGIBILITY', label: 'Age eligibility', helper: 'Allow or deny dispensing by age criteria.' },
@@ -121,12 +123,23 @@ interface DecisionRequestState {
     requestedDate: string
 }
 
-interface PackRulesDialogProps {
+interface PackRulesManagerProps {
     pack: DrugPack | null
-    onClose: () => void
+    onBack?: () => void
 }
 
 const numberFormatter = new Intl.NumberFormat('en-US')
+const MAX_CONDITION_CHIPS = 4
+
+function formatEnumLabel(value: string): string {
+    if (!value) return '—'
+    return value
+        .toLowerCase()
+        .split('_')
+        .filter(Boolean)
+        .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+        .join(' ')
+}
 
 function generateDraftId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -230,7 +243,14 @@ function buildInitialRuleForm(): RuleFormState {
     }
 }
 
-export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
+function normalizeDateInput(value: string | null): string {
+    if (!value) {
+        return ''
+    }
+    return value.length >= 10 ? value.slice(0, 10) : value
+}
+
+export function PackRulesManager({ pack, onBack }: PackRulesManagerProps) {
     const [activeTab, setActiveTab] = useState<'rules' | 'builder' | 'evaluate' | 'factors' | 'dosage'>('rules')
     const [loadingRules, setLoadingRules] = useState(false)
     const [rules, setRules] = useState<DrugRule[]>([])
@@ -284,8 +304,11 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
     const [decisionResult, setDecisionResult] = useState<DrugDecisionEvaluationResponse | null>(null)
     const [decisionError, setDecisionError] = useState<string | null>(null)
     const [evaluatingDecision, setEvaluatingDecision] = useState(false)
-
-    const dialogOpen = Boolean(pack)
+    const [decisionPriceLists, setDecisionPriceLists] = useState<DrugPriceList[]>([])
+    const [decisionPriceListsLoading, setDecisionPriceListsLoading] = useState(false)
+    const [decisionPriceListsError, setDecisionPriceListsError] = useState<string | null>(null)
+    const [decisionPriceListQuery, setDecisionPriceListQuery] = useState('')
+    const [decisionPriceListDropdownOpen, setDecisionPriceListDropdownOpen] = useState(false)
 
     const loadRules = useCallback(async () => {
         if (!pack) return
@@ -363,6 +386,25 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
     }, [pack, loadRules, loadFactors, loadDosageRules])
 
     useEffect(() => {
+        const loadDecisionPriceLists = async () => {
+            setDecisionPriceListsLoading(true)
+            setDecisionPriceListsError(null)
+            try {
+                const lists = await fetchDrugPriceLists()
+                setDecisionPriceLists(lists)
+            } catch (error) {
+                console.error(error)
+                setDecisionPriceLists([])
+                setDecisionPriceListsError(error instanceof Error ? error.message : 'Unable to load price lists')
+            } finally {
+                setDecisionPriceListsLoading(false)
+            }
+        }
+
+        void loadDecisionPriceLists()
+    }, [])
+
+    useEffect(() => {
         if (conditions.length === 0 && factors.length > 0) {
             setConditions([buildEmptyCondition(factors)])
         }
@@ -411,6 +453,17 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
     const visibleDosageRules = useMemo(() => {
         return showDosageActiveOnly ? dosageRules.filter((rule) => rule.isActive) : dosageRules
     }, [dosageRules, showDosageActiveOnly])
+
+    const filteredDecisionPriceLists = useMemo(() => {
+        const term = decisionPriceListQuery.trim().toLowerCase()
+        if (!term) {
+            return decisionPriceLists
+        }
+        return decisionPriceLists.filter((list) => {
+            const searchable = [list.code, list.nameEn, list.nameAr, list.currency].filter(Boolean) as string[]
+            return searchable.some((value) => value.toLowerCase().includes(term))
+        })
+    }, [decisionPriceListQuery, decisionPriceLists])
 
     const handleRuleFormChange = (field: keyof RuleFormState, value: string | boolean) => {
         setRuleForm((prev) => ({ ...prev, [field]: value }))
@@ -625,8 +678,8 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
         setRuleForm({
             ruleType: rule.ruleType,
             priority: String(rule.priority ?? ''),
-            validFrom: rule.validFrom ?? '',
-            validTo: rule.validTo ?? '',
+            validFrom: normalizeDateInput(rule.validFrom ?? null),
+            validTo: normalizeDateInput(rule.validTo ?? null),
             description: rule.description ?? '',
             maxQuantity: rule.maxQuantity !== null && rule.maxQuantity !== undefined ? String(rule.maxQuantity) : '',
             adjustmentValue:
@@ -646,8 +699,8 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
             dosageUnit: rule.dosageUnit ?? '',
             notes: rule.notes ?? '',
             priority: String(rule.priority ?? ''),
-            validFrom: rule.validFrom ?? '',
-            validTo: rule.validTo ?? '',
+            validFrom: normalizeDateInput(rule.validFrom ?? null),
+            validTo: normalizeDateInput(rule.validTo ?? null),
         })
         setDosageConditions(
             rule.conditions.length > 0 ? rule.conditions.map((condition) => mapConditionToDraft(condition)) : [],
@@ -856,30 +909,42 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
 
     const dialogTitle = pack ? `Rule engine — ${pack.packCode}` : 'Rule engine'
 
+    if (!pack) {
+        return null
+    }
+
     return (
-        <Dialog open={dialogOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-6xl">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <ShieldCheck className="h-5 w-5 text-tpa-primary" /> {dialogTitle}
-                    </DialogTitle>
-                    <DialogDescription>
-                        Configure eligibility, quantity limits, and price adjustments for this pack. Active rules are evaluated in
-                        priority order.
-                    </DialogDescription>
-                </DialogHeader>
-
-                {pack && (
-                    <div className="rounded-lg border bg-slate-50 p-4 text-sm text-slate-700">
-                        <p className="font-semibold text-slate-900">{pack.packCode}</p>
-                        <p className="text-xs text-slate-600">
-                            {pack.unitOfMeasure || '—'} • {pack.unitsPerPack || 0} units • Min {pack.minDispenseQuantity || 0} / Max{' '}
-                            {pack.maxDispenseQuantity || 0}
-                        </p>
+        <div className="space-y-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Pack rules</p>
+                    <div className="flex items-center gap-3">
+                        <ShieldCheck className="h-5 w-5 text-tpa-primary" />
+                        <div>
+                            <p className="text-lg font-semibold">{dialogTitle}</p>
+                            <p className="text-sm text-gray-600">
+                                Configure eligibility, quantity limits, and price adjustments for this pack. Active rules run by
+                                priority.
+                            </p>
+                        </div>
                     </div>
+                </div>
+                {onBack && (
+                    <Button variant="outline" onClick={onBack}>
+                        Back
+                    </Button>
                 )}
+            </div>
 
-                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-4">
+            <div className="rounded-lg border bg-slate-50 p-4 text-sm text-slate-700">
+                <p className="font-semibold text-slate-900">{pack.packCode}</p>
+                <p className="text-xs text-slate-600">
+                    {pack.unitOfMeasure || '—'} • {pack.unitsPerPack || 0} units • Min {pack.minDispenseQuantity || 0} / Max{' '}
+                    {pack.maxDispenseQuantity || 0}
+                </p>
+            </div>
+
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-4">
                     <TabsList className="grid w-full grid-cols-5">
                         <TabsTrigger value="rules">Rules</TabsTrigger>
                         <TabsTrigger value="builder">Builder</TabsTrigger>
@@ -989,8 +1054,8 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="flex items-center justify-center gap-2">
-                                                        <Button variant="outline" size="icon" onClick={() => handleEditRule(rule)}>
-                                                            <Sparkles className="h-4 w-4" />
+                                                        <Button variant="outline" size="icon" onClick={() => handleEditRule(rule)} title="Edit rule" aria-label="Edit rule">
+                                                            <Pencil className="h-4 w-4" />
                                                         </Button>
                                                         <Button
                                                             variant="outline"
@@ -1459,9 +1524,9 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                             <Table>
                                                 <TableHeader>
                                                     <TableRow>
-                                                        <TableHead>Rule</TableHead>
-                                                        <TableHead>Dosage</TableHead>
-                                                        <TableHead className="text-center">Frequencies</TableHead>
+                                                        <TableHead>Rule profile</TableHead>
+                                                        <TableHead>Eligibility conditions</TableHead>
+                                                        <TableHead>Dosage & cadence</TableHead>
                                                         <TableHead className="text-center">Status</TableHead>
                                                         <TableHead className="text-center">Actions</TableHead>
                                                     </TableRow>
@@ -1477,33 +1542,95 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                                         </TableRow>
                                                     ) : (
                                                         visibleDosageRules.map((rule) => (
-                                                            <TableRow key={rule.id}>
+                                                            <TableRow key={rule.id} className="align-top">
                                                                 <TableCell>
-                                                                    <div className="font-semibold text-gray-900">{rule.ruleName}</div>
-                                                                    <div className="text-xs text-gray-500">
-                                                                        Priority #{rule.priority ?? '—'} • Valid {rule.validFrom ? formatDate(rule.validFrom) : '—'} →{' '}
-                                                                        {rule.validTo ? formatDate(rule.validTo) : 'Open-ended'}
+                                                                    <div className="space-y-2">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <span className="text-base font-semibold text-gray-900">{rule.ruleName}</span>
+                                                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                                                                                Priority #{rule.priority ?? '—'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-xs text-gray-500">
+                                                                            Valid {rule.validFrom ? formatDate(rule.validFrom) : 'immediately'} →{' '}
+                                                                            {rule.validTo ? formatDate(rule.validTo) : 'Open-ended'}
+                                                                        </p>
+                                                                        {rule.notes && (
+                                                                            <p className="text-xs text-gray-600 rounded-md border border-slate-100 bg-slate-50 p-2">{rule.notes}</p>
+                                                                        )}
                                                                     </div>
-                                                                    {rule.notes && <p className="text-xs text-gray-600 mt-1">{rule.notes}</p>}
                                                                 </TableCell>
                                                                 <TableCell>
-                                                                    <p className="font-medium text-sm">
-                                                                        {rule.dosageAmount} {rule.dosageUnit}
-                                                                    </p>
-                                                                    <p className="text-xs text-gray-500">{rule.conditions.length} condition(s)</p>
+                                                                    {rule.conditions.length === 0 ? (
+                                                                        <p className="text-xs text-gray-500">No conditions configured.</p>
+                                                                    ) : (
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {rule.conditions.slice(0, MAX_CONDITION_CHIPS).map((condition, index) => (
+                                                                                <span
+                                                                                    key={`${rule.id}-condition-${index}`}
+                                                                                    className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
+                                                                                >
+                                                                                    {describeCondition(condition)}
+                                                                                </span>
+                                                                            ))}
+                                                                            {rule.conditions.length > MAX_CONDITION_CHIPS && (
+                                                                                <span className="text-xs text-gray-500">
+                                                                                    +{rule.conditions.length - MAX_CONDITION_CHIPS} more
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                                 </TableCell>
-                                                                <TableCell className="text-center text-sm font-semibold">
-                                                                    {rule.frequencies.length}
+                                                                <TableCell>
+                                                                    <div className="space-y-2">
+                                                                        <p className="text-sm font-semibold text-gray-900">
+                                                                            {rule.dosageAmount} {rule.dosageUnit}
+                                                                        </p>
+                                                                        {rule.frequencies.length === 0 ? (
+                                                                            <p className="text-xs text-gray-500">No cadence defined.</p>
+                                                                        ) : (
+                                                                            <div className="space-y-2">
+                                                                                {rule.frequencies.slice(0, 3).map((frequency, index) => (
+                                                                                    <div
+                                                                                        key={`${rule.id}-frequency-${index}`}
+                                                                                        className="flex gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs"
+                                                                                    >
+                                                                                        <div className="mt-1 h-2 w-2 rounded-full bg-tpa-primary" />
+                                                                                        <div className="space-y-1">
+                                                                                            <p className="text-sm font-semibold text-slate-800">
+                                                                                                {formatEnumLabel(frequency.frequencyCode)}
+                                                                                            </p>
+                                                                                            <p className="text-[11px] text-gray-500">
+                                                                                                {frequency.timesPerDay ? `${frequency.timesPerDay}× daily` : '—'}
+                                                                                                {frequency.intervalHours ? ` • every ${frequency.intervalHours}h` : ''}
+                                                                                            </p>
+                                                                                            {frequency.timingNotes && (
+                                                                                                <p className="text-[11px] text-gray-600">{frequency.timingNotes}</p>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                                {rule.frequencies.length > 3 && (
+                                                                                    <p className="text-xs text-gray-500">
+                                                                                        +{rule.frequencies.length - 3} more frequency case(s)
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                 </TableCell>
                                                                 <TableCell className="text-center">
-                                                                    <span
-                                                                        className={cn(
-                                                                            'inline-flex rounded-full px-2 py-1 text-xs font-semibold',
-                                                                            rule.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700',
-                                                                        )}
-                                                                    >
-                                                                        {rule.isActive ? 'Active' : 'Inactive'}
-                                                                    </span>
+                                                                    <div className="flex flex-col items-center gap-2">
+                                                                        <span
+                                                                            className={cn(
+                                                                                'inline-flex rounded-full px-2 py-1 text-xs font-semibold',
+                                                                                rule.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700',
+                                                                            )}
+                                                                        >
+                                                                            {rule.isActive ? 'Active' : 'Inactive'}
+                                                                        </span>
+                                                                        <p className="text-[11px] text-gray-500">Priority #{rule.priority ?? '—'}</p>
+                                                                    </div>
                                                                 </TableCell>
                                                                 <TableCell>
                                                                     <div className="flex items-center justify-center gap-2">
@@ -1603,42 +1730,80 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                         {recommendingDosage ? 'Calculating...' : 'Compute recommendation'}
                                     </Button>
                                     {dosageRecommendationResult && (
-                                        <div className="rounded-lg border bg-slate-50 p-4 space-y-2 text-sm">
-                                            <div className="flex items-center gap-2 font-semibold">
-                                                {dosageRecommendationResult.foundRule ? (
-                                                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                                ) : (
-                                                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                                        <div className="rounded-lg border bg-white p-4 space-y-4 text-sm">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2 font-semibold">
+                                                    {dosageRecommendationResult.foundRule ? (
+                                                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                                    ) : (
+                                                        <AlertCircle className="h-4 w-4 text-amber-500" />
+                                                    )}
+                                                    {dosageRecommendationResult.foundRule ? 'Recommendation ready' : 'No rule matched'}
+                                                </div>
+                                                {dosageRecommendationResult.priority !== null && (
+                                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                                        Priority #{dosageRecommendationResult.priority}
+                                                    </span>
                                                 )}
-                                                {dosageRecommendationResult.foundRule ? 'Matching rule' : 'No rule matched'}
                                             </div>
                                             {dosageRecommendationResult.foundRule && (
                                                 <>
-                                                    <p className="font-semibold text-gray-900">{dosageRecommendationResult.ruleName}</p>
-                                                    <p>
-                                                        <span className="font-semibold">Dosage:</span>{' '}
-                                                        {dosageRecommendationResult.dosageAmount ?? '—'} {dosageRecommendationResult.dosageUnit ?? ''}
-                                                    </p>
-                                                    {dosageRecommendationResult.notes && (
-                                                        <p className="text-xs text-gray-600">{dosageRecommendationResult.notes}</p>
-                                                    )}
+                                                    <div className="space-y-1">
+                                                        <p className="text-base font-semibold text-gray-900">{dosageRecommendationResult.ruleName}</p>
+                                                        {dosageRecommendationResult.notes && (
+                                                            <p className="text-xs text-gray-600">{dosageRecommendationResult.notes}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="grid gap-3 sm:grid-cols-3">
+                                                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-center">
+                                                            <p className="text-[11px] uppercase text-gray-500">Dosage</p>
+                                                            <p className="text-lg font-semibold text-gray-900">
+                                                                {dosageRecommendationResult.dosageAmount ?? '—'}{' '}
+                                                                {dosageRecommendationResult.dosageUnit ?? ''}
+                                                            </p>
+                                                        </div>
+                                                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-center">
+                                                            <p className="text-[11px] uppercase text-gray-500">Cadence</p>
+                                                            <p className="text-lg font-semibold text-gray-900">
+                                                                {dosageRecommendationResult.frequencies.length}{' '}
+                                                                <span className="text-xs font-normal text-gray-500">case(s)</span>
+                                                            </p>
+                                                        </div>
+                                                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-center">
+                                                            <p className="text-[11px] uppercase text-gray-500">Confidence</p>
+                                                            <p className="text-lg font-semibold text-gray-900">
+                                                                {dosageRecommendationResult.reasons.length === 0 ? 'Direct hit' : 'Review reasons'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                     <div>
-                                                        <p className="font-semibold text-sm">Frequencies</p>
-                                                        <ul className="list-disc list-inside text-xs text-gray-600">
-                                                            {dosageRecommendationResult.frequencies.length === 0 && <li>No frequency entries.</li>}
+                                                        <p className="font-semibold text-sm">Frequency plan</p>
+                                                        <div className="mt-2 space-y-2">
+                                                            {dosageRecommendationResult.frequencies.length === 0 && (
+                                                                <p className="text-xs text-gray-500">No frequency entries.</p>
+                                                            )}
                                                             {dosageRecommendationResult.frequencies.map((frequency, index) => (
-                                                                <li key={`${frequency.frequencyCode}-${index}`}>
-                                                                    {frequency.frequencyCode} — {frequency.timesPerDay ?? '—'}x/day, every {frequency.intervalHours ?? '—'} h.{' '}
-                                                                    {frequency.timingNotes}
-                                                                </li>
+                                                                <div
+                                                                    key={`${frequency.frequencyCode}-${index}`}
+                                                                    className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-gray-600"
+                                                                >
+                                                                    <p className="text-sm font-semibold text-gray-900">
+                                                                        {formatEnumLabel(frequency.frequencyCode)}
+                                                                    </p>
+                                                                    <p className="text-[11px] text-gray-500">
+                                                                        {frequency.timesPerDay ? `${frequency.timesPerDay}× daily` : '—'}
+                                                                        {frequency.intervalHours ? ` • every ${frequency.intervalHours}h` : ''}
+                                                                    </p>
+                                                                    {frequency.timingNotes && <p>{frequency.timingNotes}</p>}
+                                                                </div>
                                                             ))}
-                                                        </ul>
+                                                        </div>
                                                     </div>
                                                 </>
                                             )}
                                             {dosageRecommendationResult.reasons.length > 0 && (
                                                 <div>
-                                                    <p className="font-semibold text-sm">Reasons</p>
+                                                    <p className="font-semibold text-sm">Why this result?</p>
                                                     <ul className="list-disc list-inside text-xs text-gray-600">
                                                         {dosageRecommendationResult.reasons.map((reason, index) => (
                                                             <li key={`${reason}-${index}`}>{reason}</li>
@@ -1654,16 +1819,63 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                                         <Target className="h-4 w-4" /> Clinical decision engine
                                     </div>
-                                    <div className="grid gap-3 md:grid-cols-3">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="decision-price-list">Price list</Label>
-                                            <Input
-                                                id="decision-price-list"
-                                                type="number"
-                                                min="0"
-                                                value={decisionRequest.priceListId}
-                                                onChange={(event) => handleDecisionRequestChange('priceListId', event.target.value)}
-                                            />
+                                    <div className="space-y-3">
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+                                            <Label htmlFor="decision-price-list" className="md:w-32">
+                                                Price list
+                                            </Label>
+                                            <div className="flex-1">
+                                            <Select
+                                                open={decisionPriceListDropdownOpen}
+                                                onOpenChange={(open) => {
+                                                    setDecisionPriceListDropdownOpen(open)
+                                                    if (!open) {
+                                                        setDecisionPriceListQuery('')
+                                                    }
+                                                }}
+                                                value={decisionRequest.priceListId || undefined}
+                                                onValueChange={(value) => handleDecisionRequestChange('priceListId', value)}
+                                                disabled={decisionPriceListsLoading || decisionPriceLists.length === 0}
+                                            >
+                                                <SelectTrigger id="decision-price-list">
+                                                    <SelectValue placeholder={decisionPriceListsLoading ? 'Loading price lists...' : 'Select price list'} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <div className="sticky top-0 z-10 border-b bg-white p-2">
+                                                        <Input
+                                                            value={decisionPriceListQuery}
+                                                            onChange={(event) => setDecisionPriceListQuery(event.target.value)}
+                                                            onKeyDown={(event) => event.stopPropagation()}
+                                                            placeholder="Search price lists..."
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    {decisionPriceListsLoading ? (
+                                                        <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                            Loading price lists...
+                                                        </div>
+                                                    ) : filteredDecisionPriceLists.length > 0 ? (
+                                                        filteredDecisionPriceLists.map((list) => (
+                                                            <SelectItem key={list.id} value={String(list.id)}>
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-medium">{list.nameEn || list.code}</span>
+                                                                    <span className="text-xs text-muted-foreground">
+                                                                        {list.code}
+                                                                        {list.currency ? ` • ${list.currency}` : ''}
+                                                                    </span>
+                                                                </div>
+                                                            </SelectItem>
+                                                        ))
+                                                    ) : (
+                                                        <div className="px-3 py-2 text-sm text-muted-foreground">No price lists found</div>
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                            {decisionPriceListsError && (
+                                                <p className="text-xs text-red-600">{decisionPriceListsError}</p>
+                                            )}
+                                        </div>
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="decision-quantity">Requested quantity</Label>
@@ -1722,15 +1934,85 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                         {evaluatingDecision ? 'Evaluating...' : 'Evaluate drug decision'}
                                     </Button>
                                     {decisionResult && (
-                                        <div className="rounded-lg border bg-white p-4 space-y-3 text-sm">
-                                            <div className="flex items-center gap-2 font-semibold">
-                                                {decisionResult.eligible ? (
-                                                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                                ) : (
-                                                    <AlertCircle className="h-4 w-4 text-red-500" />
-                                                )}
-                                                {decisionResult.eligible ? 'Eligible for dispensing' : 'Not eligible'}
+                                        <div className="rounded-lg border bg-white p-4 space-y-4 text-sm">
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2 font-semibold">
+                                                    {decisionResult.eligible ? (
+                                                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                                    ) : (
+                                                        <AlertCircle className="h-4 w-4 text-red-500" />
+                                                    )}
+                                                    {decisionResult.eligible ? 'Eligible for dispensing' : 'Not eligible'}
+                                                </div>
+                                                <div className="text-[11px] text-gray-500">
+                                                    Request {decisionRequest.requestedQuantity || '—'} units · {formatDate(decisionRequest.requestedDate)}
+                                                </div>
                                             </div>
+                                            <div className="grid gap-3 sm:grid-cols-3">
+                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-center">
+                                                    <p className="text-[11px] uppercase text-gray-500">Quantity enforced</p>
+                                                    <p className="text-lg font-semibold text-gray-900">
+                                                        {decisionResult.pricing?.quantityAfterEnforcement ??
+                                                            (decisionRequest.requestedQuantity ? decisionRequest.requestedQuantity : '—')}{' '}
+                                                        <span className="text-xs font-normal text-gray-500">
+                                                            / {decisionResult.pricing?.maxAllowedQuantity ?? '—'}
+                                                        </span>
+                                                    </p>
+                                                </div>
+                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-center">
+                                                    <p className="text-[11px] uppercase text-gray-500">Final unit price</p>
+                                                    <p className="text-lg font-semibold text-gray-900">
+                                                        {decisionResult.pricing?.finalUnitPrice ?? '—'}
+                                                    </p>
+                                                </div>
+                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-center">
+                                                    <p className="text-[11px] uppercase text-gray-500">Warnings</p>
+                                                    <p className="text-lg font-semibold text-gray-900">
+                                                        {decisionResult.warnings.length}{' '}
+                                                        <span className="text-xs font-normal text-gray-500">item(s)</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {decisionResult.pricing && (
+                                                <div className="grid gap-3 sm:grid-cols-2 text-[13px] text-gray-600">
+                                                    <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+                                                        <p className="text-sm font-semibold text-emerald-900">Pricing summary</p>
+                                                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                                                            <div>
+                                                                <p className="text-[11px] uppercase text-emerald-700">Base unit</p>
+                                                                <p className="font-semibold text-emerald-900">{decisionResult.pricing.baseUnitPrice ?? '—'}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[11px] uppercase text-emerald-700">Final unit</p>
+                                                                <p className="font-semibold text-emerald-900">{decisionResult.pricing.finalUnitPrice ?? '—'}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[11px] uppercase text-emerald-700">Base total</p>
+                                                                <p className="font-semibold text-emerald-900">{decisionResult.pricing.baseTotalPrice ?? '—'}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[11px] uppercase text-emerald-700">Final total</p>
+                                                                <p className="font-semibold text-emerald-900">{decisionResult.pricing.finalTotalPrice ?? '—'}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                        <p className="text-sm font-semibold text-gray-900">Quantity details</p>
+                                                        <p className="mt-2 text-xs text-gray-600">
+                                                            Requested {decisionResult.pricing.requestedQuantity ?? '—'} unit(s). Enforced to{' '}
+                                                            {decisionResult.pricing.quantityAfterEnforcement ?? '—'}.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {decisionResult.dosage && (
+                                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                    <p className="text-sm font-semibold">Dosage guidance</p>
+                                                    <p className="text-xs text-gray-600">
+                                                        {decisionResult.dosage.dosageAmount ?? '—'} {decisionResult.dosage.dosageUnit ?? ''} — {decisionResult.dosage.ruleName}
+                                                    </p>
+                                                </div>
+                                            )}
                                             {decisionResult.reasons.length > 0 && (
                                                 <div>
                                                     <p className="font-semibold">Reasons</p>
@@ -1741,33 +2023,9 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                                                     </ul>
                                                 </div>
                                             )}
-                                            {decisionResult.pricing && (
-                                                <div className="grid gap-1 text-xs text-gray-600">
-                                                    <p>
-                                                        <span className="font-semibold">Base unit:</span> {decisionResult.pricing.baseUnitPrice ?? '—'}
-                                                    </p>
-                                                    <p>
-                                                        <span className="font-semibold">Final unit:</span> {decisionResult.pricing.finalUnitPrice ?? '—'}
-                                                    </p>
-                                                    <p>
-                                                        <span className="font-semibold">Total (final):</span> {decisionResult.pricing.finalTotalPrice ?? '—'}
-                                                    </p>
-                                                    <p>
-                                                        <span className="font-semibold">Quantity enforced:</span> {decisionResult.pricing.quantityAfterEnforcement ?? '—'} / {decisionResult.pricing.maxAllowedQuantity ?? '—'}
-                                                    </p>
-                                                </div>
-                                            )}
-                                            {decisionResult.dosage && (
-                                                <div className="space-y-1">
-                                                    <p className="font-semibold">Dosage guidance</p>
-                                                    <p>
-                                                        {decisionResult.dosage.dosageAmount ?? '—'} {decisionResult.dosage.dosageUnit ?? ''} — {decisionResult.dosage.ruleName}
-                                                    </p>
-                                                </div>
-                                            )}
                                             {decisionResult.warnings.length > 0 && (
                                                 <div>
-                                                    <p className="font-semibold">Warnings</p>
+                                                    <p className="font-semibold text-amber-700">Warnings</p>
                                                     <ul className="list-disc list-inside text-xs text-amber-600">
                                                         {decisionResult.warnings.map((warning, index) => (
                                                             <li key={`${warning}-${index}`}>{warning}</li>
@@ -2048,8 +2306,7 @@ export function PackRulesDialog({ pack, onClose }: PackRulesDialogProps) {
                             </div>
                         </div>
                     </TabsContent>
-                </Tabs>
-            </DialogContent>
-        </Dialog>
+            </Tabs>
+        </div>
     )
 }

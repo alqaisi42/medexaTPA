@@ -9,9 +9,14 @@ import {
 
 const API_BASE_URL = process.env.API_BASE_URL?.replace(/\/$/, '') ?? ''
 const API_PREFIX = API_BASE_URL ? '/api/v1' : '/api'
-const BASE_PATH = `${API_PREFIX}/drug-dosage-rules`
+const DOSAGE_RULES_BASE_PATH = `${API_PREFIX}/drug-rules`
+const DRUGS_BASE_PATH = `${API_PREFIX}/drugs`
 
-function buildUrl(path: string = '', params?: Record<string, string | number | boolean | null | undefined>) {
+function buildApiUrl(
+    basePath: string,
+    path: string = '',
+    params?: Record<string, string | number | boolean | null | undefined>,
+) {
     const searchParams = new URLSearchParams()
 
     if (params) {
@@ -24,12 +29,20 @@ function buildUrl(path: string = '', params?: Record<string, string | number | b
     }
 
     const normalizedPath = path.startsWith('/') ? path : `/${path}`
-    const finalPath = `${BASE_PATH}${normalizedPath === '/' ? '' : normalizedPath}`
+    const finalPath = `${basePath}${normalizedPath === '/' ? '' : normalizedPath}`
     const baseUrl = API_BASE_URL ? `${API_BASE_URL}${finalPath}` : finalPath
     const query = searchParams.toString()
 
     return query ? `${baseUrl}?${query}` : baseUrl
 }
+
+const buildDosageRuleUrl = (
+    path: string = '',
+    params?: Record<string, string | number | boolean | null | undefined>,
+) => buildApiUrl(DOSAGE_RULES_BASE_PATH, path, params)
+
+const buildDrugsUrl = (path: string = '', params?: Record<string, string | number | boolean | null | undefined>) =>
+    buildApiUrl(DRUGS_BASE_PATH, path, params)
 
 function parseDate(value: unknown): string | null {
     if (Array.isArray(value) && value.length >= 3) {
@@ -48,13 +61,41 @@ function parseDate(value: unknown): string | null {
     return null
 }
 
+function parseNullableNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+        const parsed = Number(value)
+        return Number.isNaN(parsed) ? null : parsed
+    }
+    return null
+}
+
+function toStringOrNull(value: unknown): string | null {
+    if (value === null || value === undefined) {
+        return null
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim()
+        return trimmed.length > 0 ? trimmed : null
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value)
+    }
+
+    return null
+}
+
 function normalizeCondition(value: Record<string, unknown>): DosageRuleCondition {
     return {
-        factorCode: String(value['factorCode'] ?? ''),
+        factorCode: String(value['factorCode'] ?? value['factor_code'] ?? ''),
         operator: String(value['operator'] ?? 'EQUALS') as DosageRuleCondition['operator'],
-        valueExact: typeof value['valueExact'] === 'string' ? value['valueExact'] : null,
-        valueFrom: typeof value['valueFrom'] === 'string' ? value['valueFrom'] : null,
-        valueTo: typeof value['valueTo'] === 'string' ? value['valueTo'] : null,
+        valueExact: toStringOrNull(value['valueExact']),
+        valueFrom: toStringOrNull(value['valueFrom']),
+        valueTo: toStringOrNull(value['valueTo']),
         values: Array.isArray(value['values'])
             ? (value['values'] as unknown[]).map((entry) => String(entry))
             : undefined,
@@ -63,20 +104,15 @@ function normalizeCondition(value: Record<string, unknown>): DosageRuleCondition
 
 function normalizeFrequency(value: Record<string, unknown>): DosageRuleFrequency {
     return {
-        frequencyCode: String(value['frequencyCode'] ?? ''),
-        timesPerDay:
-            typeof value['timesPerDay'] === 'number'
-                ? value['timesPerDay']
-                : value['timesPerDay'] !== null && value['timesPerDay'] !== undefined
-                  ? Number(value['timesPerDay']) || null
+        frequencyCode: String(value['frequencyCode'] ?? value['frequency'] ?? value['code'] ?? ''),
+        timesPerDay: parseNullableNumber(value['timesPerDay'] ?? value['times_per_day']),
+        intervalHours: parseNullableNumber(value['intervalHours'] ?? value['interval_hours']),
+        timingNotes:
+            typeof value['timingNotes'] === 'string'
+                ? value['timingNotes']
+                : typeof value['description'] === 'string'
+                  ? value['description']
                   : null,
-        intervalHours:
-            typeof value['intervalHours'] === 'number'
-                ? value['intervalHours']
-                : value['intervalHours'] !== null && value['intervalHours'] !== undefined
-                  ? Number(value['intervalHours']) || null
-                  : null,
-        timingNotes: typeof value['timingNotes'] === 'string' ? value['timingNotes'] : null,
         specialInstructions:
             typeof value['specialInstructions'] === 'string' ? value['specialInstructions'] : null,
     }
@@ -86,23 +122,26 @@ function normalizeDosageRule(value: Record<string, unknown>): DosageRule {
     return {
         id: typeof value['id'] === 'number' ? value['id'] : Number(value['id']) || 0,
         drugPackId: typeof value['drugPackId'] === 'number' ? value['drugPackId'] : Number(value['drugPackId']) || 0,
-        ruleName: String(value['ruleName'] ?? ''),
-        dosageAmount:
-            typeof value['dosageAmount'] === 'number'
-                ? value['dosageAmount']
-                : Number(value['dosageAmount']) || 0,
-        dosageUnit: String(value['dosageUnit'] ?? ''),
+        ruleName: String(value['ruleName'] ?? value['name'] ?? ''),
+        dosageAmount: parseNullableNumber(value['dosageAmount']) ?? 0,
+        dosageUnit: String(value['dosageUnit'] ?? value['dosage_unit'] ?? ''),
         notes: typeof value['notes'] === 'string' ? value['notes'] : null,
-        priority: typeof value['priority'] === 'number' ? value['priority'] : Number(value['priority']) || 0,
+        priority: parseNullableNumber(value['priority']) ?? 0,
         validFrom: parseDate(value['validFrom']),
         validTo: parseDate(value['validTo']),
-        isActive: Boolean(value['isActive'] ?? true),
+        isActive: Boolean(value['isActive'] ?? value['active'] ?? true),
         conditions: Array.isArray(value['conditions'])
             ? (value['conditions'] as Record<string, unknown>[]).map((condition) => normalizeCondition(condition))
             : [],
-        frequencies: Array.isArray(value['frequencies'])
-            ? (value['frequencies'] as Record<string, unknown>[]).map((frequency) => normalizeFrequency(frequency))
-            : [],
+        frequencies: (
+            Array.isArray(value['frequencies'])
+                ? (value['frequencies'] as Record<string, unknown>[])
+                : Array.isArray(value['frequencyCases'])
+                  ? (value['frequencyCases'] as Record<string, unknown>[])
+                  : Array.isArray(value['frequency_cases'])
+                    ? (value['frequency_cases'] as Record<string, unknown>[])
+                    : []
+        ).map((frequency) => normalizeFrequency(frequency)),
     }
 }
 
@@ -138,7 +177,7 @@ function buildPayload(payload: DosageRulePayload) {
 }
 
 export async function fetchDosageRulesByPack(packId: number): Promise<DosageRule[]> {
-    const response = await fetch(buildUrl(`/by-pack/${packId}`), { cache: 'no-store' })
+    const response = await fetch(buildDrugsUrl(`/by-pack/${packId}`), { cache: 'no-store' })
 
     if (!response.ok) {
         throw new Error('Unable to load dosage rules')
@@ -153,7 +192,7 @@ export async function fetchDosageRulesByPack(packId: number): Promise<DosageRule
 }
 
 export async function createDosageRule(payload: DosageRulePayload): Promise<DosageRule> {
-    const response = await fetch(buildUrl(), {
+    const response = await fetch(buildDosageRuleUrl(), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -174,7 +213,7 @@ export async function createDosageRule(payload: DosageRulePayload): Promise<Dosa
 }
 
 export async function updateDosageRule(id: number, payload: DosageRulePayload): Promise<DosageRule> {
-    const response = await fetch(buildUrl(`/${id}`), {
+    const response = await fetch(buildDosageRuleUrl(`/${id}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -195,7 +234,7 @@ export async function updateDosageRule(id: number, payload: DosageRulePayload): 
 }
 
 export async function deleteDosageRule(id: number): Promise<void> {
-    const response = await fetch(buildUrl(`/${id}`), { method: 'DELETE' })
+    const response = await fetch(buildDosageRuleUrl(`/${id}`), { method: 'DELETE' })
 
     if (!response.ok) {
         throw new Error('Unable to delete dosage rule')
@@ -203,7 +242,7 @@ export async function deleteDosageRule(id: number): Promise<void> {
 }
 
 export async function deactivateDosageRule(id: number): Promise<void> {
-    const response = await fetch(buildUrl(`/${id}/deactivate`), { method: 'POST' })
+    const response = await fetch(buildDosageRuleUrl(`/${id}/deactivate`), { method: 'POST' })
 
     if (!response.ok) {
         throw new Error('Unable to deactivate dosage rule')
