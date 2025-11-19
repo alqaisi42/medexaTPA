@@ -67,6 +67,55 @@ export interface DrugIcdRelationResponse {
     updatedAt?: string | number | null
 }
 
+export interface DrugIcdRelationFlatIcdFields {
+    icdId?: number | string | null
+    icd_id?: number | string | null
+    icdSystemCode?: string | null
+    icd_system_code?: string | null
+    icdCode?: string | null
+    icd_code?: string | null
+    icdNameEn?: string | null
+    icd_name_en?: string | null
+    icdNameAr?: string | null
+    icd_name_ar?: string | null
+    icdChapter?: string | null
+    icd_chapter?: string | null
+    icdBlock?: string | null
+    icd_block?: string | null
+    icdIsBillable?: boolean | null
+    icd_is_billable?: boolean | null
+    icdValidFrom?: string | [number, number, number] | null
+    icd_valid_from?: string | [number, number, number] | null
+    icdValidTo?: string | [number, number, number] | null
+    icd_valid_to?: string | [number, number, number] | null
+    icdSeverityLevel?: string | null
+    icd_severity_level?: string | null
+    icdIsChronic?: boolean | null
+    icd_is_chronic?: boolean | null
+    icdRequiresAuthorization?: boolean | null
+    icd_requires_authorization?: boolean | null
+    icdStandardLosDays?: number | string | null
+    icd_standard_los_days?: number | string | null
+    icdIsActive?: boolean | null
+    icd_is_active?: boolean | null
+    icdComplicationRisk?: string | null
+    icd_complication_risk?: string | null
+    icdCreatedAt?: string | number | null
+    icd_created_at?: string | number | null
+    icdUpdatedAt?: string | number | null
+    icd_updated_at?: string | number | null
+    icdCreatedBy?: string | null
+    icd_created_by?: string | null
+    icdUpdatedBy?: string | null
+    icd_updated_by?: string | null
+    icdEffectiveFrom?: string | number | null
+    icd_effective_from?: string | number | null
+    icdEffectiveTo?: string | number | null
+    icd_effective_to?: string | number | null
+}
+
+export type DrugIcdRelationApiRecord = DrugIcdRelationResponse & DrugIcdRelationFlatIcdFields
+
 export type DrugIcdRelationType = 'INDICATION' | 'CONTRAINDICATION' | 'PRECAUTION'
 
 export interface DrugSummary {
@@ -80,6 +129,8 @@ export interface DrugIcdRelation {
     id: number
     drug: DrugSummary | null
     icd: ICD | null
+    icdCodeDisplay?: string | null
+    icdNameDisplay?: string | null
     relationType: DrugIcdRelationType
     notes?: string | null
     validFrom?: string | null

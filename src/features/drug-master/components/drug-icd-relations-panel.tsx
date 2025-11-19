@@ -250,10 +250,12 @@ export function DrugIcdRelationsPanel({ drugId }: DrugIcdRelationsPanelProps) {
                                     <TableCell>
                                         <div className="space-y-1">
                                             <p className="font-semibold text-gray-900">
-                                                {relation.icd?.code || 'Unknown ICD'}
+                                                {relation.icd?.code?.trim() ||
+                                                    'Unknown ICD'}
                                             </p>
                                             <p className="text-sm text-gray-600">
-                                                {relation.icd?.nameEn || 'ICD metadata unavailable'}
+                                                {relation.icd?.nameEn?.trim() ||
+                                                    'ICD metadata unavailable'}
                                             </p>
                                         </div>
                                     </TableCell>
