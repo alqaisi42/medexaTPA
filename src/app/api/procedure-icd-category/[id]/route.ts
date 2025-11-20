@@ -2,11 +2,11 @@ import { NextRequest } from 'next/server'
 import { forwardProcedureIcdCategoryRequest } from '../_utils'
 
 interface RouteContext {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-    const { id } = context.params
+    const { id } = await context.params   // ✅ FIX
 
     if (!id) {
         return new Response(JSON.stringify({ message: 'Identifier is required' }), {
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-    const { id } = context.params
+    const { id } = await context.params   // ✅ FIX
 
     if (!id) {
         return new Response(JSON.stringify({ message: 'Identifier is required' }), {

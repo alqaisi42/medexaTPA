@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DiagnosisCategoriesManager } from './diagnosis-categories-manager'
 import { IcdCategoryMappingManager } from './icd-category-mapping-manager'
 import { IcdCodesManager } from './icd-codes-manager'
+import { IcdComplicationsManager } from './icd-complications-manager'
 import { IcdRelationsManager } from './icd-relations-manager'
 
 export function IcdManagementPage() {
@@ -23,11 +24,12 @@ export function IcdManagementPage() {
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-1 gap-2 sm:grid-cols-4 sm:gap-0">
+                <TabsList className="grid w-full grid-cols-1 gap-2 sm:grid-cols-5 sm:gap-0">
                     <TabsTrigger value="icd-codes">ICD Catalogue</TabsTrigger>
                     <TabsTrigger value="diagnosis-categories">Diagnosis Categories</TabsTrigger>
                     <TabsTrigger value="icd-category-mappings">ICD ↔ Categories</TabsTrigger>
                     <TabsTrigger value="icd-relations">ICD Relations</TabsTrigger>
+                    <TabsTrigger value="icd-complications">Complications</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="icd-codes" className="space-y-6">
@@ -44,6 +46,10 @@ export function IcdManagementPage() {
 
                 <TabsContent value="icd-relations" className="space-y-6">
                     <IcdRelationsManager />
+                </TabsContent>
+
+                <TabsContent value="icd-complications" className="space-y-6">
+                    <IcdComplicationsManager />
                 </TabsContent>
             </Tabs>
         </div>

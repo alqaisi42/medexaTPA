@@ -23,16 +23,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { CombinationFactor, CombinationRule, CombinationType, CreatePricingRulePayload, DiagnosisCategory, ICD, PriceListSummary, ProcedureSummary } from '@/types'
+import {
+    CombinationFactor,
+    CombinationRule,
+    CombinationType,
+    CreatePricingRulePayload,
+    DiagnosisCategory,
+    ICD,
+    PriceListSummary,
+    ProcedureSummary,
+    ProcedureContainerSummary,
+    ProviderType,
+    Specialty
+} from '@/types'
 import { formatCurrency, generateId } from '@/lib/utils'
 import { createPricingRule, fetchPriceLists } from '@/lib/api/pricing'
-import { searchProcedures } from '@/lib/api/procedures'
+import { fetchProcedureContainers, searchProcedures } from '@/lib/api/procedures'
 import { fetchDiagnosisCategories } from '@/lib/api/diagnosis-categories'
 import { searchIcds } from '@/lib/api/icd'
+import { getSpecialties } from '@/features/specialties/services/specialty-service'
 import {
     formatPriceListLabel,
     formatProcedureLabel,
 } from '@/features/procedures-price-lists/components/procedures-price-lists-page/helpers'
+import { fetchProviderTypesLookup } from '@/lib/api/lookups'
 import {
     AdjustmentDirection,
     AdjustmentUnit,
@@ -58,6 +72,20 @@ import {
 
 const MIN_ICD_QUERY_LENGTH = 2
 const DIAGNOSIS_CATEGORY_PAGE_SIZE = 100
+
+// Fixed provider data until API is ready
+const FIXED_PROVIDERS = [
+    { id: 1, code: 'PRV001', nameEn: 'Jordan Hospital', nameAr: 'مستشفى الأردن', region: 'AMMAN' },
+    { id: 2, code: 'PRV002', nameEn: 'King Hussein Medical Center', nameAr: 'مركز الملك حسين الطبي', region: 'AMMAN' },
+    { id: 3, code: 'PRV003', nameEn: 'Islamic Hospital', nameAr: 'المستشفى الإسلامي', region: 'AMMAN' },
+    { id: 4, code: 'PRV004', nameEn: 'Al-Khalidi Medical Center', nameAr: 'مركز الخالدي الطبي', region: 'AMMAN' },
+    { id: 5, code: 'PRV005', nameEn: 'Jordan University Hospital', nameAr: 'مستشفى الجامعة الأردنية', region: 'AMMAN' },
+    { id: 6, code: 'PRV006', nameEn: 'Irbid Specialty Hospital', nameAr: 'مستشفى إربد التخصصي', region: 'IRBID' },
+    { id: 7, code: 'PRV007', nameEn: 'Aqaba Medical Center', nameAr: 'المركز الطبي العقبة', region: 'AQABA' },
+    { id: 8, code: 'PRV008', nameEn: 'Zarqa Governmental Hospital', nameAr: 'مستشفى الزرقاء الحكومي', region: 'ZARQA' },
+    { id: 9, code: 'PRV009', nameEn: 'Al-Hussein Hospital', nameAr: 'مستشفى الحسين', region: 'AMMAN' },
+    { id: 10, code: 'PRV010', nameEn: 'Baptist Hospital', nameAr: 'المستشفى المعمداني', region: 'AMMAN' },
+]
 
 export function CombinationBuilderPage() {
     const [combinations, setCombinations] = useState<CombinationRule[]>([])
@@ -122,6 +150,38 @@ export function CombinationBuilderPage() {
     const [connectedIcdLoading, setConnectedIcdLoading] = useState(false)
     const [connectedIcdError, setConnectedIcdError] = useState<string | null>(null)
     const connectedIcdDropdownRef = useRef<HTMLDivElement | null>(null)
+    const [specialtyDropdownOpen, setSpecialtyDropdownOpen] = useState(false)
+    const [specialtySearchTerm, setSpecialtySearchTerm] = useState('')
+    const [specialtyOptions, setSpecialtyOptions] = useState<Specialty[]>([])
+    const [specialtyLoading, setSpecialtyLoading] = useState(false)
+    const [specialtyError, setSpecialtyError] = useState<string | null>(null)
+    const [specialtyFetched, setSpecialtyFetched] = useState(false)
+    const [specialtyLookup, setSpecialtyLookup] = useState<Record<string, { code: string; name: string }>>({})
+    const specialtyDropdownRef = useRef<HTMLDivElement | null>(null)
+    const [providerTypeDropdownOpen, setProviderTypeDropdownOpen] = useState(false)
+    const [providerTypeSearchTerm, setProviderTypeSearchTerm] = useState('')
+    const [providerTypeOptions, setProviderTypeOptions] = useState<ProviderType[]>([])
+    const [providerTypeLoading, setProviderTypeLoading] = useState(false)
+    const [providerTypeError, setProviderTypeError] = useState<string | null>(null)
+    const [providerTypeFetched, setProviderTypeFetched] = useState(false)
+    const [providerTypeLookup, setProviderTypeLookup] = useState<Record<string, { code: string; name: string }>>({})
+    const providerTypeDropdownRef = useRef<HTMLDivElement | null>(null)
+    const [procedureContainerDropdownOpen, setProcedureContainerDropdownOpen] = useState(false)
+    const [procedureContainerSearchTerm, setProcedureContainerSearchTerm] = useState('')
+    const [procedureContainerOptions, setProcedureContainerOptions] = useState<ProcedureContainerSummary[]>([])
+    const [procedureContainerLoading, setProcedureContainerLoading] = useState(false)
+    const [procedureContainerError, setProcedureContainerError] = useState<string | null>(null)
+    const [procedureContainerFetched, setProcedureContainerFetched] = useState(false)
+    const [procedureContainerLookup, setProcedureContainerLookup] = useState<Record<string, { code: string; name: string }>>({})
+    const procedureContainerDropdownRef = useRef<HTMLDivElement | null>(null)
+    const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
+    const [providerSearchTerm, setProviderSearchTerm] = useState('')
+    const [providerOptions, setProviderOptions] = useState<Array<{ id: number; code: string; nameEn: string; nameAr?: string; region?: string }>>([])
+    const [providerLoading, setProviderLoading] = useState(false)
+    const [providerError, setProviderError] = useState<string | null>(null)
+    const [providerFetched, setProviderFetched] = useState(false)
+    const [providerLookup, setProviderLookup] = useState<Record<string, { code: string; name: string }>>({})
+    const providerDropdownRef = useRef<HTMLDivElement | null>(null)
 
     const updateSelectedFactor = <K extends keyof typeof selectedFactors>(
         factor: K,
@@ -189,10 +249,16 @@ export function CombinationBuilderPage() {
         setActiveFactorCategoryId(FACTOR_CATEGORIES[0]?.id ?? 'patient')
         setIcdCategoryDropdownOpen(false)
         setConnectedIcdDropdownOpen(false)
+        setSpecialtyDropdownOpen(false)
+        setProviderTypeDropdownOpen(false)
+        setProcedureContainerDropdownOpen(false)
         setIcdCategoryQuery('')
         setConnectedIcdQuery('')
         setConnectedIcdOptions([])
         setIcdLookup({})
+        setSpecialtySearchTerm('')
+        setProviderTypeSearchTerm('')
+        setProcedureContainerSearchTerm('')
     }
 
     const renderFactorInputControl = (factor: FactorDefinition) => {
@@ -423,6 +489,433 @@ export function CombinationBuilderPage() {
             )
         }
 
+        if (factor.key === 'specialty_id') {
+            const selectedSpecialtyId = value && value !== SAFE_EMPTY ? value : ''
+            const selectedSpecialty = selectedSpecialtyId ? specialtyLookup[selectedSpecialtyId] : null
+            const selectedLabel = selectedSpecialty
+                ? `${selectedSpecialty.code} — ${selectedSpecialty.name}`
+                : selectedSpecialtyId
+                    ? `Specialty #${selectedSpecialtyId}`
+                    : 'Search specialties'
+
+            return (
+                <div className="relative" ref={specialtyDropdownRef}>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                        onClick={() => setSpecialtyDropdownOpen(prev => !prev)}
+                    >
+                        <div className="flex min-w-0 flex-col text-left">
+                            <span className="truncate text-sm font-medium text-gray-900">
+                                {selectedLabel}
+                            </span>
+                            <span className="truncate text-xs text-gray-500">
+                                {selectedSpecialtyId ? 'Stored as specialty ID' : 'Type to filter by code or name'}
+                            </span>
+                        </div>
+                        <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                    </Button>
+                    {selectedSpecialtyId && (
+                        <button
+                            type="button"
+                            aria-label="Clear specialty"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                handleRuleFactorChange('specialty_id', '')
+                            }}
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    )}
+                    {specialtyDropdownOpen && (
+                        <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                            <div className="border-b border-gray-100 p-3">
+                                <Input
+                                    autoFocus
+                                    placeholder="Search specialties..."
+                                    value={specialtySearchTerm}
+                                    onChange={(e) => setSpecialtySearchTerm(e.target.value)}
+                                />
+                                <p className="mt-1 text-[11px] text-gray-400">
+                                    Matches code, English or Arabic names
+                                </p>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {specialtyLoading ? (
+                                    <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Loading specialties…
+                                    </div>
+                                ) : specialtyError ? (
+                                    <div className="p-4 text-sm text-red-500">{specialtyError}</div>
+                                ) : filteredSpecialties.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No specialties found.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {filteredSpecialties.map(option => (
+                                            <li key={option.id}>
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-gray-50"
+                                                    onClick={() => {
+                                                        handleRuleFactorChange('specialty_id', String(option.id))
+                                                        setSpecialtyLookup(prev => ({
+                                                            ...prev,
+                                                            [String(option.id)]: {
+                                                                code: option.code,
+                                                                name: option.nameEn || option.nameAr || option.code,
+                                                            },
+                                                        }))
+                                                        setSpecialtyDropdownOpen(false)
+                                                        setSpecialtySearchTerm('')
+                                                    }}
+                                                >
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {option.nameEn || option.nameAr || '—'}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {option.code || '—'} · ID {option.id}
+                                                    </span>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (factor.key === 'provider_id') {
+            const selectedProviderId = value && value !== SAFE_EMPTY ? value : ''
+            const selectedProvider = selectedProviderId ? providerLookup[selectedProviderId] : null
+            const selectedLabel = selectedProvider
+                ? `${selectedProvider.code} — ${selectedProvider.name}`
+                : selectedProviderId
+                    ? `Provider #${selectedProviderId}`
+                    : 'Search providers'
+
+            return (
+                <div className="relative" ref={providerDropdownRef}>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                        onClick={() => {
+                            setProviderDropdownOpen(prev => !prev)
+                            setSpecialtyDropdownOpen(false)
+                            setProviderTypeDropdownOpen(false)
+                            setIcdCategoryDropdownOpen(false)
+                            setConnectedIcdDropdownOpen(false)
+                            setProcedureContainerDropdownOpen(false)
+                        }}
+                    >
+                        <div className="flex min-w-0 flex-col text-left">
+                            <span className="truncate text-sm font-medium text-gray-900">
+                                {selectedLabel}
+                            </span>
+                            <span className="truncate text-xs text-gray-500">
+                                {selectedProviderId ? 'Stored as provider ID' : 'Type to filter by code or name'}
+                            </span>
+                        </div>
+                        <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                    </Button>
+                    {selectedProviderId && (
+                        <button
+                            type="button"
+                            aria-label="Clear provider"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                handleRuleFactorChange('provider_id', '')
+                            }}
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    )}
+                    {providerDropdownOpen && (
+                        <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                            <div className="border-b border-gray-100 p-3">
+                                <Input
+                                    autoFocus
+                                    placeholder="Search providers..."
+                                    value={providerSearchTerm}
+                                    onChange={(e) => setProviderSearchTerm(e.target.value)}
+                                />
+                                <p className="mt-1 text-[11px] text-gray-400">
+                                    Matches code, English or Arabic names, or region
+                                </p>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {providerLoading ? (
+                                    <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Loading providers…
+                                    </div>
+                                ) : providerError ? (
+                                    <div className="p-4 text-sm text-red-500">{providerError}</div>
+                                ) : filteredProviders.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No providers found.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {filteredProviders.map(option => (
+                                            <li key={option.id}>
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-gray-50"
+                                                    onClick={() => {
+                                                        handleRuleFactorChange('provider_id', String(option.id))
+                                                        setProviderLookup(prev => ({
+                                                            ...prev,
+                                                            [String(option.id)]: {
+                                                                code: option.code,
+                                                                name: option.nameEn || option.nameAr || option.code,
+                                                            },
+                                                        }))
+                                                        setProviderDropdownOpen(false)
+                                                        setProviderSearchTerm('')
+                                                    }}
+                                                >
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {option.nameEn || option.nameAr || '—'}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {option.code || '—'} · {option.region || '—'} · ID {option.id}
+                                                    </span>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (factor.key === 'provider_type') {
+            const selectedCode = value && value !== SAFE_EMPTY ? value : ''
+            const selectedProviderType = selectedCode ? providerTypeLookup[selectedCode] : null
+            const selectedLabel = selectedProviderType
+                ? `${selectedProviderType.code} — ${selectedProviderType.name}`
+                : selectedCode
+                    ? selectedCode
+                    : 'Search provider types'
+
+            return (
+                <div className="relative" ref={providerTypeDropdownRef}>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                        onClick={() => setProviderTypeDropdownOpen(prev => !prev)}
+                    >
+                        <div className="flex min-w-0 flex-col text-left">
+                            <span className="truncate text-sm font-medium text-gray-900">
+                                {selectedLabel}
+                            </span>
+                            <span className="truncate text-xs text-gray-500">
+                                {selectedCode ? 'Stored as provider type code' : 'Type to filter by code or name'}
+                            </span>
+                        </div>
+                        <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                    </Button>
+                    {selectedCode && (
+                        <button
+                            type="button"
+                            aria-label="Clear provider type"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                handleRuleFactorChange('provider_type', '')
+                            }}
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    )}
+                    {providerTypeDropdownOpen && (
+                        <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                            <div className="border-b border-gray-100 p-3">
+                                <Input
+                                    autoFocus
+                                    placeholder="Search provider types..."
+                                    value={providerTypeSearchTerm}
+                                    onChange={(e) => setProviderTypeSearchTerm(e.target.value)}
+                                />
+                                <p className="mt-1 text-[11px] text-gray-400">
+                                    Matches code, English or Arabic names
+                                </p>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {providerTypeLoading ? (
+                                    <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Loading provider types…
+                                    </div>
+                                ) : providerTypeError ? (
+                                    <div className="p-4 text-sm text-red-500">{providerTypeError}</div>
+                                ) : filteredProviderTypes.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No provider types found.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {filteredProviderTypes.map(option => (
+                                            <li key={option.id}>
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-gray-50"
+                                                    onClick={() => {
+                                                        handleRuleFactorChange('provider_type', option.code)
+                                                        setProviderTypeLookup(prev => ({
+                                                            ...prev,
+                                                            [option.code]: {
+                                                                code: option.code,
+                                                                name: option.nameEn || option.nameAr || option.code,
+                                                            },
+                                                        }))
+                                                        setProviderTypeDropdownOpen(false)
+                                                        setProviderTypeSearchTerm('')
+                                                    }}
+                                                >
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {option.nameEn || option.nameAr || option.code}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {option.code || '—'}
+                                                    </span>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (factor.key === 'procedure_group') {
+            const selectedContainerId = value && value !== SAFE_EMPTY ? value : ''
+            const selectedContainer = selectedContainerId ? procedureContainerLookup[selectedContainerId] : null
+            const selectedLabel = selectedContainer
+                ? `${selectedContainer.code} — ${selectedContainer.name}`
+                : selectedContainerId
+                    ? `Container #${selectedContainerId}`
+                    : 'Search procedure containers'
+
+            return (
+                <div className="relative" ref={procedureContainerDropdownRef}>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                        onClick={() => setProcedureContainerDropdownOpen(prev => !prev)}
+                    >
+                        <div className="flex min-w-0 flex-col text-left">
+                            <span className="truncate text-sm font-medium text-gray-900">
+                                {selectedLabel}
+                            </span>
+                            <span className="truncate text-xs text-gray-500">
+                                {selectedContainerId ? 'Stored as container ID' : 'Type to filter by code or name'}
+                            </span>
+                        </div>
+                        <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                    </Button>
+                    {selectedContainerId && (
+                        <button
+                            type="button"
+                            aria-label="Clear procedure container"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                handleRuleFactorChange('procedure_group', '')
+                            }}
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    )}
+                    {procedureContainerDropdownOpen && (
+                        <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                            <div className="border-b border-gray-100 p-3">
+                                <Input
+                                    autoFocus
+                                    placeholder="Search containers..."
+                                    value={procedureContainerSearchTerm}
+                                    onChange={(e) => setProcedureContainerSearchTerm(e.target.value)}
+                                />
+                                <p className="mt-1 text-[11px] text-gray-400">
+                                    Filter by code or English name
+                                </p>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {procedureContainerLoading ? (
+                                    <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Loading containers…
+                                    </div>
+                                ) : procedureContainerError ? (
+                                    <div className="p-4 text-sm text-red-500">{procedureContainerError}</div>
+                                ) : filteredProcedureContainers.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No containers found.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {filteredProcedureContainers.map(option => (
+                                            <li key={option.id}>
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-gray-50"
+                                                    onClick={() => {
+                                                        handleRuleFactorChange('procedure_group', String(option.id))
+                                                        setProcedureContainerLookup(prev => ({
+                                                            ...prev,
+                                                            [String(option.id)]: {
+                                                                code: option.code,
+                                                                name: option.nameEn || option.nameAr || option.code,
+                                                            },
+                                                        }))
+                                                        setProcedureContainerDropdownOpen(false)
+                                                        setProcedureContainerSearchTerm('')
+                                                    }}
+                                                >
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {option.nameEn || option.nameAr || '—'}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {option.code || '—'} · ID {option.id}
+                                                    </span>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (factor.dataType === 'BOOLEAN') {
+            const isChecked = value === 'true'
+            return (
+                <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <Switch
+                        id={factor.key}
+                        checked={isChecked}
+                        onCheckedChange={(checked) => handleRuleFactorChange(factor.key, checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor={factor.key} className="text-sm font-medium text-gray-700">
+                        {isChecked ? 'Enabled' : 'Disabled'}
+                    </Label>
+                </div>
+            )
+        }
+
         if (factor.allowedValues && factor.allowedValues.length > 0) {
             return (
                 <Select
@@ -473,6 +966,42 @@ export function CombinationBuilderPage() {
                 .join(', ')
         }
 
+        if (key === 'specialty_id') {
+            const match = specialtyLookup[value]
+            if (match) {
+                return `${match.code} — ${match.name}`
+            }
+            return `Specialty #${value}`
+        }
+
+        if (key === 'provider_id') {
+            const match = providerLookup[value]
+            if (match) {
+                return `${match.code} — ${match.name}`
+            }
+            return `Provider #${value}`
+        }
+
+        if (key === 'provider_type') {
+            const match = providerTypeLookup[value]
+            if (match) {
+                return `${match.code} — ${match.name}`
+            }
+            return value
+        }
+
+        if (key === 'procedure_group') {
+            const match = procedureContainerLookup[value]
+            if (match) {
+                return `${match.code} — ${match.name}`
+            }
+            return `Container #${value}`
+        }
+
+        if (key === 'allow_price_override') {
+            return value === 'true' ? 'Yes' : 'No'
+        }
+
         return value
     }
 
@@ -489,6 +1018,63 @@ export function CombinationBuilderPage() {
             return code.includes(term) || nameEn.includes(term) || nameAr.includes(term)
         })
     }, [icdCategoryOptions, icdCategoryQuery])
+
+    const filteredSpecialties = useMemo(() => {
+        const term = specialtySearchTerm.trim().toLowerCase()
+        if (!term) {
+            return specialtyOptions
+        }
+
+        return specialtyOptions.filter(option => {
+            const code = option.code?.toLowerCase() ?? ''
+            const nameEn = option.nameEn?.toLowerCase() ?? ''
+            const nameAr = option.nameAr?.toLowerCase() ?? ''
+            return code.includes(term) || nameEn.includes(term) || nameAr.includes(term)
+        })
+    }, [specialtyOptions, specialtySearchTerm])
+
+    const filteredProviderTypes = useMemo(() => {
+        const term = providerTypeSearchTerm.trim().toLowerCase()
+        if (!term) {
+            return providerTypeOptions
+        }
+
+        return providerTypeOptions.filter(option => {
+            const code = option.code?.toLowerCase() ?? ''
+            const nameEn = option.nameEn?.toLowerCase() ?? ''
+            const nameAr = option.nameAr?.toLowerCase() ?? ''
+            return code.includes(term) || nameEn.includes(term) || nameAr.includes(term)
+        })
+    }, [providerTypeOptions, providerTypeSearchTerm])
+
+    const filteredProviders = useMemo(() => {
+        const term = providerSearchTerm.trim().toLowerCase()
+        if (!term) {
+            return providerOptions
+        }
+
+        return providerOptions.filter(option => {
+            const code = option.code?.toLowerCase() ?? ''
+            const nameEn = option.nameEn?.toLowerCase() ?? ''
+            const nameAr = option.nameAr?.toLowerCase() ?? ''
+            const region = option.region?.toLowerCase() ?? ''
+            return code.includes(term) || nameEn.includes(term) || nameAr.includes(term) || region.includes(term)
+        })
+    }, [providerOptions, providerSearchTerm])
+
+    const filteredProcedureContainers = useMemo(() => {
+        const term = procedureContainerSearchTerm.trim().toLowerCase()
+        if (!term) {
+            return procedureContainerOptions
+        }
+
+        return procedureContainerOptions.filter(option => {
+            const code = option.code?.toLowerCase() ?? ''
+            const nameEn = option.nameEn?.toLowerCase() ?? ''
+            const nameAr = option.nameAr?.toLowerCase() ?? ''
+            return code.includes(term) || nameEn.includes(term) || nameAr.includes(term)
+        })
+    }, [procedureContainerOptions, procedureContainerSearchTerm])
 
     const filledRuleFactors = Object.entries(ruleForm.factors).filter(([, value]) => value)
     const activeFactorCategory = FACTOR_CATEGORIES.find(category => category.id === activeFactorCategoryId) ?? FACTOR_CATEGORIES[0]
@@ -739,6 +1325,184 @@ export function CombinationBuilderPage() {
     }, [connectedIcdDropdownOpen, connectedIcdQuery])
 
     useEffect(() => {
+        if (!specialtyDropdownOpen) {
+            setSpecialtySearchTerm('')
+            return
+        }
+
+        if (specialtyFetched) {
+            return
+        }
+
+        let cancelled = false
+        setSpecialtyLoading(true)
+        setSpecialtyError(null)
+
+        getSpecialties()
+            .then(data => {
+                if (cancelled) return
+                setSpecialtyOptions(data)
+                setSpecialtyLookup(prev => {
+                    const next = { ...prev }
+                    data.forEach(option => {
+                        next[String(option.id)] = {
+                            code: option.code,
+                            name: option.nameEn || option.nameAr || option.code,
+                        }
+                    })
+                    return next
+                })
+                setSpecialtyFetched(true)
+            })
+            .catch(error => {
+                if (cancelled) return
+                setSpecialtyOptions([])
+                setSpecialtyError(
+                    error instanceof Error ? error.message : 'Unable to load specialties'
+                )
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setSpecialtyLoading(false)
+                }
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [specialtyDropdownOpen, specialtyFetched])
+
+    useEffect(() => {
+        if (!providerTypeDropdownOpen) {
+            setProviderTypeSearchTerm('')
+            return
+        }
+
+        if (providerTypeFetched) {
+            return
+        }
+
+        let cancelled = false
+        setProviderTypeLoading(true)
+        setProviderTypeError(null)
+
+        fetchProviderTypesLookup()
+            .then(data => {
+                if (cancelled) return
+                setProviderTypeOptions(data)
+                setProviderTypeLookup(prev => {
+                    const next = { ...prev }
+                    data.forEach(option => {
+                        next[option.code] = {
+                            code: option.code,
+                            name: option.nameEn || option.nameAr || option.code,
+                        }
+                    })
+                    return next
+                })
+                setProviderTypeFetched(true)
+            })
+            .catch(error => {
+                if (cancelled) return
+                setProviderTypeOptions([])
+                setProviderTypeError(error instanceof Error ? error.message : 'Unable to load provider types')
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setProviderTypeLoading(false)
+                }
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [providerTypeDropdownOpen, providerTypeFetched])
+
+    useEffect(() => {
+        if (!providerDropdownOpen) {
+            setProviderSearchTerm('')
+            return
+        }
+
+        if (providerFetched) {
+            return
+        }
+
+        let cancelled = false
+        setProviderLoading(true)
+        setProviderError(null)
+
+        // Using fixed data for now until API is ready
+        setTimeout(() => {
+            if (cancelled) return
+            setProviderOptions(FIXED_PROVIDERS)
+            setProviderLookup(prev => {
+                const next = { ...prev }
+                FIXED_PROVIDERS.forEach(provider => {
+                    next[String(provider.id)] = {
+                        code: provider.code,
+                        name: provider.nameEn || provider.nameAr || provider.code,
+                    }
+                })
+                return next
+            })
+            setProviderFetched(true)
+            setProviderLoading(false)
+        }, 100)
+
+        return () => {
+            cancelled = true
+        }
+    }, [providerDropdownOpen, providerFetched])
+
+    useEffect(() => {
+        if (!procedureContainerDropdownOpen) {
+            setProcedureContainerSearchTerm('')
+            return
+        }
+
+        if (procedureContainerFetched) {
+            return
+        }
+
+        let cancelled = false
+        setProcedureContainerLoading(true)
+        setProcedureContainerError(null)
+
+        fetchProcedureContainers({ page: 0, size: 200 })
+            .then(response => {
+                if (cancelled) return
+                const content = response.content ?? []
+                setProcedureContainerOptions(content)
+                setProcedureContainerLookup(prev => {
+                    const next = { ...prev }
+                    content.forEach(option => {
+                        next[String(option.id)] = {
+                            code: option.code,
+                            name: option.nameEn || option.nameAr || option.code,
+                        }
+                    })
+                    return next
+                })
+                setProcedureContainerFetched(true)
+            })
+            .catch(error => {
+                if (cancelled) return
+                setProcedureContainerOptions([])
+                setProcedureContainerError(error instanceof Error ? error.message : 'Unable to load procedure containers')
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setProcedureContainerLoading(false)
+                }
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [procedureContainerDropdownOpen, procedureContainerFetched])
+
+    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             const target = event.target as Node
 
@@ -768,6 +1532,34 @@ export function CombinationBuilderPage() {
                 !connectedIcdDropdownRef.current.contains(target)
             ) {
                 setConnectedIcdDropdownOpen(false)
+            }
+
+            if (
+                specialtyDropdownRef.current &&
+                !specialtyDropdownRef.current.contains(target)
+            ) {
+                setSpecialtyDropdownOpen(false)
+            }
+
+            if (
+                providerDropdownRef.current &&
+                !providerDropdownRef.current.contains(target)
+            ) {
+                setProviderDropdownOpen(false)
+            }
+
+            if (
+                providerTypeDropdownRef.current &&
+                !providerTypeDropdownRef.current.contains(target)
+            ) {
+                setProviderTypeDropdownOpen(false)
+            }
+
+            if (
+                procedureContainerDropdownRef.current &&
+                !procedureContainerDropdownRef.current.contains(target)
+            ) {
+                setProcedureContainerDropdownOpen(false)
             }
         }
 

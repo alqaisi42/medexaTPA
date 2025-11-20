@@ -1,7 +1,7 @@
 import {formatCurrency} from '@/lib/utils'
 import {CombinationType, CreatePricingRulePayload} from '@/types'
 
-export type FactorDataType = 'STRING' | 'NUMBER'
+export type FactorDataType = 'STRING' | 'NUMBER' | 'BOOLEAN'
 
 export interface FactorDefinition {
     key: string
@@ -108,10 +108,15 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         description: 'Facility attributes and network grouping',
         factors: [
             {
+                key: 'provider_id',
+                name: 'Provider',
+                dataType: 'NUMBER',
+                description: 'Select a specific provider facility'
+            },
+            {
                 key: 'provider_type',
                 name: 'Provider Type',
                 dataType: 'STRING',
-                allowedValues: ['clinic', 'hospital', 'lab', 'radiology']
             },
             {key: 'specialty_id', name: 'Specialty ID', dataType: 'NUMBER'},
             {key: 'provider_level', name: 'Provider Level', dataType: 'STRING', allowedValues: ['A', 'B', 'C']},
@@ -243,9 +248,8 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         factors: [
             {
                 key: 'procedure_group',
-                name: 'Procedure Group',
+                name: 'Procedure Container',
                 dataType: 'STRING',
-                allowedValues: ['CONSULTATION', 'SURGERY', 'LAB', 'RAD']
             },
             {key: 'cpt_level', name: 'CPT Complexity Level', dataType: 'STRING', allowedValues: ['LOW', 'MED', 'HIGH']},
             {key: 'icd_category', name: 'ICD Category', dataType: 'STRING'},
@@ -318,6 +322,26 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
             {key: 'queue_load', name: 'Queue Load', dataType: 'NUMBER'},
             {key: 'peak_time_flag', name: 'Peak-Time Flag', dataType: 'STRING', allowedValues: ['YES', 'NO']}
         ]
+    },
+    {
+        id: 'price_type',
+        title: 'Price Type',
+        description: 'Pricing configuration and override settings',
+        factors: [
+            {
+                key: 'price_type',
+                name: 'Price Type',
+                dataType: 'STRING',
+                allowedValues: ['STANDARD', 'PREMIUM', 'BASIC', 'CUSTOM'],
+                description: 'The type of pricing model to apply'
+            },
+            {
+                key: 'allow_price_override',
+                name: 'Allow Price Override',
+                dataType: 'BOOLEAN',
+                description: 'Whether price overrides are allowed for this rule'
+            }
+        ]
     }
 ]
 
@@ -362,6 +386,10 @@ export const parseFactorValue = (factorKey: string, rawValue: string): unknown =
     if (definition?.dataType === 'NUMBER') {
         const numericValue = Number(rawValue)
         return Number.isNaN(numericValue) ? rawValue : numericValue
+    }
+
+    if (definition?.dataType === 'BOOLEAN') {
+        return rawValue === 'true'
     }
 
     const trimmed = rawValue.trim()

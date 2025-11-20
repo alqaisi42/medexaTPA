@@ -6,9 +6,12 @@ import {
     ProcedureIcdCategoryMapping,
 } from '@/types'
 
-const API_BASE_URL = process.env.API_BASE_URL?.replace(/\/$/, '') ?? ''
+const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '')
+    ?? process.env.API_BASE_URL?.replace(/\/$/, '')
+    ?? ''
 const PROCEDURE_CATEGORY_API_BASE = API_BASE_URL ? '/api/v1' : '/api'
-const ICD_SEVERITY_API_BASE = API_BASE_URL ? '/api' : '/api'
+const ICD_SEVERITY_API_BASE = API_BASE_URL ? '/api/v1' : '/api'
 
 const headers = {
     'Content-Type': 'application/json',
