@@ -94,6 +94,12 @@ export const useAppStore = create<AppState>((set) => ({
                             path: '/procedures-management',
                         },
                         {
+                            id: 'procedure-icd-mapping',
+                            label: 'Procedure ↔ ICD',
+                            icon: 'Link2',
+                            path: '/procedure-icd-mapping',
+                        },
+                        {
                             id: 'lookup-management',
                             label: 'Lookup Management',
                             icon: 'List',
