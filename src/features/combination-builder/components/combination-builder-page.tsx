@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
     Plus,
     Edit,
@@ -23,10 +23,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { CombinationFactor, CombinationRule, CombinationType, CreatePricingRulePayload, PriceListSummary, ProcedureSummary } from '@/types'
+import { CombinationFactor, CombinationRule, CombinationType, CreatePricingRulePayload, DiagnosisCategory, ICD, PriceListSummary, ProcedureSummary } from '@/types'
 import { formatCurrency, generateId } from '@/lib/utils'
 import { createPricingRule, fetchPriceLists } from '@/lib/api/pricing'
 import { searchProcedures } from '@/lib/api/procedures'
+import { fetchDiagnosisCategories } from '@/lib/api/diagnosis-categories'
+import { searchIcds } from '@/lib/api/icd'
 import {
     formatPriceListLabel,
     formatProcedureLabel,
@@ -47,11 +49,15 @@ import {
     createAdjustmentsPayload,
     createDiscountPayload,
     createPricingPayload,
+    parseConnectedIcdValue,
     parseFactorValue,
     summarizeAdjustment,
     summarizeDiscount,
     summarizeEffectiveness,
 } from './combination-builder-constants'
+
+const MIN_ICD_QUERY_LENGTH = 2
+const DIAGNOSIS_CATEGORY_PAGE_SIZE = 100
 
 export function CombinationBuilderPage() {
     const [combinations, setCombinations] = useState<CombinationRule[]>([])
@@ -102,6 +108,20 @@ export function CombinationBuilderPage() {
     const priceListDropdownRef = useRef<HTMLDivElement | null>(null)
     const procedureDropdownRef = useRef<HTMLDivElement | null>(null)
     const [activeFactorCategoryId, setActiveFactorCategoryId] = useState<string>(FACTOR_CATEGORIES[0]?.id ?? 'patient')
+    const [icdLookup, setIcdLookup] = useState<Record<string, { code: string; name: string }>>({})
+    const [icdCategoryDropdownOpen, setIcdCategoryDropdownOpen] = useState(false)
+    const [icdCategoryQuery, setIcdCategoryQuery] = useState('')
+    const [icdCategoryOptions, setIcdCategoryOptions] = useState<DiagnosisCategory[]>([])
+    const [icdCategoryFetched, setIcdCategoryFetched] = useState(false)
+    const [icdCategoryLoading, setIcdCategoryLoading] = useState(false)
+    const [icdCategoryError, setIcdCategoryError] = useState<string | null>(null)
+    const icdCategoryDropdownRef = useRef<HTMLDivElement | null>(null)
+    const [connectedIcdDropdownOpen, setConnectedIcdDropdownOpen] = useState(false)
+    const [connectedIcdQuery, setConnectedIcdQuery] = useState('')
+    const [connectedIcdOptions, setConnectedIcdOptions] = useState<ICD[]>([])
+    const [connectedIcdLoading, setConnectedIcdLoading] = useState(false)
+    const [connectedIcdError, setConnectedIcdError] = useState<string | null>(null)
+    const connectedIcdDropdownRef = useRef<HTMLDivElement | null>(null)
 
     const updateSelectedFactor = <K extends keyof typeof selectedFactors>(
         factor: K,
@@ -167,10 +187,241 @@ export function CombinationBuilderPage() {
         setProcedureSearchTerm('')
         setActiveRuleDesignerTab('general')
         setActiveFactorCategoryId(FACTOR_CATEGORIES[0]?.id ?? 'patient')
+        setIcdCategoryDropdownOpen(false)
+        setConnectedIcdDropdownOpen(false)
+        setIcdCategoryQuery('')
+        setConnectedIcdQuery('')
+        setConnectedIcdOptions([])
+        setIcdLookup({})
     }
 
     const renderFactorInputControl = (factor: FactorDefinition) => {
         const value = ruleForm.factors[factor.key] ?? ''
+
+        if (factor.key === 'icd_category') {
+            const selectedCategoryId = value && value !== SAFE_EMPTY ? value : ''
+            const selectedLabel = selectedCategoryId
+                ? icdLookup[selectedCategoryId]
+                    ? `${icdLookup[selectedCategoryId].code} — ${icdLookup[selectedCategoryId].name}`
+                    : `Category #${selectedCategoryId}`
+                : 'Search diagnosis category'
+
+            return (
+                <div className="relative" ref={icdCategoryDropdownRef}>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                        onClick={() => {
+                            setIcdCategoryDropdownOpen(prev => !prev)
+                            setConnectedIcdDropdownOpen(false)
+                        }}
+                    >
+                        <div className="flex min-w-0 flex-col text-left">
+                            <span className="truncate text-sm font-medium text-gray-900">
+                                {selectedCategoryId ? selectedLabel : 'Select diagnosis category'}
+                            </span>
+                            <span className="truncate text-xs text-gray-500">
+                                {selectedCategoryId ? 'Stored as diagnosis category' : 'Type to filter categories'}
+                            </span>
+                        </div>
+                        <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                    </Button>
+                    {selectedCategoryId && (
+                        <button
+                            type="button"
+                            aria-label="Clear ICD category"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                handleRuleFactorChange('icd_category', '')
+                            }}
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    )}
+                    {icdCategoryDropdownOpen && (
+                        <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                            <div className="border-b border-gray-100 p-3">
+                                <Input
+                                    autoFocus
+                                    placeholder="Search diagnosis categories..."
+                                    value={icdCategoryQuery}
+                                    onChange={(e) => setIcdCategoryQuery(e.target.value)}
+                                />
+                                <p className="mt-1 text-[11px] text-gray-400">
+                                    Type to filter by code or name
+                                </p>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {icdCategoryLoading ? (
+                                    <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Loading categories…
+                                    </div>
+                                ) : icdCategoryError ? (
+                                    <div className="p-4 text-sm text-red-500">{icdCategoryError}</div>
+                                ) : icdCategoryOptions.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No diagnosis categories available.</div>
+                                ) : filteredDiagnosisCategories.length === 0 ? (
+                                    <div className="p-4 text-sm text-gray-500">No categories match your search.</div>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {filteredDiagnosisCategories.map(option => (
+                                            <li key={option.id}>
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-gray-50"
+                                                    onClick={() => {
+                                                        handleRuleFactorChange('icd_category', String(option.id))
+                                                        setIcdLookup(prev => ({
+                                                            ...prev,
+                                                            [String(option.id)]: { code: option.code, name: option.nameEn },
+                                                        }))
+                                                        setIcdCategoryDropdownOpen(false)
+                                                        setIcdCategoryQuery('')
+                                                    }}
+                                                >
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {option.code} — {option.nameEn}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {option.nameAr || '—'} · {option.isActive ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )
+        }
+
+        if (factor.key === 'connected_icd_count') {
+            const selectedCodes = parseConnectedIcdValue(value)
+            const summary =
+                selectedCodes.length > 0
+                    ? `${selectedCodes.length} ICD${selectedCodes.length > 1 ? 's' : ''} selected`
+                    : 'Select related ICDs'
+
+            const toggleIcdSelection = (icd: ICD) => {
+                const currentCodes = parseConnectedIcdValue(ruleForm.factors[factor.key] ?? '')
+                const exists = currentCodes.includes(icd.code)
+                const nextCodes = exists
+                    ? currentCodes.filter(code => code !== icd.code)
+                    : [...currentCodes, icd.code]
+                handleRuleFactorChange('connected_icd_count', nextCodes.length ? JSON.stringify(nextCodes) : '')
+                setIcdLookup(prev => ({
+                    ...prev,
+                    [icd.code]: { code: icd.code, name: icd.nameEn },
+                }))
+            }
+
+            return (
+                <div className="space-y-2" ref={connectedIcdDropdownRef}>
+                    <div className="relative">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="flex w-full items-center justify-between gap-3 pr-12 text-left"
+                            onClick={() => {
+                                setConnectedIcdDropdownOpen(prev => !prev)
+                                setIcdCategoryDropdownOpen(false)
+                            }}
+                        >
+                            <div className="flex min-w-0 flex-col text-left">
+                                <span className="truncate text-sm font-medium text-gray-900">{summary}</span>
+                                <span className="truncate text-xs text-gray-500">Supports multi-select with checkboxes</span>
+                            </div>
+                            <ChevronsUpDown className="h-4 w-4 text-gray-400" />
+                        </Button>
+                        {selectedCodes.length > 0 && (
+                            <button
+                                type="button"
+                                aria-label="Clear connected ICDs"
+                                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleRuleFactorChange('connected_icd_count', '')
+                                }}
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
+                        )}
+                        {connectedIcdDropdownOpen && (
+                            <div className="absolute left-0 right-0 z-20 mt-2 rounded-lg border border-gray-200 bg-white shadow-xl">
+                                <div className="border-b border-gray-100 p-3">
+                                    <Input
+                                        autoFocus
+                                        placeholder="Search ICDs..."
+                                        value={connectedIcdQuery}
+                                        onChange={(e) => setConnectedIcdQuery(e.target.value)}
+                                    />
+                                    <p className="mt-1 text-[11px] text-gray-400">
+                                        Type at least {MIN_ICD_QUERY_LENGTH} characters, then select with checkboxes
+                                    </p>
+                                </div>
+                                <div className="max-h-64 overflow-y-auto">
+                                    {connectedIcdLoading ? (
+                                        <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            Searching ICDs…
+                                        </div>
+                                    ) : connectedIcdError ? (
+                                        <div className="p-4 text-sm text-red-500">{connectedIcdError}</div>
+                                    ) : connectedIcdQuery.trim().length >= MIN_ICD_QUERY_LENGTH && connectedIcdOptions.length === 0 ? (
+                                        <div className="p-4 text-sm text-gray-500">No ICD codes found</div>
+                                    ) : (
+                                        <ul className="divide-y divide-gray-100">
+                                            {connectedIcdOptions.map(option => {
+                                                const checked = selectedCodes.includes(option.code)
+                                                return (
+                                                    <li key={option.id}>
+                                                        <label className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-sm hover:bg-gray-50">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-1 h-4 w-4 rounded border-gray-300 text-tpa-primary focus:ring-tpa-primary"
+                                                                checked={checked}
+                                                                onChange={() => toggleIcdSelection(option)}
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span className="font-medium text-gray-900">
+                                                                    {option.code} — {option.nameEn}
+                                                                </span>
+                                                                <span className="text-xs text-gray-500">
+                                                                    {option.chapter} · {option.block}
+                                                                </span>
+                                                            </div>
+                                                        </label>
+                                                    </li>
+                                                )
+                                            })}
+                                        </ul>
+                                    )}
+                                </div>
+                                {selectedCodes.length > 0 && (
+                                    <div className="border-t border-gray-100 p-3 text-xs text-gray-500">
+                                        {selectedCodes.length} ICD{selectedCodes.length > 1 ? 's' : ''} selected
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    {selectedCodes.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {selectedCodes.map(code => (
+                                <span key={code} className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
+                                    {icdLookup[code] ? `${code} — ${icdLookup[code].name}` : code}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )
+        }
 
         if (factor.allowedValues && factor.allowedValues.length > 0) {
             return (
@@ -200,6 +451,44 @@ export function CombinationBuilderPage() {
             />
         )
     }
+
+    const formatFactorValueForDisplay = (key: string, value: string) => {
+        if (!value || value === SAFE_EMPTY) {
+            return 'Not set'
+        }
+
+        if (key === 'icd_category') {
+            const match = icdLookup[value]
+            return match ? `${match.code} — ${match.name}` : value
+        }
+
+        if (key === 'connected_icd_count') {
+            const codes = parseConnectedIcdValue(value)
+            if (codes.length === 0) {
+                return 'Not set'
+            }
+
+            return codes
+                .map(code => (icdLookup[code] ? `${code} — ${icdLookup[code].name}` : code))
+                .join(', ')
+        }
+
+        return value
+    }
+
+    const filteredDiagnosisCategories = useMemo(() => {
+        const term = icdCategoryQuery.trim().toLowerCase()
+        if (!term) {
+            return icdCategoryOptions
+        }
+
+        return icdCategoryOptions.filter(option => {
+            const code = option.code?.toLowerCase() ?? ''
+            const nameEn = option.nameEn?.toLowerCase() ?? ''
+            const nameAr = option.nameAr?.toLowerCase() ?? ''
+            return code.includes(term) || nameEn.includes(term) || nameAr.includes(term)
+        })
+    }, [icdCategoryOptions, icdCategoryQuery])
 
     const filledRuleFactors = Object.entries(ruleForm.factors).filter(([, value]) => value)
     const activeFactorCategory = FACTOR_CATEGORIES.find(category => category.id === activeFactorCategoryId) ?? FACTOR_CATEGORIES[0]
@@ -365,6 +654,91 @@ export function CombinationBuilderPage() {
     }, [procedureDropdownOpen, procedureSearchTerm])
 
     useEffect(() => {
+        if (!icdCategoryDropdownOpen) {
+            setIcdCategoryLoading(false)
+            setIcdCategoryQuery('')
+            return
+        }
+
+        if (icdCategoryFetched) {
+            return
+        }
+
+        let cancelled = false
+        setIcdCategoryLoading(true)
+        setIcdCategoryError(null)
+
+        fetchDiagnosisCategories({ page: 0, size: DIAGNOSIS_CATEGORY_PAGE_SIZE })
+            .then(response => {
+                if (cancelled) return
+                setIcdCategoryOptions(response.content ?? [])
+                setIcdCategoryFetched(true)
+            })
+            .catch(error => {
+                if (cancelled) return
+                setIcdCategoryOptions([])
+                setIcdCategoryError(
+                    error instanceof Error ? error.message : 'Unable to load diagnosis categories'
+                )
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setIcdCategoryLoading(false)
+                }
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [icdCategoryDropdownOpen, icdCategoryFetched])
+
+    useEffect(() => {
+        if (!connectedIcdDropdownOpen) {
+            setConnectedIcdLoading(false)
+            setConnectedIcdQuery('')
+            setConnectedIcdOptions([])
+            setConnectedIcdError(null)
+            return
+        }
+
+        const term = connectedIcdQuery.trim()
+        if (term.length < MIN_ICD_QUERY_LENGTH) {
+            setConnectedIcdOptions([])
+            setConnectedIcdError(null)
+            setConnectedIcdLoading(false)
+            return
+        }
+
+        let cancelled = false
+        setConnectedIcdLoading(true)
+        setConnectedIcdError(null)
+        const handler = setTimeout(() => {
+            searchIcds(term)
+                .then(results => {
+                    if (cancelled) return
+                    setConnectedIcdOptions(results)
+                })
+                .catch(error => {
+                    if (cancelled) return
+                    setConnectedIcdOptions([])
+                    setConnectedIcdError(
+                        error instanceof Error ? error.message : 'Unable to search ICDs'
+                    )
+                })
+                .finally(() => {
+                    if (!cancelled) {
+                        setConnectedIcdLoading(false)
+                    }
+                })
+        }, 300)
+
+        return () => {
+            cancelled = true
+            clearTimeout(handler)
+        }
+    }, [connectedIcdDropdownOpen, connectedIcdQuery])
+
+    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             const target = event.target as Node
 
@@ -380,6 +754,20 @@ export function CombinationBuilderPage() {
                 !procedureDropdownRef.current.contains(target)
             ) {
                 setProcedureDropdownOpen(false)
+            }
+
+            if (
+                icdCategoryDropdownRef.current &&
+                !icdCategoryDropdownRef.current.contains(target)
+            ) {
+                setIcdCategoryDropdownOpen(false)
+            }
+
+            if (
+                connectedIcdDropdownRef.current &&
+                !connectedIcdDropdownRef.current.contains(target)
+            ) {
+                setConnectedIcdDropdownOpen(false)
             }
         }
 
@@ -845,7 +1233,11 @@ export function CombinationBuilderPage() {
                             </div>
                         </div>
 
-                        <Tabs value={activeRuleDesignerTab} onValueChange={setActiveRuleDesignerTab} className="mt-6 space-y-6">
+                        <Tabs
+                            value={activeRuleDesignerTab}
+                            onValueChange={value => setActiveRuleDesignerTab(value as 'general' | 'factors' | 'financials' | 'summary')}
+                            className="mt-6 space-y-6"
+                        >
                             <TabsList className="grid w-full grid-cols-4">
                                 <TabsTrigger value="general">General</TabsTrigger>
                                 <TabsTrigger value="factors">Factors</TabsTrigger>
@@ -1257,7 +1649,7 @@ export function CombinationBuilderPage() {
                                                 )}
                                                 {filledRuleFactors.map(([type, value]) => (
                                                     <span key={type} className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
-                                                        {type}: {value}
+                                                        {type}: {formatFactorValueForDisplay(type, value)}
                                                     </span>
                                                 ))}
                                             </div>
@@ -1400,7 +1792,9 @@ export function CombinationBuilderPage() {
                                                 <TableRow key={key}>
                                                     <TableCell>{factor?.name ?? key}</TableCell>
                                                     <TableCell className="font-mono text-xs text-gray-500">{key}</TableCell>
-                                                    <TableCell className="font-medium text-gray-900">{value}</TableCell>
+                                                    <TableCell className="font-medium text-gray-900">
+                                                        {formatFactorValueForDisplay(key, value)}
+                                                    </TableCell>
                                                 </TableRow>
                                             )
                                         })}

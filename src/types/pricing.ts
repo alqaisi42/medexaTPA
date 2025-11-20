@@ -255,9 +255,15 @@ export interface PricingRuleEvaluation {
 export interface PricingCalculationResponse {
     procedureId: number
     priceListId: number
-    insuranceDegreeId: number
+    insuranceDegreeId: number | null
     date: string
-    price: number
+    finalPrice: number
+    covered: boolean
+    coverageReason: string | null
+    requiresPreapproval: boolean
+    preapprovalReason: string | null
+    deductibleApplied: number | null
+    overridePriceListId: number | null
     selectedRuleId: number | null
     selectedRule: PricingRuleSummary | null
     evaluatedRules: PricingRuleEvaluation[]
@@ -274,5 +280,6 @@ export interface PricingCalculationResponse {
         caseMatched: string
         amount: number
     }[]
+    selectionReason?: string | null
 }
 

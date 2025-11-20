@@ -5129,22 +5129,37 @@ export function ProceduresPriceListsPage() {
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <p className="text-xs uppercase text-slate-500">Final price</p>
-                                                <p className="text-2xl font-semibold text-slate-900">{formatCurrency(simulationResult.price)}</p>
+                                                <p className="text-2xl font-semibold text-slate-900">{formatCurrency(simulationResult.finalPrice)}</p>
                                             </div>
-                                            <Button type="button" variant="outline"
-                                                    onClick={() => setSimulationView('insights')}>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setSimulationView('insights')}
+                        >
                                                 <Info className="mr-2 h-4 w-4"/>
                                                 View breakdown
                                             </Button>
                                         </div>
-                                        <p className="text-sm text-slate-600">
-                                            Rule #{simulationResult.selectedRuleId ?? '—'} ·
-                                            Procedure {simulationResult.procedureId} · Price
-                                            list {simulationResult.priceListId}
-                                        </p>
+                                        <div className="space-y-1 text-sm text-slate-600">
+                                            <p>
+                                                Rule #{simulationResult.selectedRuleId ?? '—'} · Procedure {simulationResult.procedureId} · Price list {simulationResult.priceListId}
+                                            </p>
+                                            <p>
+                                                Coverage: {simulationResult.covered ? 'Covered' : 'Not covered'}
+                                                {simulationResult.coverageReason ? ` · ${simulationResult.coverageReason}` : ''}
+                                            </p>
+                                            <p>
+                                                Preapproval: {simulationResult.requiresPreapproval ? 'Required' : 'Not required'}
+                                                {simulationResult.preapprovalReason ? ` · ${simulationResult.preapprovalReason}` : ''}
+                                            </p>
+                                            {simulationResult.deductibleApplied !== null && simulationResult.deductibleApplied !== undefined ? (
+                                                <p>Deductible applied: {formatCurrency(simulationResult.deductibleApplied)}</p>
+                                            ) : null}
+                                            {simulationResult.overridePriceListId ? (
+                                                <p>Override price list: #{simulationResult.overridePriceListId}</p>
+                                            ) : null}
+                                        </div>
                                     </div>
-
-
                                 ) : null}
 
                                 {selectedRuleConditions.length > 0 && (
@@ -5181,6 +5196,30 @@ export function ProceduresPriceListsPage() {
                             >
                                 {simulationResult ? (
                                     <div className="space-y-3">
+                                        <details className="rounded-lg border border-emerald-200 bg-emerald-50 p-4" open>
+                                            <summary className="cursor-pointer font-medium text-emerald-900">Final decision</summary>
+                                            <div className="mt-3 space-y-2 text-sm text-emerald-900">
+                                                <p>Final price: {formatCurrency(simulationResult.finalPrice)}</p>
+                                                <p>
+                                                    Coverage: {simulationResult.covered ? 'Covered' : 'Not covered'}
+                                                    {simulationResult.coverageReason ? ` · ${simulationResult.coverageReason}` : ''}
+                                                </p>
+                                                <p>
+                                                    Preapproval: {simulationResult.requiresPreapproval ? 'Required' : 'Not required'}
+                                                    {simulationResult.preapprovalReason ? ` · ${simulationResult.preapprovalReason}` : ''}
+                                                </p>
+                                                {simulationResult.deductibleApplied !== null && simulationResult.deductibleApplied !== undefined ? (
+                                                    <p>Deductible applied: {formatCurrency(simulationResult.deductibleApplied)}</p>
+                                                ) : null}
+                                                {simulationResult.overridePriceListId ? (
+                                                    <p>Override price list ID: {simulationResult.overridePriceListId}</p>
+                                                ) : null}
+                                                {simulationResult.selectionReason ? (
+                                                    <p className="text-xs text-emerald-800">Reason: {simulationResult.selectionReason}</p>
+                                                ) : null}
+                                            </div>
+                                        </details>
+
                                         <details className="rounded-lg border border-slate-200 p-4" open>
                                             <summary className="cursor-pointer font-medium text-slate-800">Selected
                                                 Rule

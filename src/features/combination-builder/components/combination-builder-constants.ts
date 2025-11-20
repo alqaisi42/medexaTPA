@@ -1,5 +1,5 @@
-import { formatCurrency } from '@/lib/utils'
-import { CombinationType, CreatePricingRulePayload } from '@/types'
+import {formatCurrency} from '@/lib/utils'
+import {CombinationType, CreatePricingRulePayload} from '@/types'
 
 export type FactorDataType = 'STRING' | 'NUMBER'
 
@@ -50,21 +50,56 @@ export interface RuleFormState {
     pointValue: number
 }
 
+export const parseConnectedIcdValue = (value: string) => {
+    if (!value || value === SAFE_EMPTY) {
+        return []
+    }
+
+    try {
+        const parsed = JSON.parse(value)
+        if (Array.isArray(parsed)) {
+            return parsed.map(item => String(item))
+        }
+    } catch {
+        // fall through to string split
+    }
+
+    return value
+        .split(',')
+        .map(entry => entry.trim())
+        .filter(Boolean)
+}
+
 export const FACTOR_CATEGORIES: FactorCategory[] = [
     {
         id: 'patient',
         title: 'Patient Factors',
         description: 'Demographics and eligibility attributes',
         factors: [
-            { key: 'patient_age', name: 'Patient Age', dataType: 'NUMBER', description: 'Use ranges like 0-18' },
-            { key: 'gender', name: 'Gender', dataType: 'STRING', allowedValues: ['M', 'F'] },
-            { key: 'insurance_degree', name: 'Insurance Degree', dataType: 'STRING', allowedValues: ['GOLD', 'SILVER', 'BRONZE', 'PLATINUM'] },
-            { key: 'member_type', name: 'Member Type', dataType: 'STRING', allowedValues: ['HOF', 'DEPENDENT'] },
-            { key: 'relation_degree', name: 'Relation Degree', dataType: 'STRING', allowedValues: ['SON', 'WIFE', 'FATHER', 'MOTHER'] },
-            { key: 'chronic_status', name: 'Chronic Condition', dataType: 'STRING', allowedValues: ['YES', 'NO'] },
-            { key: 'pregnancy_status', name: 'Pregnancy Status', dataType: 'STRING', allowedValues: ['YES', 'NO'] },
-            { key: 'disability_level', name: 'Disability Level', dataType: 'STRING', allowedValues: ['NONE', 'MILD', 'SEVERE'] },
-            { key: 'loyalty_score', name: 'Loyalty Score', dataType: 'NUMBER' }
+            {key: 'patient_age', name: 'Patient Age', dataType: 'NUMBER', description: 'Use ranges like 0-18'},
+            {key: 'gender', name: 'Gender', dataType: 'STRING', allowedValues: ['M', 'F']},
+            {
+                key: 'insurance_degree',
+                name: 'Insurance Degree',
+                dataType: 'STRING',
+                allowedValues: ['GOLD', 'SILVER', 'BRONZE', 'PLATINUM']
+            },
+            {key: 'member_type', name: 'Member Type', dataType: 'STRING', allowedValues: ['HOF', 'DEPENDENT']},
+            {
+                key: 'relation_degree',
+                name: 'Relation Degree',
+                dataType: 'STRING',
+                allowedValues: ['SON', 'WIFE', 'FATHER', 'MOTHER']
+            },
+            {key: 'chronic_status', name: 'Chronic Condition', dataType: 'STRING', allowedValues: ['YES', 'NO']},
+            {key: 'pregnancy_status', name: 'Pregnancy Status', dataType: 'STRING', allowedValues: ['YES', 'NO']},
+            {
+                key: 'disability_level',
+                name: 'Disability Level',
+                dataType: 'STRING',
+                allowedValues: ['NONE', 'MILD', 'SEVERE']
+            },
+            {key: 'loyalty_score', name: 'Loyalty Score', dataType: 'NUMBER'}
         ]
     },
     {
@@ -72,13 +107,33 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Provider Factors',
         description: 'Facility attributes and network grouping',
         factors: [
-            { key: 'provider_type', name: 'Provider Type', dataType: 'STRING', allowedValues: ['clinic', 'hospital', 'lab', 'radiology'] },
-            { key: 'specialty_id', name: 'Specialty ID', dataType: 'NUMBER' },
-            { key: 'provider_level', name: 'Provider Level', dataType: 'STRING', allowedValues: ['A', 'B', 'C'] },
-            { key: 'provider_region', name: 'Provider Region', dataType: 'STRING', allowedValues: ['AMMAN', 'IRBID', 'AQABA'] },
-            { key: 'provider_network_tier', name: 'Provider Network Tier', dataType: 'STRING', allowedValues: ['IN_NETWORK', 'OUT_NETWORK'] },
-            { key: 'facility_experience_years', name: 'Facility Experience (Years)', dataType: 'NUMBER' },
-            { key: 'facility_licensing_grade', name: 'Facility Licensing Grade', dataType: 'STRING', allowedValues: ['GRADE_1', 'GRADE_2'] }
+            {
+                key: 'provider_type',
+                name: 'Provider Type',
+                dataType: 'STRING',
+                allowedValues: ['clinic', 'hospital', 'lab', 'radiology']
+            },
+            {key: 'specialty_id', name: 'Specialty ID', dataType: 'NUMBER'},
+            {key: 'provider_level', name: 'Provider Level', dataType: 'STRING', allowedValues: ['A', 'B', 'C']},
+            {
+                key: 'provider_region',
+                name: 'Provider Region',
+                dataType: 'STRING',
+                allowedValues: ['AMMAN', 'IRBID', 'AQABA']
+            },
+            {
+                key: 'provider_network_tier',
+                name: 'Provider Network Tier',
+                dataType: 'STRING',
+                allowedValues: ['IN_NETWORK', 'OUT_NETWORK']
+            },
+            {key: 'facility_experience_years', name: 'Facility Experience (Years)', dataType: 'NUMBER'},
+            {
+                key: 'facility_licensing_grade',
+                name: 'Facility Licensing Grade',
+                dataType: 'STRING',
+                allowedValues: ['GRADE_1', 'GRADE_2']
+            }
         ]
     },
     {
@@ -86,11 +141,16 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Doctor Factors',
         description: 'Physician experience and profile',
         factors: [
-            { key: 'doctor_experience_years', name: 'Doctor Experience Years', dataType: 'NUMBER' },
-            { key: 'doctor_title', name: 'Doctor Title', dataType: 'STRING', allowedValues: ['CONSULTANT', 'SPECIALIST', 'GP'] },
-            { key: 'doctor_gender', name: 'Doctor Gender', dataType: 'STRING', allowedValues: ['M', 'F'] },
-            { key: 'doctor_rating', name: 'Doctor Rating', dataType: 'NUMBER' },
-            { key: 'doctor_shift', name: 'Doctor Shift', dataType: 'STRING', allowedValues: ['DAY', 'NIGHT'] }
+            {key: 'doctor_experience_years', name: 'Doctor Experience Years', dataType: 'NUMBER'},
+            {
+                key: 'doctor_title',
+                name: 'Doctor Title',
+                dataType: 'STRING',
+                allowedValues: ['CONSULTANT', 'SPECIALIST', 'GP']
+            },
+            {key: 'doctor_gender', name: 'Doctor Gender', dataType: 'STRING', allowedValues: ['M', 'F']},
+            {key: 'doctor_rating', name: 'Doctor Rating', dataType: 'NUMBER'},
+            {key: 'doctor_shift', name: 'Doctor Shift', dataType: 'STRING', allowedValues: ['DAY', 'NIGHT']}
         ]
     },
     {
@@ -98,11 +158,16 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Visit Factors',
         description: 'Visit metadata and channels',
         factors: [
-            { key: 'visit_time', name: 'Visit Time', dataType: 'STRING', allowedValues: ['DAY', 'NIGHT'] },
-            { key: 'visit_day', name: 'Visit Day', dataType: 'STRING', allowedValues: ['WEEKDAY', 'WEEKEND', 'HOLIDAY'] },
-            { key: 'visit_type', name: 'Visit Type', dataType: 'STRING', allowedValues: ['NEW', 'FOLLOWUP'] },
-            { key: 'visit_channel', name: 'Visit Channel', dataType: 'STRING', allowedValues: ['WALK_IN', 'ONLINE', 'PHONE'] },
-            { key: 'visit_duration', name: 'Visit Duration (minutes)', dataType: 'NUMBER' }
+            {key: 'visit_time', name: 'Visit Time', dataType: 'STRING', allowedValues: ['DAY', 'NIGHT']},
+            {key: 'visit_day', name: 'Visit Day', dataType: 'STRING', allowedValues: ['WEEKDAY', 'WEEKEND', 'HOLIDAY']},
+            {key: 'visit_type', name: 'Visit Type', dataType: 'STRING', allowedValues: ['NEW', 'FOLLOWUP']},
+            {
+                key: 'visit_channel',
+                name: 'Visit Channel',
+                dataType: 'STRING',
+                allowedValues: ['WALK_IN', 'ONLINE', 'PHONE']
+            },
+            {key: 'visit_duration', name: 'Visit Duration (minutes)', dataType: 'NUMBER'}
         ]
     },
     {
@@ -110,12 +175,65 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Policy & Insurance',
         description: 'Coverage, co-pay and deductibles',
         factors: [
-            { key: 'policy_type', name: 'Policy Type', dataType: 'STRING', allowedValues: ['VIP', 'CORPORATE', 'INDIVIDUAL'] },
-            { key: 'coverage_type', name: 'Coverage Type', dataType: 'STRING', allowedValues: ['FULL', 'PARTIAL', 'EXCLUDED'] },
-            { key: 'co_pay_percent', name: 'Co-Pay Percentage', dataType: 'NUMBER' },
-            { key: 'has_preapproval', name: 'Preapproval Required', dataType: 'STRING', allowedValues: ['YES', 'NO'] },
-            { key: 'policy_age_limit', name: 'Policy Age Limit', dataType: 'NUMBER' },
-            { key: 'deductible_amount', name: 'Deductible Amount', dataType: 'NUMBER' }
+            {
+                key: 'policy_type',
+                name: 'Policy Type',
+                dataType: 'STRING',
+                allowedValues: [
+                    'INDIVIDUAL',
+                    'FAMILY',
+                    'CORPORATE',
+                    'VIP',
+                    'STUDENT',
+                    'RETIRED',
+                    'GOVERNMENT',
+                    'MILITARY',
+                    'SME',
+                    'INTERNATIONAL'
+                ]
+            },
+            {
+                key: 'coverage_type',
+                name: 'Coverage Type',
+                dataType: 'STRING',
+                allowedValues: [
+                    'FULL',
+                    'PARTIAL',
+                    'EXCLUDED',
+                    'OUT_OF_NETWORK',
+                    'IN_NETWORK',
+                    'EMERGENCY_ONLY',
+                    'LIMITED',
+                    'INTERNATIONAL',
+                    'MATERNITY_ONLY'
+                ]
+            },
+            {
+                key: 'co_pay_percent',
+                name: 'Co-Pay Percentage',
+                dataType: 'NUMBER'
+            },
+            {
+                key: 'has_preapproval',
+                name: 'Preapproval Required',
+                dataType: 'STRING',
+                allowedValues: [
+                    'YES',
+                    'NO',
+                    'SOMETIMES',
+                    'AUTO_APPROVED'
+                ]
+            },
+            {
+                key: 'policy_age_limit',
+                name: 'Policy Age Limit',
+                dataType: 'NUMBER'
+            },
+            {
+                key: 'deductible_amount',
+                name: 'Deductible Amount',
+                dataType: 'NUMBER'
+            }
         ]
     },
     {
@@ -123,11 +241,21 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Procedure / CPT / ICD',
         description: 'Clinical grouping, severity and complexity',
         factors: [
-            { key: 'procedure_group', name: 'Procedure Group', dataType: 'STRING', allowedValues: ['CONSULTATION', 'SURGERY', 'LAB', 'RAD'] },
-            { key: 'cpt_level', name: 'CPT Complexity Level', dataType: 'STRING', allowedValues: ['LOW', 'MED', 'HIGH'] },
-            { key: 'icd_category', name: 'ICD Category', dataType: 'STRING' },
-            { key: 'connected_icd_count', name: 'Connected ICD Count', dataType: 'NUMBER' },
-            { key: 'severity_level', name: 'Severity Level', dataType: 'STRING', allowedValues: ['NORMAL', 'MODERATE', 'CRITICAL'] }
+            {
+                key: 'procedure_group',
+                name: 'Procedure Group',
+                dataType: 'STRING',
+                allowedValues: ['CONSULTATION', 'SURGERY', 'LAB', 'RAD']
+            },
+            {key: 'cpt_level', name: 'CPT Complexity Level', dataType: 'STRING', allowedValues: ['LOW', 'MED', 'HIGH']},
+            {key: 'icd_category', name: 'ICD Category', dataType: 'STRING'},
+            {key: 'connected_icd_count', name: 'Connected ICD Count', dataType: 'NUMBER'},
+            {
+                key: 'severity_level',
+                name: 'Severity Level',
+                dataType: 'STRING',
+                allowedValues: ['NORMAL', 'MODERATE', 'CRITICAL']
+            }
         ]
     },
     {
@@ -135,9 +263,9 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Location',
         description: 'Geography and zoning',
         factors: [
-            { key: 'city', name: 'City', dataType: 'STRING' },
-            { key: 'governorate', name: 'Governorate', dataType: 'STRING' },
-            { key: 'zone', name: 'Zone', dataType: 'STRING', allowedValues: ['URBAN', 'RURAL'] }
+            {key: 'city', name: 'City', dataType: 'STRING'},
+            {key: 'governorate', name: 'Governorate', dataType: 'STRING'},
+            {key: 'zone', name: 'Zone', dataType: 'STRING', allowedValues: ['URBAN', 'RURAL']}
         ]
     },
     {
@@ -145,9 +273,19 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Time Factors',
         description: 'Calendar and seasonal impact',
         factors: [
-            { key: 'day_of_week', name: 'Day of Week', dataType: 'STRING', allowedValues: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] },
-            { key: 'season', name: 'Season', dataType: 'STRING', allowedValues: ['WINTER', 'SPRING', 'SUMMER', 'AUTUMN'] },
-            { key: 'holiday_flag', name: 'Holiday Flag', dataType: 'STRING', allowedValues: ['YES', 'NO'] }
+            {
+                key: 'day_of_week',
+                name: 'Day of Week',
+                dataType: 'STRING',
+                allowedValues: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+            },
+            {
+                key: 'season',
+                name: 'Season',
+                dataType: 'STRING',
+                allowedValues: ['WINTER', 'SPRING', 'SUMMER', 'AUTUMN']
+            },
+            {key: 'holiday_flag', name: 'Holiday Flag', dataType: 'STRING', allowedValues: ['YES', 'NO']}
         ]
     },
     {
@@ -155,10 +293,10 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Claim Factors',
         description: 'Utilization and financial history',
         factors: [
-            { key: 'claim_type', name: 'Claim Type', dataType: 'STRING', allowedValues: ['OPD', 'ER', 'IPD'] },
-            { key: 'claim_amount', name: 'Claim Amount', dataType: 'NUMBER' },
-            { key: 'claim_frequency', name: 'Claim Frequency', dataType: 'NUMBER' },
-            { key: 'claim_previous_rejections', name: 'Previous Rejections', dataType: 'NUMBER' }
+            {key: 'claim_type', name: 'Claim Type', dataType: 'STRING', allowedValues: ['OPD', 'ER', 'IPD']},
+            {key: 'claim_amount', name: 'Claim Amount', dataType: 'NUMBER'},
+            {key: 'claim_frequency', name: 'Claim Frequency', dataType: 'NUMBER'},
+            {key: 'claim_previous_rejections', name: 'Previous Rejections', dataType: 'NUMBER'}
         ]
     },
     {
@@ -166,14 +304,19 @@ export const FACTOR_CATEGORIES: FactorCategory[] = [
         title: 'Advanced & AI Factors',
         description: 'Future-ready risk scores and utilization signals',
         factors: [
-            { key: 'ai_risk_score', name: 'AI Risk Score', dataType: 'NUMBER' },
-            { key: 'doctor_ai_score', name: 'Doctor AI Score', dataType: 'NUMBER' },
-            { key: 'patient_risk_level', name: 'Patient Risk Level', dataType: 'STRING', allowedValues: ['LOW', 'MED', 'HIGH'] },
-            { key: 'utilization_score', name: 'Utilization Score', dataType: 'NUMBER' },
-            { key: 'fraud_score', name: 'Fraud Score', dataType: 'NUMBER' },
-            { key: 'travel_distance_km', name: 'Distance to Provider (KM)', dataType: 'NUMBER' },
-            { key: 'queue_load', name: 'Queue Load', dataType: 'NUMBER' },
-            { key: 'peak_time_flag', name: 'Peak-Time Flag', dataType: 'STRING', allowedValues: ['YES', 'NO'] }
+            {key: 'ai_risk_score', name: 'AI Risk Score', dataType: 'NUMBER'},
+            {key: 'doctor_ai_score', name: 'Doctor AI Score', dataType: 'NUMBER'},
+            {
+                key: 'patient_risk_level',
+                name: 'Patient Risk Level',
+                dataType: 'STRING',
+                allowedValues: ['LOW', 'MED', 'HIGH']
+            },
+            {key: 'utilization_score', name: 'Utilization Score', dataType: 'NUMBER'},
+            {key: 'fraud_score', name: 'Fraud Score', dataType: 'NUMBER'},
+            {key: 'travel_distance_km', name: 'Distance to Provider (KM)', dataType: 'NUMBER'},
+            {key: 'queue_load', name: 'Queue Load', dataType: 'NUMBER'},
+            {key: 'peak_time_flag', name: 'Peak-Time Flag', dataType: 'STRING', allowedValues: ['YES', 'NO']}
         ]
     }
 ]
@@ -295,7 +438,7 @@ export const createAdjustmentsPayload = (ruleForm: RuleFormState): CreatePricing
             factorKey: 'GLOBAL',
             cases: {
                 default: -Math.abs(ruleForm.discountValue),
-                ...(ruleForm.discountCap ? { cap: ruleForm.discountCap } : {}),
+                ...(ruleForm.discountCap ? {cap: ruleForm.discountCap} : {}),
             },
         })
     }
@@ -310,8 +453,8 @@ export const createAdjustmentsPayload = (ruleForm: RuleFormState): CreatePricing
             factorKey: 'GLOBAL',
             percent: ruleForm.adjustmentUnit === 'PERCENT' ? signedValue : undefined,
             cases: ruleForm.adjustmentUnit === 'AMOUNT'
-                ? { default: signedValue }
-                : { default: 'GLOBAL' },
+                ? {default: signedValue}
+                : {default: 'GLOBAL'},
         })
     }
 
@@ -322,7 +465,14 @@ export const buildConditions = (ruleForm: RuleFormState, factorEntries: [string,
     return factorEntries.map(([factor, value]) => ({
         factor,
         operator: 'EQUALS' as const,
-        value: parseFactorValue(factor, value),
+        value: factor === 'connected_icd_count'
+            ? parseConnectedIcdValue(value).length
+            : factor === 'icd_category'
+                ? (() => {
+                    const id = Number(value)
+                    return Number.isFinite(id) ? id : parseFactorValue(factor, value)
+                })()
+                : parseFactorValue(factor, value),
     }))
 }
 
