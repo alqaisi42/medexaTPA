@@ -141,7 +141,14 @@ export const useAppStore = create<AppState>((set) => ({
                     id: 'medical-providers',
                     label: 'Medical Providers Info.',
                     icon: 'Building2',
-                    children: [],
+                    children: [
+                        {
+                            id: 'providers',
+                            label: 'Providers & Branches',
+                            icon: 'Building2',
+                            path: '/medical-providers',
+                        },
+                    ],
                 },
                 {
                     id: 'subscribers',

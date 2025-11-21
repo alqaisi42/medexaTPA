@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { forwardProvidersRequest } from '../../_utils'
 
-export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
-    const { id } = await context.params
+export async function GET(_: NextRequest, context: { params: { id: string } }) {
+    const { id } = context.params
     try {
         return await forwardProvidersRequest(`/api/v1/providers/branches/${id}`)
     } catch (error) {
@@ -14,8 +14,8 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
     }
 }
 
-export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-    const { id } = await context.params
+export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+    const { id } = context.params
     try {
         const payload = await request.json()
         return await forwardProvidersRequest(`/api/v1/providers/branches/${id}`, {
@@ -32,8 +32,8 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     }
 }
 
-export async function DELETE(_: NextRequest, context: { params: Promise<{ id: string }> }) {
-    const { id } = await context.params
+export async function DELETE(_: NextRequest, context: { params: { id: string } }) {
+    const { id } = context.params
     try {
         return await forwardProvidersRequest(`/api/v1/providers/branches/${id}`, { method: 'DELETE' })
     } catch (error) {
