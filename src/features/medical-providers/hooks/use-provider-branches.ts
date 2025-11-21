@@ -7,13 +7,19 @@ import {
     updateProviderBranch,
 } from '../services/provider-service'
 
+interface BranchFilters {
+    name?: string
+}
+
 interface UseProviderBranchesResult {
     branches: ProviderBranch[]
     pagination: PaginatedResponse<ProviderBranch> | null
     isLoading: boolean
     isSaving: boolean
     error: string | null
+    filters: BranchFilters
     load: (providerId: number, page?: number, size?: number) => Promise<void>
+    setFilters: (filters: BranchFilters) => void
     create: (payload: ProviderBranchPayload) => Promise<void>
     update: (id: number, payload: ProviderBranchPayload) => Promise<void>
     remove: (id: number) => Promise<void>
@@ -27,6 +33,7 @@ export function useProviderBranches(initialPageSize = 10): UseProviderBranchesRe
     const [isSaving, setIsSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [providerId, setProviderId] = useState<number | null>(null)
+    const [filters, setFiltersState] = useState<BranchFilters>({})
 
     const load = useCallback(
         async (provider: number, page = 0, size = initialPageSize) => {
@@ -34,7 +41,7 @@ export function useProviderBranches(initialPageSize = 10): UseProviderBranchesRe
             setError(null)
             setProviderId(provider)
             try {
-                const result = await listProviderBranches(provider, { page, size })
+                const result = await listProviderBranches(provider, { page, size, name: filters.name })
                 setBranches(result.content)
                 setPagination(result)
             } catch (err) {
@@ -46,7 +53,7 @@ export function useProviderBranches(initialPageSize = 10): UseProviderBranchesRe
                 setIsLoading(false)
             }
         },
-        [initialPageSize],
+        [filters.name, initialPageSize],
     )
 
     const create = useCallback(
@@ -112,7 +119,11 @@ export function useProviderBranches(initialPageSize = 10): UseProviderBranchesRe
         [load, providerId, pagination?.pageNumber, pagination?.pageSize, initialPageSize],
     )
 
+    const setFilters = useCallback((next: BranchFilters) => {
+        setFiltersState(next)
+    }, [])
+
     const clearError = useCallback(() => setError(null), [])
 
-    return { branches, pagination, isLoading, isSaving, error, load, create, update, remove, clearError }
+    return { branches, pagination, isLoading, isSaving, error, filters, load, setFilters, create, update, remove, clearError }
 }

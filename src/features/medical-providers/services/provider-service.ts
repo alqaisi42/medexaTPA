@@ -218,12 +218,13 @@ export async function deleteProvider(id: number): Promise<void> {
 
 export async function listProviderBranches(
     providerId: number,
-    params: { page?: number; size?: number } = {},
+    params: { page?: number; size?: number; name?: string } = {},
 ): Promise<PaginatedResponse<ProviderBranch>> {
     const searchParams = buildSearchParams({
         providerId,
         page: params.page ?? 0,
         size: params.size ?? 10,
+        name: params.name,
     })
 
     const response = await fetch(`${API_PREFIX}/branches?${searchParams.toString()}`, { cache: 'no-store' })
