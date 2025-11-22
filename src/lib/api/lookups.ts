@@ -1,4 +1,4 @@
-import {ProviderType, Specialty} from '@/types'
+import { Department, DoctorSummary, ProviderType, Specialty } from '@/types'
 
 const API_BASE_URL = process.env.API_BASE_URL?.replace(/\/$/, '') ?? ''
 
@@ -60,6 +60,28 @@ function normalizeProviderType(record: Record<string, unknown>): ProviderType {
     }
 }
 
+function normalizeDepartment(record: Record<string, unknown>): Department {
+    return {
+        id: Number(record.id ?? 0),
+        code: String(record.code ?? ''),
+        nameEn: String(record.nameEn ?? record.name_en ?? ''),
+        nameAr: String(record.nameAr ?? record.name_ar ?? ''),
+        isActive: Boolean(record.isActive ?? true),
+    }
+}
+
+function normalizeDoctor(record: Record<string, unknown>): DoctorSummary {
+    return {
+        id: Number(record.id ?? 0),
+        code: String(record.code ?? ''),
+        nameEn: String(record.nameEn ?? record.name_en ?? ''),
+        nameAr: String(record.nameAr ?? record.name_ar ?? ''),
+        mainSpecialtyId: record.mainSpecialtyId ? Number(record.mainSpecialtyId) : null,
+        mainSpecialtyNameEn: (record.mainSpecialtyNameEn as string) ?? (record.mainSpecialtyName as string) ?? null,
+        isActive: Boolean(record.isActive ?? true),
+    }
+}
+
 async function fetchLookup<T>(path: string, normalize: (record: Record<string, unknown>) => T, errorMessage: string): Promise<T[]> {
     const response = await fetch(buildUrl(path), {cache: 'no-store'})
 
@@ -85,4 +107,12 @@ export async function fetchProviderTypesLookup(): Promise<ProviderType[]> {
         normalizeProviderType,
         'Unable to load provider types',
     )
+}
+
+export async function fetchDepartmentsLookup(): Promise<Department[]> {
+    return fetchLookup('/api/master/departments', normalizeDepartment, 'Unable to load departments')
+}
+
+export async function fetchDoctorsLookup(): Promise<DoctorSummary[]> {
+    return fetchLookup('/api/master/doctors', normalizeDoctor, 'Unable to load doctors')
 }

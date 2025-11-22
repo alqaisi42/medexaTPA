@@ -2,6 +2,11 @@ import {
     PaginatedResponse,
     ProviderBranch,
     ProviderBranchPayload,
+    ProviderDepartment,
+    ProviderDepartmentPayload,
+    ProviderDoctor,
+    ProviderDoctorPayload,
+    ProviderDoctorUpdatePayload,
     ProviderPayload,
     ProviderRecord,
     ProviderStatus,
@@ -95,6 +100,34 @@ function normalizeBranch(raw: Record<string, unknown>): ProviderBranch {
         workingHours: normalizedWorkingHours,
         isMain: Boolean(raw['isMain']),
         isActive: typeof raw['isActive'] === 'boolean' ? raw['isActive'] : true,
+    }
+}
+
+function normalizeDepartment(raw: Record<string, unknown>): ProviderDepartment {
+    return {
+        id: toNumber(raw['id']),
+        providerId: toNumber(raw['providerId']),
+        departmentId: toNumber(raw['departmentId']),
+        departmentCode: typeof raw['departmentCode'] === 'string' ? raw['departmentCode'] : '',
+        nameEn: typeof raw['nameEn'] === 'string' ? raw['nameEn'] : '',
+        nameAr: typeof raw['nameAr'] === 'string' ? raw['nameAr'] : '',
+        isActive: typeof raw['isActive'] === 'boolean' ? raw['isActive'] : true,
+    }
+}
+
+function normalizeDoctor(raw: Record<string, unknown>): ProviderDoctor {
+    return {
+        id: toNumber(raw['id']),
+        providerId: toNumber(raw['providerId']),
+        doctorId: toNumber(raw['doctorId']),
+        doctorCode: typeof raw['doctorCode'] === 'string' ? raw['doctorCode'] : '',
+        doctorNameEn: typeof raw['doctorNameEn'] === 'string' ? raw['doctorNameEn'] : '',
+        doctorNameAr: typeof raw['doctorNameAr'] === 'string' ? raw['doctorNameAr'] : '',
+        mainSpecialtyId: raw['mainSpecialtyId'] !== undefined ? toNumber(raw['mainSpecialtyId']) : null,
+        mainSpecialtyNameEn: typeof raw['mainSpecialtyNameEn'] === 'string' ? raw['mainSpecialtyNameEn'] : null,
+        isActive: typeof raw['isActive'] === 'boolean' ? raw['isActive'] : true,
+        joinType: typeof raw['joinType'] === 'string' ? raw['joinType'] : null,
+        notes: typeof raw['notes'] === 'string' ? raw['notes'] : null,
     }
 }
 
@@ -286,5 +319,121 @@ export async function deleteProviderBranch(id: number): Promise<void> {
     const response = await fetch(`${API_PREFIX}/branches/${id}`, { method: 'DELETE' })
     if (!response.ok) {
         throw new Error(await extractError(response, 'Unable to delete provider branch'))
+    }
+}
+
+export async function listProviderDepartments(
+    providerId: number,
+    params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<ProviderDepartment>> {
+    const searchParams = buildSearchParams({
+        providerId,
+        page: params.page ?? 0,
+        size: params.size ?? 10,
+    })
+
+    const response = await fetch(`${API_PREFIX}/departments?${searchParams.toString()}`, { cache: 'no-store' })
+    const payload = await handleJson(response, 'Unable to load provider departments')
+
+    const content =
+        Array.isArray((payload as Record<string, unknown>)?.['content'])
+            ? ((payload as Record<string, unknown>).content as unknown[])
+            : []
+
+    const departments = content
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+        .map((item) => normalizeDepartment(item))
+
+    const pageable = ensureRecord((payload as Record<string, unknown>)?.['pageable'])
+
+    return {
+        content: departments,
+        totalElements: toNumber((payload as Record<string, unknown>)?.['totalElements']),
+        totalPages: toNumber((payload as Record<string, unknown>)?.['totalPages']) || 0,
+        pageNumber: toNumber(pageable['pageNumber']),
+        pageSize: toNumber(pageable['pageSize']) || params.size || 10,
+    }
+}
+
+export async function assignProviderDepartment(payload: ProviderDepartmentPayload): Promise<ProviderDepartment> {
+    const response = await fetch(`${API_PREFIX}/departments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    })
+
+    const body = ensureRecord(await handleJson(response, 'Unable to assign department to provider'))
+    return normalizeDepartment(body)
+}
+
+export async function deleteProviderDepartment(id: number): Promise<void> {
+    const response = await fetch(`${API_PREFIX}/departments/${id}`, { method: 'DELETE' })
+    if (!response.ok) {
+        throw new Error(await extractError(response, 'Unable to delete provider department'))
+    }
+}
+
+export async function listProviderDoctors(
+    providerId: number,
+    params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<ProviderDoctor>> {
+    const searchParams = buildSearchParams({
+        providerId,
+        page: params.page ?? 0,
+        size: params.size ?? 10,
+    })
+
+    const response = await fetch(`${API_PREFIX}/doctors?${searchParams.toString()}`, { cache: 'no-store' })
+    const payload = await handleJson(response, 'Unable to load provider doctors')
+
+    const content =
+        Array.isArray((payload as Record<string, unknown>)?.['content'])
+            ? ((payload as Record<string, unknown>).content as unknown[])
+            : []
+
+    const doctors = content
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+        .map((item) => normalizeDoctor(item))
+
+    const pageable = ensureRecord((payload as Record<string, unknown>)?.['pageable'])
+
+    return {
+        content: doctors,
+        totalElements: toNumber((payload as Record<string, unknown>)?.['totalElements']),
+        totalPages: toNumber((payload as Record<string, unknown>)?.['totalPages']) || 0,
+        pageNumber: toNumber(pageable['pageNumber']),
+        pageSize: toNumber(pageable['pageSize']) || params.size || 10,
+    }
+}
+
+export async function assignProviderDoctor(payload: ProviderDoctorPayload): Promise<ProviderDoctor> {
+    const response = await fetch(`${API_PREFIX}/doctors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    })
+
+    const body = ensureRecord(await handleJson(response, 'Unable to assign doctor to provider'))
+    return normalizeDoctor(body)
+}
+
+export async function updateProviderDoctor(
+    id: number,
+    payload: ProviderDoctorUpdatePayload,
+): Promise<ProviderDoctor> {
+    const response = await fetch(`${API_PREFIX}/doctors/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    })
+
+    const body = ensureRecord(await handleJson(response, 'Unable to update provider doctor'))
+    return normalizeDoctor(body)
+}
+
+export async function deleteProviderDoctor(id: number): Promise<void> {
+    const response = await fetch(`${API_PREFIX}/doctors/${id}`, { method: 'DELETE' })
+    if (!response.ok) {
+        throw new Error(await extractError(response, 'Unable to delete provider doctor'))
     }
 }

@@ -90,3 +90,45 @@ export interface PaginatedResponse<T> {
     pageNumber: number
     pageSize: number
 }
+
+export interface ProviderDepartment {
+    id: number
+    providerId: number
+    departmentId: number
+    departmentCode: string
+    nameEn: string
+    nameAr: string
+    isActive: boolean
+}
+
+export interface ProviderDepartmentPayload {
+    providerId?: number
+    departmentId: number
+}
+
+export interface ProviderDoctor {
+    id: number
+    providerId: number
+    doctorId: number
+    doctorCode: string
+    doctorNameEn: string
+    doctorNameAr: string
+    mainSpecialtyId: number | null
+    mainSpecialtyNameEn: string | null
+    isActive: boolean
+    joinType: string | null
+    notes: string | null
+}
+
+export interface ProviderDoctorPayload {
+    providerId?: number
+    doctorId: number
+    joinType?: string | null
+    notes?: string | null
+}
+
+export interface ProviderDoctorUpdatePayload {
+    isActive?: boolean
+    joinType?: string | null
+    notes?: string | null
+}

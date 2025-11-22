@@ -135,8 +135,8 @@ export function MedicalProvidersPage() {
         }
     }
 
-    const handleOpenBranches = (provider: ProviderRecord) => {
-        router.push(`/medical-providers/${provider.id}/branches`)
+    const handleOpenDetails = (provider: ProviderRecord) => {
+        router.push(`/medical-providers/${provider.id}`)
     }
 
     return (
@@ -255,8 +255,8 @@ export function MedicalProvidersPage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center justify-center gap-2 flex-wrap">
-                                                <Button variant="outline" size="sm" onClick={() => handleOpenBranches(provider)}>
-                                                    <Building2 className="h-4 w-4 mr-2" /> Branches
+                                                <Button variant="outline" size="sm" onClick={() => handleOpenDetails(provider)}>
+                                                    <Building2 className="h-4 w-4 mr-2" /> Details
                                                 </Button>
                                                 <Button variant="outline" size="sm" onClick={() => openEditProvider(provider)}>
                                                     <Pencil className="h-4 w-4 mr-2" /> Edit
