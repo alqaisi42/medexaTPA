@@ -132,3 +132,39 @@ export interface ProviderDoctorUpdatePayload {
     joinType?: string | null
     notes?: string | null
 }
+
+export interface ProviderCapabilities {
+    providerId: number
+    hasEmergency: boolean
+    hasIcu: boolean
+    hasNicU: boolean
+    hasOrRooms: boolean
+    hasLab: boolean
+    hasRadiology: boolean
+    hasMri: boolean
+    hasCt: boolean
+    hasXray: boolean
+    hasUltrasound: boolean
+    canPrescribeMedication: boolean
+    canAdmitPatients: boolean
+    requiresReferral: boolean
+    notes: string | null
+}
+
+export interface ProviderCapabilitiesPayload {
+    providerId: number
+    hasEmergency: boolean
+    hasIcu: boolean
+    hasNicU: boolean
+    hasOrRooms: boolean
+    hasLab: boolean
+    hasRadiology: boolean
+    hasMri: boolean
+    hasCt: boolean
+    hasXray: boolean
+    hasUltrasound: boolean
+    canPrescribeMedication: boolean
+    canAdmitPatients: boolean
+    requiresReferral: boolean
+    notes?: string | null
+}

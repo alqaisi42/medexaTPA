@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Building2, ClipboardList, Loader2, Stethoscope } from 'lucide-react'
+import { ArrowLeft, Building2, ClipboardList, Loader2, Settings, Stethoscope } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProviderDepartmentsTab } from './provider-departments-tab'
 import { ProviderDoctorsTab } from './provider-doctors-tab'
+import { ProviderBranchesPageClient } from './provider-branches-page-client'
+import { ProviderCapabilitiesTab } from './provider-capabilities-tab'
 import { getProvider } from '../services/provider-service'
 import { ProviderRecord } from '@/types/provider'
 
@@ -22,6 +24,10 @@ export function ProviderDetailsPage({ providerId }: ProviderDetailsPageProps) {
 
     useEffect(() => {
         const loadProvider = async () => {
+            if (!providerId || isNaN(providerId) || providerId <= 0) {
+                setError('Invalid provider ID')
+                return
+            }
             setIsLoading(true)
             setError(null)
             try {
@@ -35,9 +41,7 @@ export function ProviderDetailsPage({ providerId }: ProviderDetailsPageProps) {
             }
         }
 
-        if (providerId) {
-            void loadProvider()
-        }
+        void loadProvider()
     }, [providerId])
 
     return (
@@ -107,15 +111,18 @@ export function ProviderDetailsPage({ providerId }: ProviderDetailsPageProps) {
             </div>
 
             <Tabs defaultValue="departments" className="bg-white rounded-lg shadow border border-gray-100">
-                <TabsList className="grid grid-cols-2 md:grid-cols-3">
+                <TabsList className="grid grid-cols-2 md:grid-cols-4">
                     <TabsTrigger value="departments" className="flex items-center gap-2">
                         <ClipboardList className="h-4 w-4" /> Departments
                     </TabsTrigger>
                     <TabsTrigger value="doctors" className="flex items-center gap-2">
-                        <Stethoscope className="h-4 w-4" /> Doctors
+                        <Stethoscope className="h-4 w-4" /> Assigned Doctors
                     </TabsTrigger>
-                    <TabsTrigger value="branches" className="flex items-center gap-2" disabled>
-                        <Building2 className="h-4 w-4" /> Branches (coming soon)
+                    <TabsTrigger value="branches" className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4" /> Branches
+                    </TabsTrigger>
+                    <TabsTrigger value="capabilities" className="flex items-center gap-2">
+                        <Settings className="h-4 w-4" /> Capabilities
                     </TabsTrigger>
                 </TabsList>
                 <div className="p-4">
@@ -126,7 +133,10 @@ export function ProviderDetailsPage({ providerId }: ProviderDetailsPageProps) {
                         <ProviderDoctorsTab providerId={providerId} />
                     </TabsContent>
                     <TabsContent value="branches">
-                        <p className="text-sm text-gray-600">Branch management will be available in this tab.</p>
+                        <ProviderBranchesPageClient providerId={providerId} embedded={true} />
+                    </TabsContent>
+                    <TabsContent value="capabilities">
+                        <ProviderCapabilitiesTab providerId={providerId} />
                     </TabsContent>
                 </div>
             </Tabs>

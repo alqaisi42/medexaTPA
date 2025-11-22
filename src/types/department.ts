@@ -5,3 +5,5 @@ export interface Department {
     nameAr: string
     isActive: boolean
 }
+
+export type { PaginatedResponse } from './api'

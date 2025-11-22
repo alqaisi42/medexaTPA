@@ -82,11 +82,55 @@ function normalizeDoctor(record: Record<string, unknown>): DoctorSummary {
     }
 }
 
+async function extractErrorMessage(response: Response, fallback: string): Promise<string> {
+    try {
+        // Read response body as text (works for both JSON and text)
+        const text = await response.text()
+        
+        if (text) {
+            try {
+                const data = JSON.parse(text)
+                if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string') {
+                    return data.message
+                }
+            } catch {
+                // Not JSON, use the text as is if it's meaningful
+                if (text.length > 0 && text.length < 200) {
+                    return text
+                }
+            }
+        }
+    } catch {
+        // ignore parsing error - fall back to generic message
+    }
+
+    if (response.status === 404) {
+        return `${fallback} (Resource not found)`
+    }
+
+    if (response.status === 500) {
+        return `${fallback} (Server error)`
+    }
+
+    if (response.status >= 400) {
+        return `${fallback} (HTTP ${response.status})`
+    }
+
+    return fallback
+}
+
 async function fetchLookup<T>(path: string, normalize: (record: Record<string, unknown>) => T, errorMessage: string): Promise<T[]> {
-    const response = await fetch(buildUrl(path), {cache: 'no-store'})
+    const url = buildUrl(path)
+    const response = await fetch(url, {cache: 'no-store'})
 
     if (!response.ok) {
-        throw new Error(errorMessage)
+        const detailedError = await extractErrorMessage(response, errorMessage)
+        console.error(`Failed to fetch lookup from ${url}:`, {
+            status: response.status,
+            statusText: response.statusText,
+            error: detailedError,
+        })
+        throw new Error(detailedError)
     }
 
     const payload = await safeJson(response)

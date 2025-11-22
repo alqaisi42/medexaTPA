@@ -1,15 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SearchableSelect, SearchableSelectOption } from '@/components/ui/searchable-select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useProviderDepartments } from '../hooks/use-provider-departments'
-import { fetchDepartmentsLookup } from '@/lib/api/lookups'
+import { fetchDepartments } from '@/lib/api/departments'
 import { Department } from '@/types/department'
 
 interface ProviderDepartmentsTabProps {
@@ -21,9 +21,10 @@ export function ProviderDepartmentsTab({ providerId }: ProviderDepartmentsTabPro
         useProviderDepartments(10)
     const [search, setSearch] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
-    const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('')
-    const [lookup, setLookup] = useState<Department[]>([])
-    const [lookupLoading, setLookupLoading] = useState(false)
+    const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | number | null>(null)
+    const [departmentOptions, setDepartmentOptions] = useState<SearchableSelectOption[]>([])
+    const [departmentsLoading, setDepartmentsLoading] = useState(false)
+    const [departmentsError, setDepartmentsError] = useState<string | null>(null)
     const [formError, setFormError] = useState<string | null>(null)
 
     useEffect(() => {
@@ -33,13 +34,36 @@ export function ProviderDepartmentsTab({ providerId }: ProviderDepartmentsTabPro
         }
     }, [providerId, load, clearError])
 
-    useEffect(() => {
-        setLookupLoading(true)
-        fetchDepartmentsLookup()
-            .then(setLookup)
-            .catch((err) => console.error('Failed to load departments lookup', err))
-            .finally(() => setLookupLoading(false))
+    const loadDepartments = useCallback(async () => {
+        setDepartmentsLoading(true)
+        setDepartmentsError(null)
+        try {
+            // Load a large number of departments for local filtering
+            const response = await fetchDepartments({
+                page: 0,
+                size: 500,
+            })
+            const options: SearchableSelectOption[] = response.content.map((dept) => ({
+                id: dept.id,
+                label: dept.nameEn,
+                subLabel: dept.code,
+            }))
+            setDepartmentOptions(options)
+        } catch (err) {
+            console.error('Failed to load departments', err)
+            const errorMessage = err instanceof Error ? err.message : 'Failed to load departments'
+            setDepartmentsError(errorMessage)
+            setDepartmentOptions([])
+        } finally {
+            setDepartmentsLoading(false)
+        }
     }, [])
+
+    useEffect(() => {
+        if (isDialogOpen) {
+            void loadDepartments()
+        }
+    }, [isDialogOpen, loadDepartments])
 
     const filteredDepartments = useMemo(() => {
         if (!search.trim()) return departments
@@ -48,12 +72,6 @@ export function ProviderDepartmentsTab({ providerId }: ProviderDepartmentsTabPro
             [item.departmentCode, item.nameEn, item.nameAr].some((field) => field.toLowerCase().includes(term)),
         )
     }, [departments, search])
-
-    const filteredLookup = useMemo(() => {
-        if (!search.trim()) return lookup
-        const term = search.toLowerCase()
-        return lookup.filter((item) => [item.code, item.nameEn, item.nameAr].some((field) => field.toLowerCase().includes(term)))
-    }, [lookup, search])
 
     const handleSubmit = async () => {
         if (!selectedDepartmentId) {
@@ -65,9 +83,17 @@ export function ProviderDepartmentsTab({ providerId }: ProviderDepartmentsTabPro
         try {
             await create({ departmentId: Number(selectedDepartmentId) })
             setIsDialogOpen(false)
-            setSelectedDepartmentId('')
+            setSelectedDepartmentId(null)
         } catch (err) {
             setFormError(err instanceof Error ? err.message : 'Unable to assign department')
+        }
+    }
+
+    const handleDialogOpenChange = (open: boolean) => {
+        setIsDialogOpen(open)
+        if (!open) {
+            setSelectedDepartmentId(null)
+            setFormError(null)
         }
     }
 
@@ -187,7 +213,7 @@ export function ProviderDepartmentsTab({ providerId }: ProviderDepartmentsTabPro
                 </div>
             )}
 
-            <Dialog open={isDialogOpen} onOpenChange={(open) => setIsDialogOpen(open)}>
+            <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle>Assign Department</DialogTitle>
@@ -195,34 +221,26 @@ export function ProviderDepartmentsTab({ providerId }: ProviderDepartmentsTabPro
                     <div className="space-y-4">
                         <div className="space-y-2">
                             <Label>Department</Label>
-                            <Select
-                                value={selectedDepartmentId}
+                            <SearchableSelect
+                                options={departmentOptions}
+                                value={selectedDepartmentId ?? undefined}
                                 onValueChange={(value) => setSelectedDepartmentId(value)}
-                                disabled={lookupLoading}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Choose a department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {filteredLookup.map((item) => (
-                                        <SelectItem key={item.id} value={String(item.id)}>
-                                            <div className="flex flex-col">
-                                                <span className="font-medium">{item.nameEn}</span>
-                                                <span className="text-xs text-gray-500">{item.code}</span>
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                    {filteredLookup.length === 0 && <SelectItem value="">No departments</SelectItem>}
-                                </SelectContent>
-                            </Select>
+                                placeholder="Search and select a department..."
+                                disabled={isSaving}
+                                loading={departmentsLoading}
+                                error={departmentsError || undefined}
+                                searchPlaceholder="Search by name or code..."
+                                emptyMessage="No departments found"
+                            />
+                            {departmentsError && <p className="text-sm text-red-600">{departmentsError}</p>}
                         </div>
                         {formError && <p className="text-sm text-red-600">{formError}</p>}
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSubmit} disabled={isSaving || lookupLoading} className="bg-tpa-primary">
+                        <Button onClick={handleSubmit} disabled={isSaving || departmentsLoading} className="bg-tpa-primary">
                             Save
                         </Button>
                     </DialogFooter>

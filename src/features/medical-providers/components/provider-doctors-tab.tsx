@@ -1,18 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SearchableSelect, SearchableSelectOption } from '@/components/ui/searchable-select'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useProviderDoctors } from '../hooks/use-provider-doctors'
-import { fetchDoctorsLookup } from '@/lib/api/lookups'
-import { DoctorSummary } from '@/types/doctor'
+import { fetchDoctors } from '@/lib/api/doctors'
+import { Doctor } from '@/types/doctor'
 import { ProviderDoctor } from '@/types/provider'
 
 interface ProviderDoctorsTabProps {
@@ -26,12 +27,13 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
         useProviderDoctors(10)
     const [search, setSearch] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
-    const [lookup, setLookup] = useState<DoctorSummary[]>([])
-    const [lookupLoading, setLookupLoading] = useState(false)
+    const [doctorOptions, setDoctorOptions] = useState<SearchableSelectOption[]>([])
+    const [doctorsLoading, setDoctorsLoading] = useState(false)
+    const [doctorsError, setDoctorsError] = useState<string | null>(null)
     const [formError, setFormError] = useState<string | null>(null)
-    const [formState, setFormState] = useState<{ doctorId: string; joinType: string; notes: string; isActive: boolean }>(
+    const [formState, setFormState] = useState<{ doctorId: string | number | null; joinType: string; notes: string; isActive: boolean }>(
         {
-            doctorId: '',
+            doctorId: null,
             joinType: '',
             notes: '',
             isActive: true,
@@ -46,13 +48,36 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
         }
     }, [providerId, load, clearError])
 
-    useEffect(() => {
-        setLookupLoading(true)
-        fetchDoctorsLookup()
-            .then(setLookup)
-            .catch((err) => console.error('Failed to load doctors lookup', err))
-            .finally(() => setLookupLoading(false))
+    const loadDoctors = useCallback(async () => {
+        setDoctorsLoading(true)
+        setDoctorsError(null)
+        try {
+            // Load a large number of doctors for local filtering
+            const response = await fetchDoctors({
+                page: 0,
+                size: 500,
+            })
+            const options: SearchableSelectOption[] = response.content.map((doctor: Doctor) => ({
+                id: doctor.id,
+                label: doctor.nameEn,
+                subLabel: `${doctor.code}${doctor.specialtyNameEn ? ` • ${doctor.specialtyNameEn}` : ''}`,
+            }))
+            setDoctorOptions(options)
+        } catch (err) {
+            console.error('Failed to load doctors', err)
+            const errorMessage = err instanceof Error ? err.message : 'Failed to load doctors'
+            setDoctorsError(errorMessage)
+            setDoctorOptions([])
+        } finally {
+            setDoctorsLoading(false)
+        }
     }, [])
+
+    useEffect(() => {
+        if (isDialogOpen) {
+            void loadDoctors()
+        }
+    }, [isDialogOpen, loadDoctors])
 
     const filteredDoctors = useMemo(() => {
         if (!search.trim()) return doctors
@@ -62,15 +87,9 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
         )
     }, [doctors, search])
 
-    const filteredLookup = useMemo(() => {
-        if (!search.trim()) return lookup
-        const term = search.toLowerCase()
-        return lookup.filter((item) => [item.code, item.nameEn, item.nameAr].some((field) => field.toLowerCase().includes(term)))
-    }, [lookup, search])
-
     const openCreateDialog = () => {
         setEditingRecord(null)
-        setFormState({ doctorId: '', joinType: '', notes: '', isActive: true })
+        setFormState({ doctorId: null, joinType: '', notes: '', isActive: true })
         setFormError(null)
         setIsDialogOpen(true)
     }
@@ -78,13 +97,22 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
     const openEditDialog = (record: ProviderDoctor) => {
         setEditingRecord(record)
         setFormState({
-            doctorId: String(record.doctorId),
+            doctorId: record.doctorId,
             joinType: record.joinType ?? '',
             notes: record.notes ?? '',
             isActive: record.isActive,
         })
         setFormError(null)
         setIsDialogOpen(true)
+    }
+
+    const handleDialogOpenChange = (open: boolean) => {
+        setIsDialogOpen(open)
+        if (!open) {
+            setEditingRecord(null)
+            setFormState({ doctorId: null, joinType: '', notes: '', isActive: true })
+            setFormError(null)
+        }
     }
 
     const handleSubmit = async () => {
@@ -106,7 +134,7 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
             }
             setIsDialogOpen(false)
             setEditingRecord(null)
-            setFormState({ doctorId: '', joinType: '', notes: '', isActive: true })
+            setFormState({ doctorId: null, joinType: '', notes: '', isActive: true })
         } catch (err) {
             setFormError(err instanceof Error ? err.message : 'Unable to save doctor assignment')
         }
@@ -242,7 +270,7 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
                 </div>
             )}
 
-            <Dialog open={isDialogOpen} onOpenChange={(open) => setIsDialogOpen(open)}>
+            <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
                 <DialogContent className="max-w-xl">
                     <DialogHeader>
                         <DialogTitle>{editingRecord ? 'Edit Doctor Assignment' : 'Assign Doctor'}</DialogTitle>
@@ -250,26 +278,18 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Doctor</Label>
-                            <Select
-                                value={formState.doctorId}
+                            <SearchableSelect
+                                options={doctorOptions}
+                                value={formState.doctorId ?? undefined}
                                 onValueChange={(value) => setFormState((prev) => ({ ...prev, doctorId: value }))}
-                                disabled={lookupLoading || Boolean(editingRecord)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Choose a doctor" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {filteredLookup.map((item) => (
-                                        <SelectItem key={item.id} value={String(item.id)}>
-                                            <div className="flex flex-col">
-                                                <span className="font-medium">{item.nameEn}</span>
-                                                <span className="text-xs text-gray-500">{item.code}</span>
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                    {filteredLookup.length === 0 && <SelectItem value="">No doctors</SelectItem>}
-                                </SelectContent>
-                            </Select>
+                                placeholder="Search and select a doctor..."
+                                disabled={isSaving || Boolean(editingRecord)}
+                                loading={doctorsLoading}
+                                error={doctorsError || undefined}
+                                searchPlaceholder="Search by name, code, or specialty..."
+                                emptyMessage="No doctors found"
+                            />
+                            {doctorsError && <p className="text-sm text-red-600">{doctorsError}</p>}
                         </div>
                         <div className="space-y-2">
                             <Label>Join Type</Label>
@@ -310,10 +330,10 @@ export function ProviderDoctorsTab({ providerId }: ProviderDoctorsTabProps) {
                         {formError && <p className="text-sm text-red-600 md:col-span-2">{formError}</p>}
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSubmit} disabled={isSaving || lookupLoading} className="bg-tpa-primary">
+                        <Button onClick={handleSubmit} disabled={isSaving || doctorsLoading} className="bg-tpa-primary">
                             Save
                         </Button>
                     </DialogFooter>

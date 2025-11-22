@@ -148,7 +148,31 @@ export const useAppStore = create<AppState>((set) => ({
                             icon: 'Building2',
                             path: '/medical-providers',
                         },
+                        {
+                            id: 'doctors',
+                            label: 'Doctors',
+                            icon: 'Stethoscope',
+                            path: '/doctors',
+                        },
+                        {
+                            id: 'departments',
+                            label: 'Departments',
+                            icon: 'ClipboardList',
+                            path: '/departments',
+                        },
+                        {
+                            id: 'provider-contracts',
+                            label: 'Provider Contracts',
+                            icon: 'FileText',
+                            path: '/provider-contracts',
+                        },
                     ],
+                },
+                {
+                    id: 'networks',
+                    label: 'Networks',
+                    icon: 'Share2',
+                    path: '/networks',
                 },
                 {
                     id: 'subscribers',
