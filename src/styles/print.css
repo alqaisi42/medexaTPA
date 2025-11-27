@@ -1,0 +1,126 @@
+/* Print-specific styles for card templates */
+
+@media print {
+    /* Hide all non-essential elements */
+    .no-print,
+    nav,
+    header,
+    footer,
+    .sidebar,
+    .toolbar,
+    button:not(.print-button),
+    .dialog,
+    .dropdown {
+        display: none !important;
+    }
+    
+    /* Optimize page layout */
+    body {
+        margin: 0;
+        padding: 0;
+        background: white;
+        color: black;
+        font-family: Arial, sans-serif;
+    }
+    
+    /* Card-specific print styles */
+    .card-print-container {
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        page-break-inside: avoid;
+    }
+    
+    .card-print-item {
+        width: 85.6mm;
+        height: 53.98mm;
+        border: 1px solid #000;
+        border-radius: 3mm;
+        margin: 5mm 0;
+        page-break-after: always;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .card-print-item:last-child {
+        page-break-after: auto;
+    }
+    
+    /* Element positioning */
+    .print-element {
+        position: absolute;
+    }
+    
+    .print-text {
+        font-family: Arial, sans-serif;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+    
+    .print-image {
+        background: #f0f0f0;
+        border: 1px dashed #666;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        color: #666;
+    }
+    
+    .print-qr,
+    .print-barcode {
+        background: #000;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 6px;
+        font-weight: bold;
+    }
+    
+    .print-shape {
+        border: 1px solid #666;
+    }
+    
+    /* High contrast for better print quality */
+    .print-high-contrast {
+        filter: contrast(1.2);
+    }
+    
+    /* Ensure colors print correctly */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
+
+/* Page setup for different card orientations */
+@page card-landscape {
+    size: 85.6mm 53.98mm landscape;
+    margin: 0;
+}
+
+@page card-portrait {
+    size: 53.98mm 85.6mm portrait;
+    margin: 0;
+}
+
+/* Print preview styles (for screen) */
+@media screen {
+    .print-preview {
+        background: #f5f5f5;
+        padding: 20px;
+        min-height: 100vh;
+    }
+    
+    .print-preview .card-print-item {
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin: 20px auto;
+        display: block;
+    }
+}
