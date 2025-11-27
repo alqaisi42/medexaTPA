@@ -165,7 +165,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                         <Menu className="h-5 w-5" />
                     </Button>
 
-                    <div className="text-lg font-bold">MEDEXA</div>
+                    <div className="text-lg font-bold">QUBITY</div>
                     <div className="text-sm opacity-80">System User</div>
                 </div>
 

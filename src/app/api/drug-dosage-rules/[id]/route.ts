@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server'
 import { forwardApiRequest } from '../../_proxy'
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        return await forwardApiRequest(`/api/v1/drug-rules/${params.id}`)
+        const { id } = await params
+        return await forwardApiRequest(`/api/v1/drug-rules/${id}`)
     } catch (error) {
         console.error('Failed to proxy dosage rule details request', error)
         return new Response(JSON.stringify({ message: 'Failed to load dosage rule' }), {
@@ -13,10 +14,11 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
+        const { id } = await params
         const payload = await request.json()
-        return await forwardApiRequest(`/api/v1/drug-rules/${params.id}`, {
+        return await forwardApiRequest(`/api/v1/drug-rules/${id}`, {
             method: 'PUT',
             body: JSON.stringify(payload),
             headers: { 'Content-Type': 'application/json' },
@@ -30,9 +32,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        return await forwardApiRequest(`/api/v1/drug-rules/${params.id}`, { method: 'DELETE' })
+        const { id } = await params
+        return await forwardApiRequest(`/api/v1/drug-rules/${id}`, { method: 'DELETE' })
     } catch (error) {
         console.error('Failed to proxy dosage rule delete request', error)
         return new Response(JSON.stringify({ message: 'Failed to delete dosage rule' }), {

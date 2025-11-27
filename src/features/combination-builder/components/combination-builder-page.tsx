@@ -2331,7 +2331,7 @@ export function CombinationBuilderPage() {
                                                 <Label>Points Example</Label>
                                                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
                                                     <p className="font-semibold">{ruleForm.points || 0} pts × {formatCurrency(ruleForm.pointValue || 0)} = {formatCurrency(pointConversionPreview)}</p>
-                                                    <p className="text-xs text-blue-800">This mirrors the point price lookup that Medexa applies.</p>
+                                                    <p className="text-xs text-blue-800">This mirrors the point price lookup that QUBITY applies.</p>
                                                 </div>
                                             </div>
                                         </div>

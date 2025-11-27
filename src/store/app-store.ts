@@ -178,7 +178,21 @@ export const useAppStore = create<AppState>((set) => ({
                     id: 'subscribers',
                     label: 'Subscribers Info.',
                     icon: 'Users',
-                    children: [],
+                    expanded: true,
+                    children: [
+                        {
+                            id: 'subscribers-list',
+                            label: 'Subscribers List',
+                            icon: 'Users',
+                            path: '/subscribers',
+                        },
+                        {
+                            id: 'member-accumulators',
+                            label: 'Member Accumulators',
+                            icon: 'BarChart3',
+                            path: '/member-accumulators',
+                        },
+                    ],
                 },
                 {
                     id: 'pre-approval',
@@ -196,7 +210,21 @@ export const useAppStore = create<AppState>((set) => ({
                     id: 'contracts',
                     label: 'Contracts Info.',
                     icon: 'FileSignature',
-                    children: [],
+                    expanded: true,
+                    children: [
+                        {
+                            id: 'contracts-policies',
+                            label: 'Contracts & Policies',
+                            icon: 'FileText',
+                            path: '/contracts-policies',
+                        },
+                        {
+                            id: 'member-accumulators-contracts',
+                            label: 'Member Accumulators',
+                            icon: 'BarChart3',
+                            path: '/member-accumulators',
+                        },
+                    ],
                 },
                 {
                     id: 'integration',

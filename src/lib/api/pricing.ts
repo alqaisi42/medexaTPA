@@ -54,8 +54,33 @@ async function requestJson<T>(
     })
 
     if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        throw new Error(text || errorMessage)
+        try {
+            const text = await response.text()
+            // Try to parse as JSON to extract error message
+            try {
+                const errorJson = JSON.parse(text)
+                if (errorJson && typeof errorJson === 'object' && 'message' in errorJson) {
+                    // Only use the message field, ignore the rest of the JSON
+                    throw new Error(String(errorJson.message))
+                }
+            } catch (parseError) {
+                // If parsing failed or no message field, check if text looks like JSON
+                if (parseError instanceof Error && parseError.message !== text) {
+                    // We successfully extracted a message, throw it
+                    throw parseError
+                }
+                // If text is raw JSON or doesn't have message, use fallback
+                // Don't show raw JSON to users
+            }
+            // If we get here, text doesn't contain a valid error message
+            // Use the fallback error message instead of showing raw JSON
+            throw new Error(errorMessage)
+        } catch (error) {
+            if (error instanceof Error) {
+                throw error
+            }
+            throw new Error(errorMessage)
+        }
     }
 
     if (response.status === 204) {
